@@ -397,7 +397,16 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return migratedActions.sort((a, b) => a.order - b.order);
   };
 
-  const loadSystemInfo = () => {
+  const loadSystemInfo = async () => {
+    // Fetch real version from electron-updater (app.getVersion())
+    let appVersion = '1.0.0';
+    try {
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.updater?.getVersion) {
+        appVersion = await electronAPI.updater.getVersion() || appVersion;
+      }
+    } catch { /* fallback */ }
+
     try {
       const storedSystemInfo = localStorage.getItem(SYSTEM_INFO_STORAGE_KEY) || localStorage.getItem(LEGACY_SYSTEM_INFO_STORAGE_KEY);
 
@@ -406,7 +415,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const newSystemInfo: SystemInfo = {
           machineId: generateMachineId(),
           installDate: new Date().toISOString(),
-          version: '1.0.0',
+          version: appVersion,
           lastUpdate: new Date().toISOString(),
         };
 
@@ -414,7 +423,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setSystemInfo(newSystemInfo);
       } else {
         const parsedSystemInfo = JSON.parse(storedSystemInfo);
-        // Update last update time
+        // Always update version and last update time
+        parsedSystemInfo.version = appVersion;
         parsedSystemInfo.lastUpdate = new Date().toISOString();
         localStorage.setItem(SYSTEM_INFO_STORAGE_KEY, JSON.stringify(parsedSystemInfo));
         localStorage.removeItem(LEGACY_SYSTEM_INFO_STORAGE_KEY);
@@ -427,7 +437,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const fallbackSystemInfo: SystemInfo = {
         machineId: generateMachineId(),
         installDate: new Date().toISOString(),
-        version: '1.0.0',
+        version: appVersion,
         lastUpdate: new Date().toISOString(),
       };
       setSystemInfo(fallbackSystemInfo);

@@ -2025,20 +2025,26 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   borderRadius: '12px',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-                    <div style={{
-                      width: '48px',
-                      height: '48px',
-                      background: 'linear-gradient(135deg, #00D4AA 0%, #7B3FF2 100%)',
-                      borderRadius: '12px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '20px',
-                      fontWeight: 'bold',
-                      color: '#FFFFFF',
-                    }}>
-                      N
-                    </div>
+                    <svg width="48" height="48" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                      <defs>
+                        <linearGradient id="nexusAboutGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" style={{ stopColor: '#00D4AA', stopOpacity: 1 }} />
+                          <stop offset="50%" style={{ stopColor: '#00B4D8', stopOpacity: 1 }} />
+                          <stop offset="100%" style={{ stopColor: '#7B3FF2', stopOpacity: 1 }} />
+                        </linearGradient>
+                        <linearGradient id="nexusAboutBg" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" style={{ stopColor: '#0D0D0D', stopOpacity: 1 }} />
+                          <stop offset="100%" style={{ stopColor: '#1A1A2E', stopOpacity: 1 }} />
+                        </linearGradient>
+                      </defs>
+                      <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#nexusAboutBg)" />
+                      <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="none" stroke="url(#nexusAboutGrad)" strokeWidth="3" opacity="0.4" />
+                      <g transform="translate(256,256)">
+                        <rect x="-110" y="-130" width="38" height="260" rx="6" fill="url(#nexusAboutGrad)" />
+                        <rect x="72" y="-130" width="38" height="260" rx="6" fill="url(#nexusAboutGrad)" />
+                        <polygon points="-72,-130 110,130 72,130 -110,-130" fill="url(#nexusAboutGrad)" />
+                      </g>
+                    </svg>
                     <div>
                       <h3 style={{
                         margin: 0,
