@@ -29,7 +29,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   onSave
 }) => {
   const { createTask, updateTask, linkTaskToNote, unlinkTaskFromNote } = useTasks();
-  const { categories, reloadCategories } = useCategories();
+  const { categories, createCategory, reloadCategories } = useCategories();
   const { notes } = useNotes();
   
   const [title, setTitle] = useState('');
@@ -101,8 +101,18 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       
       // Create custom category if needed
       if (showCustomCategory && customCategoryName.trim()) {
-        // Custom category creation placeholder
-        // finalCategoryId = await createCategory({ name: customCategoryName.trim(), color: customCategoryColor, icon: customCategoryIcon });
+        const newCat = await createCategory({
+          name: customCategoryName.trim(),
+          color: customCategoryColor,
+          icon: customCategoryIcon,
+        });
+        if (newCat) {
+          finalCategoryId = newCat.id;
+        } else {
+          setErrors({ general: 'Erro ao criar categoria. Verifique se está autenticado.' });
+          setIsLoading(false);
+          return;
+        }
       }
 
       // Map categoryId to status for system categories

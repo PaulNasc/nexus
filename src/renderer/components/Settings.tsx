@@ -2,12 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useSettings } from '../hooks/useSettings';
 import { useI18n } from '../hooks/useI18n';
 import { useTheme } from '../hooks/useTheme';
-import { useAIConfig } from '../hooks/useAIConfig';
 import { useNotifications } from '../hooks/useNotifications';
-import { useCategories } from '../contexts/CategoriesContext';
 import { CategoryManager } from './CategoryManager';
-import { AISettings } from './AISettings';
 import { Button } from './ui/Button';
+import { ImportExportModal } from './ImportExportModal';
 
 // Componente para visualizar logs
 const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
@@ -232,244 +230,66 @@ const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
   );
 };
 
-// Componente para visualizar crash reports
-const CrashReportViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
-  const [crashReports, setCrashReports] = React.useState<any[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    const loadCrashReports = async () => {
-      try {
-        const electronAPI = (window as any).electronAPI;
-        if (electronAPI?.logging?.getCrashReports) {
-          const reportsData = await electronAPI.logging.getCrashReports({ limit: 50 });
-          setCrashReports(reportsData || []);
-        }
-      } catch (error) {
-        console.error('Erro ao carregar crash reports:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadCrashReports();
-  }, []);
-
-  if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: '40px 20px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-        Carregando crash reports...
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {crashReports.length === 0 ? (
-        <div style={{ 
-          textAlign: 'center', 
-          padding: '40px 20px', 
-          color: isDark ? '#A0A0A0' : '#6B7280',
-          backgroundColor: isDark ? '#1A1A1A' : '#F9FAFB',
-          borderRadius: '8px',
-          border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`
-        }}>
-          ✅ Nenhum crash report encontrado - Sistema estável!
-        </div>
-      ) : (
-        crashReports.map((report, index) => (
-          <div
-            key={index}
-            style={{
-              padding: '16px',
-              backgroundColor: isDark ? '#1A1A1A' : '#FEF2F2',
-              border: `1px solid ${isDark ? '#2A2A2A' : '#FECACA'}`,
-              borderRadius: '8px'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-              <span style={{
-                padding: '4px 8px',
-                borderRadius: '4px',
-                backgroundColor: '#EF4444',
-                color: '#FFFFFF',
-                fontSize: '12px',
-                fontWeight: 600
-              }}>
-                CRASH
-              </span>
-              <span style={{ 
-                color: isDark ? '#A0A0A0' : '#6B7280',
-                fontSize: '14px'
-              }}>
-                {new Date(report.timestamp).toLocaleString()}
-              </span>
-            </div>
-            
-            <div style={{ 
-              color: isDark ? '#FFFFFF' : '#1F2937',
-              fontSize: '14px',
-              fontWeight: 600,
-              marginBottom: '8px'
-            }}>
-              {report.error?.message || 'Erro desconhecido'}
-            </div>
-
-            {report.context && (
-              <div style={{ 
-                color: isDark ? '#D1D5DB' : '#374151',
-                fontSize: '13px',
-                marginBottom: '12px'
-              }}>
-                <div style={{ fontWeight: 600, marginBottom: '6px' }}>Contexto:</div>
-                <pre style={{
-                  background: isDark ? '#0F172A' : '#F3F4F6',
-                  border: `1px solid ${isDark ? '#1F2937' : '#E5E7EB'}`,
-                  borderRadius: '8px',
-                  padding: '10px',
-                  overflowX: 'auto',
-                  whiteSpace: 'pre-wrap',
-                  margin: 0
-                }}>{JSON.stringify(report.context, null, 2)}</pre>
-              </div>
-            )}
-
-            {report.systemInfo && (
-              <details style={{ marginBottom: '12px' }}>
-                <summary style={{ 
-                  cursor: 'pointer', 
-                  color: isDark ? '#00D4AA' : '#059669',
-                  fontSize: '13px'
-                }}>
-                  Informações do Sistema
-                </summary>
-                <div style={{
-                  marginTop: '8px',
-                  padding: '12px',
-                  backgroundColor: isDark ? '#0A0A0A' : '#F3F4F6',
-                  borderRadius: '6px',
-                  fontSize: '12px'
-                }}>
-                  <div><strong>Plataforma:</strong> {report.systemInfo.platform}</div>
-                  <div><strong>Versão do OS:</strong> {report.systemInfo.release}</div>
-                  <div><strong>Arquitetura:</strong> {report.systemInfo.arch}</div>
-                  <div><strong>Memória Total:</strong> {Math.round(report.systemInfo.totalMemory / 1024 / 1024 / 1024)}GB</div>
-                </div>
-              </details>
-            )}
-
-            {report.error?.stack && (
-              <details>
-                <summary style={{ 
-                  cursor: 'pointer', 
-                  color: isDark ? '#00D4AA' : '#059669',
-                  fontSize: '13px'
-                }}>
-                  Stack Trace
-                </summary>
-                <pre style={{
-                  marginTop: '8px',
-                  padding: '12px',
-                  backgroundColor: isDark ? '#0A0A0A' : '#F3F4F6',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  color: isDark ? '#D1D5DB' : '#374151',
-                  maxHeight: '200px',
-                  overflowY: 'auto'
-                }}>
-                  {report.error.stack}
-                </pre>
-              </details>
-            )}
-          </div>
-        ))
-      )}
-    </div>
-  );
-};
-
-// Componente para gerenciar atualizações
+// Componente para gerenciar atualizações (electron-updater)
 const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
-  const [updateInfo, setUpdateInfo] = React.useState<any>(null);
-  const [updateSettings, setUpdateSettings] = React.useState<any>({
-    autoCheckForUpdates: true,
-    updateChannel: 'stable',
-    checkIntervalHours: 24,
-    notifyOnNewVersion: true,
-    downloadAutomatically: false
-  });
-  const [isChecking, setIsChecking] = React.useState(false);
-  const [lastCheck, setLastCheck] = React.useState<string | null>(null);
+  const [version, setVersion] = React.useState<string>('');
+  const [status, setStatus] = React.useState<{
+    state: string;
+    version?: string;
+    progress?: { percent: number; bytesPerSecond: number; transferred: number; total: number };
+    releaseNotes?: string;
+    error?: string;
+  }>({ state: 'idle' });
 
   React.useEffect(() => {
-    loadUpdateSettings();
-    loadCurrentVersion();
-    const onDownloaded = (_e: any, payload: any) => {
-      console.log('Update downloaded:', payload);
-    };
-    (window as any).electronAPI?.on?.('update:downloaded', onDownloaded);
-    return () => {
-      (window as any).electronAPI?.off?.('update:downloaded', onDownloaded);
-    };
+    const electronAPI = (window as any).electronAPI;
+    // Load current version
+    electronAPI?.updater?.getVersion?.().then((v: string) => setVersion(v)).catch(() => {});
+    // Load current status
+    electronAPI?.updater?.getStatus?.().then((s: any) => setStatus(s)).catch(() => {});
+    // Subscribe to status changes
+    const unsub = electronAPI?.updater?.onStatus?.((s: any) => setStatus(s));
+    return () => { unsub?.(); };
   }, []);
 
-  const loadUpdateSettings = async () => {
-    try {
-      const electronAPI = (window as any).electronAPI;
-      if (electronAPI?.version?.getUpdateSettings) {
-        const settings = await electronAPI.version.getUpdateSettings();
-        setUpdateSettings(settings);
-      }
-    } catch (error) {
-      console.error('Erro ao carregar configurações de atualização:', error);
-    }
+  const handleCheck = async () => {
+    const electronAPI = (window as any).electronAPI;
+    await electronAPI?.updater?.checkForUpdates?.();
   };
 
-  const loadCurrentVersion = async () => {
-    try {
-      const electronAPI = (window as any).electronAPI;
-      if (electronAPI?.version?.getCurrentVersion) {
-        const version = await electronAPI.version.getCurrentVersion();
-        setUpdateInfo(version);
-      }
-    } catch (error) {
-      console.error('Erro ao carregar versão atual:', error);
-    }
+  const handleDownload = async () => {
+    const electronAPI = (window as any).electronAPI;
+    await electronAPI?.updater?.downloadUpdate?.();
   };
 
-  const handleCheckForUpdates = async () => {
-    setIsChecking(true);
-    try {
-      const electronAPI = (window as any).electronAPI;
-      if (electronAPI?.version?.forceCheck) {
-        const result = await electronAPI.version.forceCheck();
-        setUpdateInfo(result);
-        setLastCheck(new Date().toLocaleString());
-      }
-    } catch (error) {
-      console.error('Erro ao verificar atualizações:', error);
-    } finally {
-      setIsChecking(false);
-    }
+  const handleInstall = () => {
+    const electronAPI = (window as any).electronAPI;
+    electronAPI?.updater?.quitAndInstall?.();
   };
 
-  const handleUpdateSettings = async (newSettings: any) => {
-    try {
-      const electronAPI = (window as any).electronAPI;
-      if (electronAPI?.version?.updateSettings) {
-        await electronAPI.version.updateSettings(newSettings);
-        setUpdateSettings(newSettings);
-      }
-    } catch (error) {
-      console.error('Erro ao salvar configurações:', error);
-    }
+  const stateLabel: Record<string, string> = {
+    idle: 'Pronto',
+    checking: 'Verificando...',
+    available: 'Atualização disponível',
+    'not-available': 'Você está na versão mais recente',
+    downloading: 'Baixando...',
+    downloaded: 'Pronto para instalar',
+    error: 'Erro ao verificar',
+  };
+
+  const stateColor: Record<string, string> = {
+    idle: isDark ? '#A0A0A0' : '#6B7280',
+    checking: '#00D4AA',
+    available: '#00D4AA',
+    'not-available': isDark ? '#A0A0A0' : '#6B7280',
+    downloading: '#7B3FF2',
+    downloaded: '#00D4AA',
+    error: '#EF4444',
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Informações da Versão */}
+      {/* Versão e Status */}
       <div style={{
         padding: '20px',
         backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
@@ -478,257 +298,99 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
           <div>
-            <h4 style={{
-              fontSize: '16px',
-              fontWeight: 600,
-              color: isDark ? '#FFFFFF' : '#1F2937',
-              margin: 0
-            }}>
-              Versão Atual
+            <h4 style={{ fontSize: '16px', fontWeight: 600, color: isDark ? '#FFFFFF' : '#1F2937', margin: 0 }}>
+              Nexus v{version || '...'}
             </h4>
-            <p style={{
-              fontSize: '13px',
-              color: isDark ? '#A0A0A0' : '#6B7280',
-              margin: '4px 0 0 0'
-            }}>
-              Informações sobre a versão instalada
+            <p style={{ fontSize: '13px', color: stateColor[status.state] || (isDark ? '#A0A0A0' : '#6B7280'), margin: '4px 0 0 0', fontWeight: 500 }}>
+              {stateLabel[status.state] || status.state}
+              {status.state === 'available' && status.version ? ` — v${status.version}` : ''}
             </p>
           </div>
         </div>
-        
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '16px',
-          marginBottom: '16px'
-        }}>
-          <div>
-            <span style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-              Versão:
-            </span>
-            <div style={{ fontSize: '15px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
-              {updateInfo?.currentVersion?.versionString || '1.0.0'}
-            </div>
-          </div>
-          
-          <div>
-            <span style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-              Canal:
-            </span>
-            <div style={{ fontSize: '15px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
-              {updateSettings.updateChannel || 'stable'}
-            </div>
-          </div>
-          
-          <div>
-            <span style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-              Última Verificação:
-            </span>
-            <div style={{ fontSize: '15px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
-              {lastCheck || 'Nunca'}
-            </div>
-          </div>
-        </div>
 
-        {updateInfo?.hasUpdate && (
-          <div style={{
-            padding: '12px',
-            backgroundColor: '#d4edda',
-            border: '1px solid #c3e6cb',
-            borderRadius: '8px',
-            marginBottom: '16px'
-          }}>
-            <div style={{ fontSize: '14px', fontWeight: 500, color: '#155724', marginBottom: '4px' }}>
-              Nova versão disponível: {updateInfo.latestVersion?.versionString}
+        {/* Barra de progresso do download */}
+        {status.state === 'downloading' && status.progress && (
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{
+              width: '100%', height: '6px', borderRadius: '3px',
+              backgroundColor: isDark ? '#1A1A1A' : '#E5E7EB',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                width: `${status.progress.percent}%`, height: '100%', borderRadius: '3px',
+                background: 'linear-gradient(90deg, #00D4AA, #7B3FF2)',
+                transition: 'width 0.3s ease',
+              }} />
             </div>
-            {updateInfo.releaseNotes && (
-              <div style={{ fontSize: '13px', color: '#155724' }}>
-                {updateInfo.releaseNotes}
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
-              <Button onClick={async () => {
-                try {
-                  const electronAPI = (window as any).electronAPI;
-                  const res = await electronAPI?.update?.download?.(updateInfo);
-                  if (res?.success) {
-                    alert('Atualização baixada. A pasta será aberta para instalação.');
-                  } else {
-                    alert('Falha no download da atualização.');
-                  }
-                } catch (e) {
-                  console.error('Download update error', e);
-                  alert('Erro ao baixar atualização');
-                }
-              }}>Baixar Atualização</Button>
-              <Button onClick={() => {
-                const url = updateInfo?.latestVersion?.downloadUrl;
-                if (url) {
-                  window.open(url, '_blank');
-                }
-              }}>
-                Abrir link do instalador
-              </Button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
+              <span style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                {status.progress.percent}%
+              </span>
+              <span style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                {(status.progress.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s
+              </span>
             </div>
           </div>
         )}
 
-        <Button 
-          onClick={handleCheckForUpdates}
-          disabled={isChecking}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <RefreshCw size={16} className={isChecking ? 'spin' : ''} />
-          {isChecking ? 'Verificando...' : 'Verificar Atualizações'}
-        </Button>
-      </div>
-
-      {/* Configurações de Atualização */}
-      <div style={{
-        padding: '20px',
-        backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
-        border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-        borderRadius: '12px',
-      }}>
-        <h4 style={{
-          fontSize: '16px',
-          fontWeight: 600,
-          color: isDark ? '#FFFFFF' : '#1F2937',
-          margin: '0 0 16px 0'
-        }}>
-          Configurações de Atualização
-        </h4>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Verificação Automática */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
-                Verificação Automática
-              </div>
-              <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-                Verificar automaticamente por novas versões
-              </div>
+        {/* Release notes */}
+        {(status.state === 'available' || status.state === 'downloaded') && status.releaseNotes && (
+          <div style={{
+            padding: '12px', borderRadius: '8px', marginBottom: '16px',
+            backgroundColor: isDark ? '#111' : '#F0FDF4',
+            border: `1px solid ${isDark ? '#1A3A2A' : '#BBF7D0'}`,
+          }}>
+            <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#374151', whiteSpace: 'pre-wrap', maxHeight: '120px', overflow: 'auto' }}>
+              {status.releaseNotes}
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={updateSettings.autoCheckForUpdates}
-                onChange={(e) => handleUpdateSettings({
-                  ...updateSettings,
-                  autoCheckForUpdates: e.target.checked
-                })}
-                style={{ marginRight: '8px' }}
-              />
-            </label>
           </div>
+        )}
 
-          {/* Canal de Atualização */}
-          <div>
-            <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '8px' }}>
-              Canal de Atualização
+        {/* Error message */}
+        {status.state === 'error' && status.error && (
+          <div style={{
+            padding: '12px', borderRadius: '8px', marginBottom: '16px',
+            backgroundColor: isDark ? '#1A0A0A' : '#FEF2F2',
+            border: `1px solid ${isDark ? '#3A1A1A' : '#FECACA'}`,
+          }}>
+            <div style={{ fontSize: '13px', color: '#EF4444' }}>
+              {status.error}
             </div>
-            <select
-              value={updateSettings.updateChannel}
-              onChange={(e) => handleUpdateSettings({
-                ...updateSettings,
-                updateChannel: e.target.value
-              })}
-              style={{
-                width: '100%',
-                padding: '8px',
-                borderRadius: '6px',
-                border: `1px solid ${isDark ? '#404040' : '#D1D5DB'}`,
-                backgroundColor: isDark ? '#1A1A1A' : '#FFFFFF',
-                color: isDark ? '#FFFFFF' : '#1F2937',
-                fontSize: '14px'
-              }}
-            >
-              <option value="stable">Estável</option>
-              <option value="beta">Beta</option>
-              <option value="alpha">Alpha</option>
-              <option value="nightly">Nightly</option>
-            </select>
           </div>
+        )}
 
-          {/* Intervalo de Verificação */}
-          <div>
-            <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '8px' }}>
-              Intervalo de Verificação
-            </div>
-            <select
-              value={updateSettings.checkIntervalHours}
-              onChange={(e) => handleUpdateSettings({
-                ...updateSettings,
-                checkIntervalHours: parseInt(e.target.value)
-              })}
-              style={{
-                width: '100%',
-                padding: '8px',
-                borderRadius: '6px',
-                border: `1px solid ${isDark ? '#404040' : '#D1D5DB'}`,
-                backgroundColor: isDark ? '#1A1A1A' : '#FFFFFF',
-                color: isDark ? '#FFFFFF' : '#1F2937',
-                fontSize: '14px'
-              }}
-            >
-              <option value="1">A cada hora</option>
-              <option value="6">A cada 6 horas</option>
-              <option value="12">A cada 12 horas</option>
-              <option value="24">Diariamente</option>
-              <option value="168">Semanalmente</option>
-            </select>
-          </div>
-
-          {/* Notificações */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
-                Notificar Sobre Novas Versões
-              </div>
-              <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-                Mostrar notificação quando uma nova versão estiver disponível
-              </div>
-            </div>
-            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={updateSettings.notifyOnNewVersion}
-                onChange={(e) => handleUpdateSettings({
-                  ...updateSettings,
-                  notifyOnNewVersion: e.target.checked
-                })}
-                style={{ marginRight: '8px' }}
-              />
-            </label>
-          </div>
-
-          {/* Download Automático */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
-                Download Automático
-              </div>
-              <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-                Baixar automaticamente as atualizações em segundo plano
-              </div>
-            </div>
-            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={updateSettings.downloadAutomatically}
-                onChange={(e) => handleUpdateSettings({
-                  ...updateSettings,
-                  downloadAutomatically: e.target.checked
-                })}
-                style={{ marginRight: '8px' }}
-              />
-            </label>
-          </div>
+        {/* Action buttons */}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {(status.state === 'idle' || status.state === 'not-available' || status.state === 'error') && (
+            <Button onClick={handleCheck} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <RefreshCw size={16} />
+              Verificar Atualizações
+            </Button>
+          )}
+          {status.state === 'checking' && (
+            <Button disabled style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.6 }}>
+              <RefreshCw size={16} className="spin" />
+              Verificando...
+            </Button>
+          )}
+          {status.state === 'available' && (
+            <Button onClick={handleDownload} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Download size={16} />
+              Baixar v{status.version}
+            </Button>
+          )}
+          {status.state === 'downloading' && (
+            <Button disabled style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.6 }}>
+              <Download size={16} className="spin" />
+              Baixando...
+            </Button>
+          )}
+          {status.state === 'downloaded' && (
+            <Button onClick={handleInstall} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'linear-gradient(135deg, #00D4AA, #7B3FF2)', color: '#fff', border: 'none' }}>
+              <RotateCcw size={16} />
+              Reiniciar e Instalar v{status.version}
+            </Button>
+          )}
         </div>
       </div>
     </div>
@@ -740,7 +402,6 @@ import {
   Palette, 
   Bell, 
   Eye, 
-  Brain, 
   Database, 
   Info,
   X,
@@ -749,21 +410,15 @@ import {
   RefreshCw,
   Download,
   Upload,
-  Trash2,
   TestTube,
-  Target,
-  Zap,
-  CheckCircle,
-  BookOpen,
   AlertCircle,
-  Shield,
-  Copy,
   Layout,
   HardDrive,
   Keyboard,
   MousePointer,
   Volume2,
-  Type
+  Type,
+  Copy
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -771,33 +426,34 @@ interface SettingsProps {
   onClose: () => void;
 }
 
-type TabType = 'geral' | 'aparencia' | 'produtividade' | 'notificacoes' | 'acessibilidade' | 'inteligencia-artificial' | 'backup' | 'armazenamento' | 'logs' | 'atualizacoes' | 'sobre';
+type TabType = 'geral' | 'aparencia' | 'notificacoes' | 'acessibilidade' | 'dados' | 'logs' | 'atualizacoes' | 'sobre';
 
 export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   const { 
     settings, 
     updateSettings, 
-    exportSettings, 
-    importSettings, 
     resetSettings, 
     clearAllData, 
     systemInfo 
   } = useSettings();
   const { t, currentLanguage, changeLanguage, getAvailableLanguages } = useI18n();
-  const { theme, setTheme, colors, effectiveMode } = useTheme();
-  const { aiConfig, updateConfig: updateAIConfig, isAIReady } = useAIConfig();
+  const { theme, effectiveMode } = useTheme();
   const { showNotification } = useNotifications();
-  const { categories, createCategory, updateCategory, deleteCategory } = useCategories();
   const [activeTab, setActiveTab] = useState<TabType>('geral');
   const [isResetting, setIsResetting] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showClearDataConfirm, setShowClearDataConfirm] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
-  const [showAdvancedAI, setShowAdvancedAI] = useState(false);
-  const [showLogViewer, setShowLogViewer] = useState(false);
-  const [showCrashReportViewer, setShowCrashReportViewer] = useState(false);
+  const [importExportModalOpen, setImportExportModalOpen] = useState(false);
+  const [importExportMode, setImportExportMode] = useState<'import' | 'export'>('export');
+
+  type ImportExportModalPropsType = React.ComponentProps<typeof ImportExportModal>;
+  type ImportIntent = Parameters<ImportExportModalPropsType['onImportPreview']>[0];
+  type ExportFormat = Parameters<ImportExportModalPropsType['onExport']>[0];
 
   const isDark = effectiveMode === 'dark';
+
+  const getElectron = () => (window as unknown as { electronAPI: import('../../main/preload').ElectronAPI }).electronAPI;
 
   // Sync language with i18n hook
   useEffect(() => {
@@ -862,44 +518,64 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleExportSettings = () => {
-    try {
-      const exportData = exportSettings();
-      const blob = new Blob([exportData], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `nexus-settings-${new Date().toISOString().split('T')[0]}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Error exporting settings:', error);
-    }
-  };
-
-  const handleImportSettings = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const content = e.target?.result as string;
-          if (importSettings(content)) {
-            showToast(t('settings.saved'), 'success');
-          }
-        } catch (error) {
-          console.error('Error importing settings:', error);
-        }
-      };
-      reader.readAsText(file);
-    }
-  };
-
   const handleTestNotification = () => {
     showNotification({
       title: t('settings.notifications.test'),
       body: 'Esta é uma notificação de teste do Nexus',
     });
+  };
+
+  const handleImportExportPreview = async (intent: ImportIntent): Promise<import('../../shared/types/backup').RestorePreview | null> => {
+    try {
+      const electron = getElectron();
+      if (intent?.kind === 'zip') return await electron.backup.importZipPreview({ source: 'external', filePath: intent.filePath });
+      if (intent?.kind === 'zip-backup') return await electron.backup.importZipPreview({ source: 'backupId', backupId: intent.backupId });
+      if (intent?.kind === 'json') return await electron.backup.importJsonPreview({ filePath: intent.filePath });
+      if (intent?.kind === 'csv') return await electron.backup.importCsvPreview({ filePath: intent.filePath });
+      if (intent?.kind === 'enex') return await electron.backup.importEnexPreview({ filePath: intent.filePath });
+      if (intent?.kind === 'html-file') return await electron.invoke('import:html-preview', { filePath: intent.filePath }) as import('../../shared/types/backup').RestorePreview;
+      if (intent?.kind === 'pdf-file') return await electron.invoke('import:pdf-preview', { filePath: intent.filePath }) as import('../../shared/types/backup').RestorePreview;
+      if (intent?.kind === 'folder') return await electron.invoke('import:folder-preview', { folderPath: intent.folderPath }) as import('../../shared/types/backup').RestorePreview;
+      return null;
+    } catch (err) {
+      console.error('Erro ao gerar preview do import:', err);
+      return null;
+    }
+  };
+
+  const handleImportExportApply = async (intent: ImportIntent): Promise<import('../../shared/types/backup').ImportResult | null> => {
+    try {
+      const electron = getElectron();
+      let result: import('../../shared/types/backup').ImportResult | null = null;
+      if (intent?.kind === 'zip') result = await electron.backup.importZipApply({ source: 'external', filePath: intent.filePath });
+      else if (intent?.kind === 'zip-backup') result = await electron.backup.importZipApply({ source: 'backupId', backupId: intent.backupId });
+      else if (intent?.kind === 'json') result = await electron.backup.importJsonApply({ filePath: intent.filePath });
+      else if (intent?.kind === 'csv') result = await electron.backup.importCsvApply({ filePath: intent.filePath });
+      else if (intent?.kind === 'enex') result = await electron.backup.importEnexApply({ filePath: intent.filePath });
+      else if (intent?.kind === 'html-file') result = await electron.invoke('import:html-apply', { filePath: intent.filePath }) as import('../../shared/types/backup').ImportResult;
+      else if (intent?.kind === 'pdf-file') result = await electron.invoke('import:pdf-apply', { filePath: intent.filePath }) as import('../../shared/types/backup').ImportResult;
+      else if (intent?.kind === 'folder') result = await electron.invoke('import:folder-apply', { folderPath: intent.folderPath }) as import('../../shared/types/backup').ImportResult;
+      if (result?.success) {
+        window.dispatchEvent(new Event('tasksUpdated'));
+        window.dispatchEvent(new Event('categoriesUpdated'));
+        window.dispatchEvent(new Event('notesUpdated'));
+      }
+      return result;
+    } catch (err) {
+      console.error('Erro ao aplicar import:', err);
+      return null;
+    }
+  };
+
+  const handleImportExportExport = async (format: ExportFormat) => {
+    try {
+      const electron = getElectron();
+      if (format === 'zip') { await electron.backup.exportZip({ source: 'current' }); return; }
+      if (format === 'json') { await electron.backup.exportJson(); return; }
+      if (format === 'csv') { await electron.backup.exportCsv(); }
+    } catch (err) {
+      console.error('Erro ao exportar:', err);
+    }
   };
 
   const copyToClipboard = (text: string) => {
@@ -910,56 +586,13 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   const tabs = [
     { id: 'geral', label: t('settings.general'), icon: <SettingsIcon size={16} strokeWidth={1.7} /> },
     { id: 'aparencia', label: t('settings.appearance'), icon: <Palette size={16} strokeWidth={1.7} /> },
-    { id: 'produtividade', label: 'Produtividade', icon: <Target size={16} strokeWidth={1.7} /> },
     { id: 'notificacoes', label: t('settings.notifications'), icon: <Bell size={16} strokeWidth={1.7} /> },
     { id: 'acessibilidade', label: t('settings.accessibility'), icon: <Eye size={16} strokeWidth={1.7} /> },
-    { id: 'inteligencia-artificial', label: 'Inteligência Artificial', icon: <Brain size={16} strokeWidth={1.7} /> },
-    { id: 'backup', label: t('settings.backup'), icon: <Download size={16} strokeWidth={1.7} /> },
-    { id: 'armazenamento', label: 'Dados & Armazenamento', icon: <HardDrive size={16} strokeWidth={1.7} /> },
+    { id: 'dados', label: 'Dados & Armazenamento', icon: <HardDrive size={16} strokeWidth={1.7} /> },
     { id: 'logs', label: 'Logs', icon: <Database size={16} strokeWidth={1.7} /> },
     { id: 'atualizacoes', label: 'Atualizações', icon: <RefreshCw size={16} strokeWidth={1.7} /> },
     { id: 'sobre', label: t('settings.about'), icon: <Info size={16} strokeWidth={1.7} /> },
   ];
-
-  const exportLogData = async () => {
-    try {
-      const electronAPI = (window as any).electronAPI;
-      if (!electronAPI?.logging?.exportLogs) {
-        throw new Error('API de logging não disponível');
-      }
-
-      const exportedData = await electronAPI.logging.exportLogs();
-      const blob = new Blob([exportedData], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `nexus-logs-${new Date().toISOString().split('T')[0]}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      
-      showToast('Logs exportados com sucesso!', 'success');
-    } catch (error) {
-      console.error('Erro ao exportar logs:', error);
-      showToast('Erro ao exportar logs', 'error');
-    }
-  };
-
-  const clearLogData = async () => {
-    if (window.confirm('Tem certeza que deseja limpar todos os logs? Esta ação não pode ser desfeita.')) {
-      try {
-        const electronAPI = (window as any).electronAPI;
-        if (!electronAPI?.logging?.clearLogs) {
-          throw new Error('API de logging não disponível');
-        }
-
-        const clearedCount = await electronAPI.logging.clearLogs();
-        showToast(`${clearedCount} logs limpos com sucesso!`, 'success');
-      } catch (error) {
-        console.error('Erro ao limpar logs:', error);
-        showToast('Erro ao limpar logs', 'error');
-      }
-    }
-  };
 
   return (
     <div style={{
@@ -1206,6 +839,221 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       fontSize: '14px',
                     }}
                   />
+                </div>
+
+                {/* Produtividade & Sugestões Proativas */}
+                <div style={{
+                  padding: '20px',
+                  backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : '#F9FAFB',
+                  border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : '#E5E7EB'}`,
+                  borderRadius: '12px',
+                }}>
+                  <h4 style={{
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    color: isDark ? '#FFFFFF' : '#1F2937',
+                    margin: '0 0 16px 0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}>
+                    <Layout size={18} />
+                    Produtividade & Sugestões
+                  </h4>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {/* Dicas de Produtividade */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
+                          Dicas de Produtividade
+                        </div>
+                        <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                          Exibir dicas contextuais baseadas no seu progresso
+                        </div>
+                      </div>
+                      <label style={{ position: 'relative', display: 'inline-block', width: '44px', height: '24px' }}>
+                        <input
+                          type="checkbox"
+                          checked={settings.showProductivityTips}
+                          onChange={(e) => updateSettings({ showProductivityTips: e.target.checked })}
+                          style={{ opacity: 0, width: 0, height: 0 }}
+                        />
+                        <span style={{
+                          position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+                          backgroundColor: settings.showProductivityTips ? '#00D4AA' : (isDark ? '#404040' : '#D1D5DB'),
+                          borderRadius: '12px', transition: 'background-color 0.2s',
+                        }}>
+                          <span style={{
+                            position: 'absolute', height: '18px', width: '18px', left: settings.showProductivityTips ? '23px' : '3px',
+                            bottom: '3px', backgroundColor: '#FFFFFF', borderRadius: '50%', transition: 'left 0.2s',
+                          }} />
+                        </span>
+                      </label>
+                    </div>
+
+                    {/* Insights de Progresso */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
+                          Insights de Progresso
+                        </div>
+                        <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                          Mostrar resumos e métricas do seu desempenho
+                        </div>
+                      </div>
+                      <label style={{ position: 'relative', display: 'inline-block', width: '44px', height: '24px' }}>
+                        <input
+                          type="checkbox"
+                          checked={settings.showProgressInsights}
+                          onChange={(e) => updateSettings({ showProgressInsights: e.target.checked })}
+                          style={{ opacity: 0, width: 0, height: 0 }}
+                        />
+                        <span style={{
+                          position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+                          backgroundColor: settings.showProgressInsights ? '#00D4AA' : (isDark ? '#404040' : '#D1D5DB'),
+                          borderRadius: '12px', transition: 'background-color 0.2s',
+                        }}>
+                          <span style={{
+                            position: 'absolute', height: '18px', width: '18px', left: settings.showProgressInsights ? '23px' : '3px',
+                            bottom: '3px', backgroundColor: '#FFFFFF', borderRadius: '50%', transition: 'left 0.2s',
+                          }} />
+                        </span>
+                      </label>
+                    </div>
+
+                    {/* Modo Proativo */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
+                          Sugestões Proativas
+                        </div>
+                        <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                          Gerar sugestões automáticas baseadas nas suas tarefas
+                        </div>
+                      </div>
+                      <label style={{ position: 'relative', display: 'inline-block', width: '44px', height: '24px' }}>
+                        <input
+                          type="checkbox"
+                          checked={settings.aiProactiveMode}
+                          onChange={(e) => updateSettings({ aiProactiveMode: e.target.checked })}
+                          style={{ opacity: 0, width: 0, height: 0 }}
+                        />
+                        <span style={{
+                          position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+                          backgroundColor: settings.aiProactiveMode ? '#00D4AA' : (isDark ? '#404040' : '#D1D5DB'),
+                          borderRadius: '12px', transition: 'background-color 0.2s',
+                        }}>
+                          <span style={{
+                            position: 'absolute', height: '18px', width: '18px', left: settings.aiProactiveMode ? '23px' : '3px',
+                            bottom: '3px', backgroundColor: '#FFFFFF', borderRadius: '50%', transition: 'left 0.2s',
+                          }} />
+                        </span>
+                      </label>
+                    </div>
+
+                    {/* Widget Flutuante (só aparece se proativo está ativo) */}
+                    {settings.aiProactiveMode && (
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div>
+                            <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
+                              Widget Flutuante
+                            </div>
+                            <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                              Exibir botão flutuante com sugestões na tela
+                            </div>
+                          </div>
+                          <label style={{ position: 'relative', display: 'inline-block', width: '44px', height: '24px' }}>
+                            <input
+                              type="checkbox"
+                              checked={settings.showProactiveSuggestionsWidget}
+                              onChange={(e) => updateSettings({ showProactiveSuggestionsWidget: e.target.checked })}
+                              style={{ opacity: 0, width: 0, height: 0 }}
+                            />
+                            <span style={{
+                              position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+                              backgroundColor: settings.showProactiveSuggestionsWidget ? '#00D4AA' : (isDark ? '#404040' : '#D1D5DB'),
+                              borderRadius: '12px', transition: 'background-color 0.2s',
+                            }}>
+                              <span style={{
+                                position: 'absolute', height: '18px', width: '18px', left: settings.showProactiveSuggestionsWidget ? '23px' : '3px',
+                                bottom: '3px', backgroundColor: '#FFFFFF', borderRadius: '50%', transition: 'left 0.2s',
+                              }} />
+                            </span>
+                          </label>
+                        </div>
+
+                        {/* Opacidade do Widget */}
+                        {settings.showProactiveSuggestionsWidget && (
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                              <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
+                                Opacidade do Widget
+                              </div>
+                              <span style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                                {settings.widgetButtonOpacity}%
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min="20"
+                              max="100"
+                              value={settings.widgetButtonOpacity}
+                              onChange={(e) => updateSettings({ widgetButtonOpacity: parseInt(e.target.value) })}
+                              style={{ width: '100%', accentColor: '#00D4AA' }}
+                            />
+                          </div>
+                        )}
+
+                        {/* Tamanho do Widget */}
+                        {settings.showProactiveSuggestionsWidget && (
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                              <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
+                                Tamanho do Widget
+                              </div>
+                              <span style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                                {settings.widgetButtonSize}px
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min="36"
+                              max="80"
+                              value={settings.widgetButtonSize}
+                              onChange={(e) => updateSettings({ widgetButtonSize: parseInt(e.target.value) })}
+                              style={{ width: '100%', accentColor: '#00D4AA' }}
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* Modo de Resposta */}
+                    <div>
+                      <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '8px' }}>
+                        Nível de Detalhe das Sugestões
+                      </div>
+                      <select
+                        value={settings.aiResponseMode}
+                        onChange={(e) => updateSettings({ aiResponseMode: e.target.value as 'detailed' | 'balanced' | 'concise' })}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: `1px solid ${isDark ? '#2A2A2A' : '#D1D5DB'}`,
+                          backgroundColor: isDark ? '#141414' : '#FFFFFF',
+                          color: isDark ? '#FFFFFF' : '#1F2937',
+                          fontSize: '14px',
+                        }}
+                      >
+                        <option value="concise">Conciso — frases curtas e diretas</option>
+                        <option value="balanced">Equilibrado — resumo com contexto</option>
+                        <option value="detailed">Detalhado — explicações completas</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Gerenciador de Categorias */}
@@ -1574,129 +1422,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
               </div>
             )}
 
-            {activeTab === 'produtividade' && (
-              <div style={{ display: 'grid', gap: '24px' }}>
-                <div>
-                  <h3 style={{
-                    fontSize: '18px',
-                    fontWeight: 600,
-                    color: isDark ? '#FFFFFF' : '#1F2937',
-                    marginBottom: '16px',
-                    margin: 0
-                  }}>
-                    Configurações de Produtividade
-                  </h3>
-                  <p style={{
-                    fontSize: '14px',
-                    color: isDark ? '#A0A0A0' : '#6B7280',
-                    marginBottom: '24px',
-                    margin: '8px 0 24px 0'
-                  }}>
-                    Personalize sua experiência e otimize seu fluxo de trabalho.
-                  </p>
-                </div>
-
-                {/* Configurações de Interface */}
-                <div style={{
-                  padding: '20px',
-                  backgroundColor: isDark ? '#141414' : '#F5F5F5',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E0E0E0'}`,
-                  borderRadius: '12px',
-                }}>
-                  <h4 style={{
-                    fontSize: '16px',
-                    fontWeight: 500,
-                    marginBottom: '16px',
-                    margin: '0 0 16px 0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}>
-                    <Eye size={16} />
-                    Interface
-                  </h4>
-                  
-                  <div style={{ display: 'grid', gap: '16px' }}>
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      padding: '12px',
-                      backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
-                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={settings.showProductivityTips}
-                        onChange={(e) => updateSettings({ showProductivityTips: e.target.checked })}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          accentColor: 'var(--color-primary-teal)',
-                        }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontSize: '14px',
-                          fontWeight: 500,
-                          color: isDark ? '#FFFFFF' : '#1F2937',
-                          marginBottom: '4px',
-                        }}>
-                          Dicas de produtividade
-                        </div>
-                        <div style={{
-                          fontSize: '12px',
-                          color: isDark ? '#A0A0A0' : '#6B7280',
-                        }}>
-                          Exibir dicas e sugestões no dashboard
-                        </div>
-                      </div>
-                    </label>
-
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      padding: '12px',
-                      backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
-                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={settings.showProgressInsights}
-                        onChange={(e) => updateSettings({ showProgressInsights: e.target.checked })}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          accentColor: 'var(--color-primary-teal)',
-                        }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontSize: '14px',
-                          fontWeight: 500,
-                          color: isDark ? '#FFFFFF' : '#1F2937',
-                          marginBottom: '4px',
-                        }}>
-                          Insights de progresso
-                        </div>
-                        <div style={{
-                          fontSize: '12px',
-                          color: isDark ? '#A0A0A0' : '#6B7280',
-                        }}>
-                          Mostrar análises automáticas do seu progresso
-                        </div>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {activeTab === 'notificacoes' && (
               <div style={{ display: 'grid', gap: '24px' }}>
                 <div style={{ display: 'grid', gap: '12px' }}>
@@ -1785,600 +1510,47 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
               </div>
             )}
 
-            {activeTab === 'backup' && (
+            {activeTab === 'dados' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 <div>
                   <h3 style={{
                     fontSize: '18px',
                     fontWeight: 600,
                     color: isDark ? '#FFFFFF' : '#1F2937',
-                    marginBottom: '16px',
                     margin: 0
                   }}>
-                    Gerenciamento de Dados
+                    Dados & Armazenamento
                   </h3>
                   <p style={{
                     fontSize: '14px',
                     color: isDark ? '#A0A0A0' : '#6B7280',
-                    marginBottom: '24px',
                     margin: '8px 0 24px 0'
                   }}>
-                    Controle completo sobre seus dados: localização, backup e sincronização.
+                    Gerencie o modo de armazenamento, importe e exporte seus dados.
                   </p>
                 </div>
 
-                {/* Storage Type Selection */}
-                <div>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '14px',
-                    fontWeight: 500,
-                    color: isDark ? '#FFFFFF' : '#374151',
-                    marginBottom: '8px'
+                {/* Modo de Armazenamento */}
+                <div style={{
+                  padding: '20px',
+                  backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
+                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                  borderRadius: '12px',
+                }}>
+                  <h4 style={{
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    color: isDark ? '#FFFFFF' : '#1F2937',
+                    margin: '0 0 8px 0',
                   }}>
-                    Tipo de Armazenamento
-                  </label>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-                    gap: '12px',
-                    marginBottom: '16px'
-                  }}>
-                    <div 
-                      onClick={() => updateSettings({ storageType: 'localStorage' })}
-                      style={{
-                        padding: '16px',
-                        backgroundColor: settings.storageType === 'localStorage' 
-                          ? (isDark ? '#1F4A3D' : '#D1FAE5') 
-                          : (isDark ? '#141414' : '#F9FAFB'),
-                        border: `2px solid ${
-                          settings.storageType === 'localStorage' 
-                            ? 'var(--color-primary-teal)' 
-                            : (isDark ? '#2A2A2A' : '#E5E7EB')
-                        }`,
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        marginBottom: '8px'
-                      }}>
-                        <div style={{
-                          width: '16px',
-                          height: '16px',
-                          borderRadius: '50%',
-                          backgroundColor: settings.storageType === 'localStorage' 
-                            ? 'var(--color-primary-teal)' 
-                            : (isDark ? '#6B7280' : '#D1D5DB'),
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}>
-                          {settings.storageType === 'localStorage' && (
-                            <div style={{
-                              width: '6px',
-                              height: '6px',
-                              borderRadius: '50%',
-                              backgroundColor: '#FFFFFF'
-                            }} />
-                          )}
-                        </div>
-                        <span style={{
-                          fontSize: '14px',
-                          fontWeight: 600,
-                          color: isDark ? '#FFFFFF' : '#1F2937'
-                        }}>
-                          Navegador (LocalStorage)
-                        </span>
-                      </div>
-                      <p style={{
-                        fontSize: '12px',
-                        color: isDark ? '#A0A0A0' : '#6B7280',
-                        margin: 0,
-                        lineHeight: '1.4'
-                      }}>
-                        Dados armazenados no navegador. Rápido e simples, mas limitado ao dispositivo.
-                      </p>
-                    </div>
-
-                    <div 
-                      onClick={() => updateSettings({ storageType: 'database' })}
-                      style={{
-                        padding: '16px',
-                        backgroundColor: settings.storageType === 'database' 
-                          ? (isDark ? '#1F4A3D' : '#D1FAE5') 
-                          : (isDark ? '#141414' : '#F9FAFB'),
-                        border: `2px solid ${
-                          settings.storageType === 'database' 
-                            ? 'var(--color-primary-teal)' 
-                            : (isDark ? '#2A2A2A' : '#E5E7EB')
-                        }`,
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        marginBottom: '8px'
-                      }}>
-                        <div style={{
-                          width: '16px',
-                          height: '16px',
-                          borderRadius: '50%',
-                          backgroundColor: settings.storageType === 'database' 
-                            ? 'var(--color-primary-teal)' 
-                            : (isDark ? '#6B7280' : '#D1D5DB'),
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}>
-                          {settings.storageType === 'database' && (
-                            <div style={{
-                              width: '6px',
-                              height: '6px',
-                              borderRadius: '50%',
-                              backgroundColor: '#FFFFFF'
-                            }} />
-                          )}
-                        </div>
-                        <span style={{
-                          fontSize: '14px',
-                          fontWeight: 600,
-                          color: isDark ? '#FFFFFF' : '#1F2937'
-                        }}>
-                          Banco de Dados Local
-                        </span>
-                      </div>
-                      <p style={{
-                        fontSize: '12px',
-                        color: isDark ? '#A0A0A0' : '#6B7280',
-                        margin: 0,
-                        lineHeight: '1.4'
-                      }}>
-                        Banco de dados persistente. Melhor para grandes volumes de dados e backup.
-                      </p>
-                    </div>
-                  </div>
-                  <p style={{
-                    fontSize: '12px',
-                    color: isDark ? '#6B7280' : '#9CA3AF',
-                    marginBottom: '24px',
-                    margin: '0 0 24px 0'
-                  }}>
-                    Escolha como seus dados serão armazenados. Você pode alterar essa configuração a qualquer momento.
-                  </p>
-                </div>
-
-                {/* Local Storage Path */}
-                <div>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '14px',
-                    fontWeight: 500,
-                    color: isDark ? '#FFFFFF' : '#374151',
-                    marginBottom: '8px'
-                  }}>
-                    Localização dos Dados
-                  </label>
-                  <div style={{
-                    display: 'flex',
-                    gap: '12px',
-                    alignItems: 'center'
-                  }}>
-                    <input
-                      type="text"
-                      value={settings.dataPath || 'Padrão do Sistema'}
-                      readOnly
-                      style={{
-                        flex: 1,
-                        padding: '12px 16px',
-                        backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
-                        border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                        borderRadius: '8px',
-                        color: isDark ? '#FFFFFF' : '#1F2937',
-                        fontSize: '14px',
-                        outline: 'none'
-                      }}
-                    />
-                  <button
-                      onClick={async () => {
-                        try {
-                          const result = await (window as any).electronAPI?.system?.selectFolder?.();
-                          if (result && !result.canceled && result.filePaths?.length > 0) {
-                            updateSettings({ dataPath: result.filePaths[0] });
-                            showToast('Localização dos dados atualizada', 'success');
-                          }
-                        } catch (error) {
-                          console.error('Erro ao selecionar pasta:', error);
-                          showToast('Erro ao selecionar pasta', 'error');
-                        }
-                      }}
-                    style={{
-                        padding: '12px 16px',
-                        backgroundColor: 'var(--color-primary-teal)',
-                        border: 'none',
-                      borderRadius: '8px',
-                        color: '#FFFFFF',
-                      fontSize: '14px',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                        whiteSpace: 'nowrap'
-                    }}
-                  >
-                      Alterar Pasta
-                  </button>
-                  </div>
-                  <p style={{
-                    fontSize: '12px',
-                    color: isDark ? '#6B7280' : '#9CA3AF',
-                    marginTop: '8px',
-                    margin: '8px 0 0 0'
-                  }}>
-                    Escolha onde seus dados serão armazenados localmente.
-                  </p>
-                </div>
-
-                {/* Export Options */}
-                <div>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '14px',
-                    fontWeight: 500,
-                    color: isDark ? '#FFFFFF' : '#374151',
-                    marginBottom: '12px'
-                  }}>
-                    Exportação de Dados
-                  </label>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                    gap: '12px'
-                  }}>
-                    <button
-                      onClick={async () => {
-                        try {
-                          const electronAPI: any = (window as any).electronAPI;
-                          const data: string | undefined = await electronAPI?.database?.exportData?.();
-                          if (!data) {
-                            showToast('Erro ao gerar backup', 'error');
-                            return;
-                          }
-                          const blob = new Blob([data], { type: 'application/json' });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `nexus-backup-${new Date().toISOString().split('T')[0]}.json`;
-                          a.click();
-                          URL.revokeObjectURL(url);
-                          showToast('Backup exportado com sucesso', 'success');
-                        } catch (error) {
-                          showToast('Erro ao exportar backup', 'error');
-                        }
-                      }}
-                      style={{
-                        padding: '16px',
-                        backgroundColor: isDark ? '#141414' : '#F5F5F5',
-                        border: `1px solid ${isDark ? '#2A2A2A' : '#E0E0E0'}`,
-                        borderRadius: '12px',
-                        color: isDark ? '#FFFFFF' : '#1F2937',
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.2s ease',
-                    display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = 'var(--color-primary-teal)';
-                        e.currentTarget.style.backgroundColor = isDark ? '#0F1419' : '#F0F9FF';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = isDark ? '#2A2A2A' : '#E0E0E0';
-                        e.currentTarget.style.backgroundColor = isDark ? '#141414' : '#F5F5F5';
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Download size={16} />
-                        <span>Backup Completo</span>
-                      </div>
-                      <span style={{
-                        fontSize: '12px',
-                        color: isDark ? '#A0A0A0' : '#6B7280'
-                      }}>
-                        Exporta todas as configurações, tarefas e notas
-                      </span>
-                    </button>
-
-                    <button
-                      onClick={async () => {
-                        try {
-                          const tasks = await (window as any).electronAPI?.database?.getAllTasks?.() || [];
-                          const data = JSON.stringify({ tasks, exportDate: new Date().toISOString() }, null, 2);
-                          const blob = new Blob([data], { type: 'application/json' });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `nexus-tasks-${new Date().toISOString().split('T')[0]}.json`;
-                          a.click();
-                          URL.revokeObjectURL(url);
-                          showToast('Tarefas exportadas com sucesso', 'success');
-                        } catch (error) {
-                          showToast('Erro ao exportar tarefas', 'error');
-                        }
-                      }}
-                      style={{
-                        padding: '16px',
-                        backgroundColor: isDark ? '#141414' : '#F5F5F5',
-                        border: `1px solid ${isDark ? '#2A2A2A' : '#E0E0E0'}`,
-                        borderRadius: '12px',
-                        color: isDark ? '#FFFFFF' : '#1F2937',
-                    fontSize: '14px',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                        textAlign: 'left',
-                    transition: 'all 0.2s ease',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = 'var(--color-primary-teal)';
-                        e.currentTarget.style.backgroundColor = isDark ? '#0F1419' : '#F0F9FF';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = isDark ? '#2A2A2A' : '#E0E0E0';
-                        e.currentTarget.style.backgroundColor = isDark ? '#141414' : '#F5F5F5';
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <CheckCircle size={16} />
-                        <span>Apenas Tarefas</span>
-                      </div>
-                      <span style={{
-                        fontSize: '12px',
-                        color: isDark ? '#A0A0A0' : '#6B7280'
-                      }}>
-                        Exporta somente as tarefas
-                      </span>
-                    </button>
-
-                    <button
-                      onClick={async () => {
-                        try {
-                          const notes = await (window as any).electronAPI?.database?.getAllNotes?.() || [];
-                          const data = JSON.stringify({ notes, exportDate: new Date().toISOString() }, null, 2);
-                          const blob = new Blob([data], { type: 'application/json' });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `nexus-notes-${new Date().toISOString().split('T')[0]}.json`;
-                          a.click();
-                          URL.revokeObjectURL(url);
-                          showToast('Notas exportadas com sucesso', 'success');
-                        } catch (error) {
-                          showToast('Erro ao exportar notas', 'error');
-                        }
-                      }}
-                      style={{
-                        padding: '16px',
-                        backgroundColor: isDark ? '#141414' : '#F5F5F5',
-                        border: `1px solid ${isDark ? '#2A2A2A' : '#E0E0E0'}`,
-                        borderRadius: '12px',
-                        color: isDark ? '#FFFFFF' : '#1F2937',
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.2s ease',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = 'var(--color-primary-teal)';
-                        e.currentTarget.style.backgroundColor = isDark ? '#0F1419' : '#F0F9FF';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = isDark ? '#2A2A2A' : '#E0E0E0';
-                        e.currentTarget.style.backgroundColor = isDark ? '#141414' : '#F5F5F5';
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <BookOpen size={16} />
-                        <span>Apenas Notas</span>
-                      </div>
-                      <span style={{
-                        fontSize: '12px',
-                        color: isDark ? '#A0A0A0' : '#6B7280'
-                      }}>
-                        Exporta somente as notas
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Import Options */}
-                <div>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '14px',
-                    fontWeight: 500,
-                    color: isDark ? '#FFFFFF' : '#374151',
-                    marginBottom: '12px'
-                  }}>
-                    Importação de Dados
-                  </label>
-                  <div style={{
-                    padding: '20px',
-                    backgroundColor: isDark ? '#141414' : '#F5F5F5',
-                    border: `2px dashed ${isDark ? '#2A2A2A' : '#E0E0E0'}`,
-                    borderRadius: '12px',
-                    textAlign: 'center'
-                  }}>
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          try {
-                            const text = await file.text();
-                            const electronAPI: any = (window as any).electronAPI;
-                            const res = await electronAPI?.database?.importData?.(text);
-                            if (res?.success !== false) {
-                              showToast('Dados importados com sucesso', 'success');
-                              setTimeout(() => window.location.reload(), 800);
-                            } else {
-                              showToast('Erro: formato de arquivo inválido', 'error');
-                            }
-                          } catch (error) {
-                            showToast('Erro ao importar dados', 'error');
-                          }
-                        }
-                        e.target.value = '';
-                      }}
-                      style={{ display: 'none' }}
-                      id="import-file"
-                    />
-                    <label
-                      htmlFor="import-file"
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: '12px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <Upload size={32} color={isDark ? '#A0A0A0' : '#6B7280'} />
-                      <div>
-                        <div style={{
-                          fontSize: '16px',
-                          fontWeight: 500,
-                          color: isDark ? '#FFFFFF' : '#1F2937',
-                          marginBottom: '4px'
-                        }}>
-                          Clique para importar
-                        </div>
-                        <div style={{
-                          fontSize: '14px',
-                          color: isDark ? '#A0A0A0' : '#6B7280'
-                        }}>
-                          Arraste um arquivo .json ou clique para selecionar
-                        </div>
-                      </div>
-                  </label>
-                  </div>
-                  <p style={{
-                    fontSize: '12px',
-                    color: '#F59E0B',
-                    marginTop: '8px',
-                    margin: '8px 0 0 0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}>
-                    <AlertCircle size={14} />
-                    Importar dados substituirá todas as configurações atuais.
-                  </p>
-                </div>
-
-                {/* Automatic Backup */}
-                <div>
-                  <label style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    cursor: 'pointer',
-                    padding: '16px',
-                    backgroundColor: isDark ? '#141414' : '#F5F5F5',
-                    border: `1px solid ${isDark ? '#2A2A2A' : '#E0E0E0'}`,
-                    borderRadius: '12px',
-                    transition: 'all 0.2s ease'
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={settings.autoBackup}
-                      onChange={(e) => updateSettings({ autoBackup: e.target.checked })}
-                      style={{
-                        width: '18px',
-                        height: '18px',
-                        accentColor: 'var(--color-primary-teal)'
-                      }}
-                    />
-                    <div style={{ flex: 1 }}>
-                      <div style={{
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        color: isDark ? '#FFFFFF' : '#1F2937',
-                        marginBottom: '4px'
-                      }}>
-                        Backup Automático
-                      </div>
-                      <div style={{
-                        fontSize: '12px',
-                        color: isDark ? '#A0A0A0' : '#6B7280'
-                      }}>
-                        Cria backups automáticos dos seus dados periodicamente
-                      </div>
-                    </div>
-                  </label>
-
-                  {settings.autoBackup && (
-                    <div style={{ marginTop: '12px', marginLeft: '30px' }}>
-                      <label style={{
-                        display: 'block',
-                        fontSize: '13px',
-                        fontWeight: 500,
-                        color: isDark ? '#FFFFFF' : '#374151',
-                        marginBottom: '6px'
-                      }}>
-                        Frequência do Backup
-                      </label>
-                      <select
-                        value={settings.backupFrequency}
-                        onChange={(e) => updateSettings({ backupFrequency: e.target.value as 'daily' | 'weekly' | 'monthly' })}
-                        style={{
-                          padding: '8px 12px',
-                          backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
-                          border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                          borderRadius: '6px',
-                          color: isDark ? '#FFFFFF' : '#1F2937',
-                          fontSize: '13px',
-                          outline: 'none'
-                        }}
-                      >
-                        <option value="daily">Diário</option>
-                        <option value="weekly">Semanal</option>
-                        <option value="monthly">Mensal</option>
-                      </select>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'armazenamento' && (
-              <div style={{ display: 'grid', gap: '24px' }}>
-                <div>
-                  <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: 600, color: '#FFFFFF' }}>
                     Modo de Armazenamento
                   </h4>
-                  <p style={{ fontSize: '12px', color: '#888', margin: '0 0 16px 0' }}>
-                    Define onde notas, tarefas e categorias são salvos. Outros usuários com acesso à mesma base Supabase compartilham os dados no modo Cloud.
+                  <p style={{ fontSize: '12px', color: isDark ? '#888' : '#6B7280', margin: '0 0 16px 0' }}>
+                    Define onde notas, tarefas e categorias são salvos.
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {[
-                      { value: 'cloud' as const, label: 'Cloud (Supabase)', desc: 'Dados salvos na nuvem. Requer autenticação. Compartilhável entre dispositivos e usuários.' },
+                      { value: 'cloud' as const, label: 'Cloud (Supabase)', desc: 'Dados salvos na nuvem. Requer autenticação. Compartilhável entre dispositivos.' },
                       { value: 'local' as const, label: 'Local (Offline)', desc: 'Dados salvos apenas no dispositivo. Não requer internet nem login.' },
                       { value: 'hybrid' as const, label: 'Híbrido', desc: 'Salva em ambos. Lê da nuvem quando autenticado, fallback local quando offline.' },
                     ].map(opt => (
@@ -2390,8 +1562,8 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           gap: '12px',
                           padding: '14px 16px',
                           borderRadius: '10px',
-                          border: `1.5px solid ${(settings.storageMode || 'cloud') === opt.value ? 'var(--color-primary-teal)' : 'rgba(255,255,255,0.08)'}`,
-                          backgroundColor: (settings.storageMode || 'cloud') === opt.value ? 'rgba(45,212,191,0.06)' : 'rgba(255,255,255,0.02)',
+                          border: `1.5px solid ${(settings.storageMode || 'cloud') === opt.value ? 'var(--color-primary-teal)' : (isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB')}`,
+                          backgroundColor: (settings.storageMode || 'cloud') === opt.value ? 'rgba(45,212,191,0.06)' : (isDark ? 'rgba(255,255,255,0.02)' : '#FFFFFF'),
                           cursor: 'pointer',
                           transition: 'all 0.15s ease',
                         }}
@@ -2405,19 +1577,10 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           style={{ marginTop: '3px', accentColor: 'var(--color-primary-teal)' }}
                         />
                         <div>
-                          <div style={{
-                            fontSize: '14px',
-                            fontWeight: 500,
-                            color: '#FFFFFF',
-                            marginBottom: '2px'
-                          }}>
+                          <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '2px' }}>
                             {opt.label}
                           </div>
-                          <div style={{
-                            fontSize: '12px',
-                            color: '#888',
-                            lineHeight: '1.4'
-                          }}>
+                          <div style={{ fontSize: '12px', color: isDark ? '#888' : '#6B7280', lineHeight: '1.4' }}>
                             {opt.desc}
                           </div>
                         </div>
@@ -2426,6 +1589,38 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
+                {/* Importar / Exportar */}
+                <div style={{
+                  padding: '20px',
+                  backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
+                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                  borderRadius: '12px',
+                }}>
+                  <h4 style={{
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    color: isDark ? '#FFFFFF' : '#1F2937',
+                    margin: '0 0 8px 0',
+                  }}>
+                    Importar / Exportar Dados
+                  </h4>
+                  <p style={{ fontSize: '12px', color: isDark ? '#888' : '#6B7280', margin: '0 0 16px 0' }}>
+                    Use o sistema avançado de importação e exportação multi-formato.
+                  </p>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <Button onClick={() => { setImportExportMode('import'); setImportExportModalOpen(true); }}>
+                      <Upload size={16} style={{ marginRight: '6px' }} />
+                      Importar
+                    </Button>
+                    <Button onClick={() => { setImportExportMode('export'); setImportExportModalOpen(true); }} variant="secondary">
+                      <Download size={16} style={{ marginRight: '6px' }} />
+                      Exportar
+                    </Button>
+
+                  </div>
+                </div>
+
+                {/* Info box */}
                 <div style={{
                   padding: '14px 16px',
                   borderRadius: '10px',
@@ -2434,16 +1629,15 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                 }}>
                   <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                     <AlertCircle size={16} style={{ color: '#3B82F6', marginTop: '2px', flexShrink: 0 }} />
-                    <div style={{ fontSize: '12px', color: '#93C5FD', lineHeight: '1.5' }}>
-                      <strong>Validação de dados:</strong> No modo Cloud, dados são validados antes de inserir no Supabase (dedup por título, sanitização).
-                      Cada usuário só acessa seus próprios dados via Row Level Security (RLS).
-                      <br /><br />
-                      <strong>Nota:</strong> Alterar o modo não migra dados automaticamente. Use Importar/Exportar para transferir dados entre modos.
+                    <div style={{ fontSize: '12px', color: isDark ? '#93C5FD' : '#3B82F6', lineHeight: '1.5' }}>
+                      <strong>Nota:</strong> Alterar o modo de armazenamento não migra dados automaticamente. Use Importar/Exportar para transferir dados entre modos.
                     </div>
                   </div>
                 </div>
               </div>
             )}
+
+
 
             {activeTab === 'acessibilidade' && (
               <div style={{ display: 'grid', gap: '24px' }}>
@@ -2812,556 +2006,9 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
               </div>
             )}
 
-            {activeTab === 'inteligencia-artificial' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                <div>
-                  <h3 style={{
-                    fontSize: '18px',
-                    fontWeight: 600,
-                    color: isDark ? '#FFFFFF' : '#1F2937',
-                    marginBottom: '16px',
-                    margin: 0
-                  }}>
-                    Inteligência Artificial
-                  </h3>
-                  <p style={{
-                    fontSize: '14px',
-                    color: isDark ? '#A0A0A0' : '#6B7280',
-                    marginBottom: '24px',
-                    margin: '8px 0 24px 0'
-                  }}>
-                    Configure sua assistente IA personalizada para otimizar sua produtividade.
-                  </p>
-                </div>
-
-                {/* AI Status */}
-                  <div style={{
-                    padding: '16px',
-                  backgroundColor: isAIReady() 
-                    ? isDark ? '#0F2A1A' : '#ECFDF5'
-                    : isDark ? '#2A1A0F' : '#FEF3C7',
-                  border: `1px solid ${isAIReady() 
-                    ? isDark ? '#10B981' : '#10B981'
-                    : isDark ? '#F59E0B' : '#F59E0B'}`,
-                  borderRadius: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                  }}>
-                  {isAIReady() ? (
-                    <CheckCircle size={20} color="#10B981" />
-                  ) : (
-                    <AlertCircle size={20} color="#F59E0B" />
-                  )}
-                  <div>
-                    <div style={{
-                      fontSize: '14px',
-                      fontWeight: 500,
-                      color: isAIReady() ? '#10B981' : '#F59E0B',
-                      marginBottom: '2px',
-                    }}>
-                      {isAIReady() ? 'IA Configurada' : 'IA Não Configurada'}
-                  </div>
-                    <div style={{
-                      fontSize: '12px',
-                      color: isDark ? '#A0A0A0' : '#6B7280',
-                    }}>
-                      {isAIReady() 
-                        ? 'Sua assistente IA está pronta para uso'
-                        : 'Configure sua API key para ativar a assistente IA'
-                      }
-              </div>
-                  </div>
-                </div>
-
-                {/* AI Toggle */}
-                <div style={{
-                  padding: '16px',
-                  backgroundColor: isDark ? '#141414' : '#F5F5F5',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E0E0E0'}`,
-                  borderRadius: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}>
-                  <div>
-                    <div style={{
-                      fontSize: '14px',
-                      fontWeight: 500,
-                      color: isDark ? '#FFFFFF' : '#1F2937',
-                      marginBottom: '4px',
-                    }}>
-                      Habilitar Assistente IA
-                  </div>
-                    <div style={{
-                      fontSize: '12px',
-                      color: isDark ? '#A0A0A0' : '#6B7280',
-                    }}>
-                      Ative para usar a assistente IA global no sistema
-                    </div>
-                  </div>
-                  <label style={{
-                    position: 'relative',
-                    display: 'inline-block',
-                    width: '44px',
-                    height: '24px',
-                    cursor: 'pointer',
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={aiConfig.enabled}
-                      onChange={(e) => updateAIConfig({ enabled: e.target.checked })}
-                      style={{ opacity: 0, width: 0, height: 0 }}
-                    />
-                    <span style={{
-                      position: 'absolute',
-                      cursor: 'pointer',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      backgroundColor: aiConfig.enabled ? 'var(--color-primary-teal)' : isDark ? '#2A2A2A' : '#E5E7EB',
-                      transition: '0.2s',
-                      borderRadius: '24px',
-                    }}>
-                      <span style={{
-                        position: 'absolute',
-                        content: '',
-                        height: '18px',
-                        width: '18px',
-                        left: aiConfig.enabled ? '23px' : '3px',
-                        bottom: '3px',
-                        backgroundColor: '#FFFFFF',
-                        transition: '0.2s',
-                        borderRadius: '50%',
-                      }} />
-                    </span>
-                  </label>
-                </div>
-
-                {/* Quick Setup */}
-                <div>
-                  <h4 style={{
-                    fontSize: '16px',
-                    fontWeight: 500,
-                    marginBottom: '12px',
-                    margin: '0 0 12px 0',
-                  }}>
-                    Configuração Rápida
-                  </h4>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-                    gap: '12px',
-                  }}>
-                    <button
-                      onClick={() => updateAIConfig({ selectedProvider: 'local', enabled: true })}
-                      style={{
-                        padding: '16px',
-                        backgroundColor: isDark ? '#141414' : '#F5F5F5',
-                        border: `1px solid ${isDark ? '#2A2A2A' : '#E0E0E0'}`,
-                        borderRadius: '12px',
-                        color: isDark ? '#FFFFFF' : '#1F2937',
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.2s ease',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = 'var(--color-primary-teal)';
-                        e.currentTarget.style.backgroundColor = isDark ? '#0F1419' : '#F0F9FF';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = isDark ? '#2A2A2A' : '#E0E0E0';
-                        e.currentTarget.style.backgroundColor = isDark ? '#141414' : '#F5F5F5';
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Shield size={16} />
-                        <span>IA Local (Recomendado)</span>
-                      </div>
-                      <span style={{
-                        fontSize: '12px',
-                        color: isDark ? '#A0A0A0' : '#6B7280',
-                      }}>
-                        Processamento local, máxima privacidade
-                      </span>
-                    </button>
-
-                    <button
-                      onClick={() => updateAIConfig({ selectedProvider: 'openai', enabled: true })}
-                      style={{
-                        padding: '16px',
-                        backgroundColor: isDark ? '#141414' : '#F5F5F5',
-                        border: `1px solid ${isDark ? '#2A2A2A' : '#E0E0E0'}`,
-                        borderRadius: '12px',
-                        color: isDark ? '#FFFFFF' : '#1F2937',
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.2s ease',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = 'var(--color-primary-teal)';
-                        e.currentTarget.style.backgroundColor = isDark ? '#0F1419' : '#F0F9FF';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = isDark ? '#2A2A2A' : '#E0E0E0';
-                        e.currentTarget.style.backgroundColor = isDark ? '#141414' : '#F5F5F5';
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Zap size={16} />
-                        <span>OpenAI GPT</span>
-                      </div>
-                      <span style={{
-                        fontSize: '12px',
-                        color: isDark ? '#A0A0A0' : '#6B7280',
-                      }}>
-                        Recursos avançados (requer API key)
-                      </span>
-                    </button>
-                  </div>
-                  </div>
-                  
-                {/* Permissões da IA */}
-                <div style={{
-                  padding: '20px',
-                  backgroundColor: isDark ? '#141414' : '#F5F5F5',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E0E0E0'}`,
-                  borderRadius: '12px',
-                }}>
-                  <h4 style={{
-                    fontSize: '16px',
-                    fontWeight: 500,
-                    marginBottom: '16px',
-                    margin: '0 0 16px 0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}>
-                    <Shield size={16} />
-                    Permissões da IA
-                  </h4>
-                  
-                  <div style={{ display: 'grid', gap: '12px' }}>
-                    {[
-                      { key: 'aiCanCreateTasks' as const, label: 'Permitir criação de tarefas', desc: 'A IA pode criar novas tarefas baseadas em suas solicitações' },
-                      { key: 'aiCanEditTasks' as const, label: 'Permitir edição de tarefas', desc: 'A IA pode modificar tarefas existentes' },
-                      { key: 'aiCanDeleteTasks' as const, label: 'Permitir exclusão de tarefas', desc: 'A IA pode excluir tarefas quando solicitado' },
-                      { key: 'aiCanManageNotes' as const, label: 'Permitir gerenciamento de notas', desc: 'A IA pode criar, editar e organizar suas notas' },
-                    ].map((perm) => (
-                      <label key={perm.key} style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        cursor: 'pointer',
-                        padding: '12px',
-                        backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
-                        border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                        borderRadius: '8px',
-                      }}>
-                        <input
-                          type="checkbox"
-                          checked={settings[perm.key]}
-                          onChange={(e) => updateSettings({ [perm.key]: e.target.checked })}
-                          style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
-                        />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
-                            {perm.label}
-                          </div>
-                          <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-                            {perm.desc}
-                          </div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Fluxo de Trabalho da IA */}
-                <div style={{
-                  padding: '20px',
-                  backgroundColor: isDark ? '#141414' : '#F5F5F5',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E0E0E0'}`,
-                  borderRadius: '12px',
-                }}>
-                  <h4 style={{
-                    fontSize: '16px',
-                    fontWeight: 500,
-                    marginBottom: '16px',
-                    margin: '0 0 16px 0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}>
-                    <Zap size={16} />
-                    Fluxo de Trabalho
-                  </h4>
-                  
-                  <div style={{ display: 'grid', gap: '16px' }}>
-                    <div>
-                      <label style={{
-                        display: 'block',
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        color: isDark ? '#FFFFFF' : '#374151',
-                        marginBottom: '8px',
-                      }}>
-                        Modo de resposta da IA
-                      </label>
-                      <select
-                        value={settings.aiResponseMode || 'balanced'}
-                        onChange={(e) => updateSettings({ aiResponseMode: e.target.value as 'detailed' | 'balanced' | 'concise' })}
-                        style={{
-                          width: '100%',
-                          padding: '12px',
-                          backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
-                          border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                          borderRadius: '8px',
-                          color: isDark ? '#FFFFFF' : '#1F2937',
-                          fontSize: '14px',
-                          outline: 'none',
-                        }}
-                      >
-                        <option value="detailed">Detalhado - Respostas completas e explicativas</option>
-                        <option value="balanced">Equilibrado - Respostas úteis e diretas</option>
-                        <option value="concise">Conciso - Respostas breves e objetivas</option>
-                      </select>
-                    </div>
-
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      padding: '12px',
-                      backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
-                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={settings.aiProactiveMode}
-                        onChange={(e) => updateSettings({ aiProactiveMode: e.target.checked })}
-                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
-                          Modo proativo
-                        </div>
-                        <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-                          A IA oferece sugestões e insights automaticamente
-                        </div>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Advanced Configuration Link */}
-                  <div style={{
-                  padding: '16px',
-                  backgroundColor: isDark ? '#1A1A1A' : '#F3F4F6',
-                  borderRadius: '12px',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                  textAlign: 'center',
-                  }}>
-                  <h4 style={{
-                    fontSize: '14px',
-                    fontWeight: 500,
-                    marginBottom: '8px',
-                    margin: '0 0 8px 0',
-                  }}>
-                    Configuração Avançada
-                  </h4>
-                  <p style={{
-                      fontSize: '12px',
-                    color: isDark ? '#A0A0A0' : '#6B7280',
-                    marginBottom: '12px',
-                    margin: '0 0 12px 0',
-                    }}>
-                    Para configurações detalhadas, provedores personalizados e ajustes de performance.
-                  </p>
-                  <button
-                    onClick={() => {
-                      setShowAdvancedAI(true);
-                    }}
-                    style={{
-                      padding: '8px 16px',
-                      backgroundColor: 'var(--color-primary-teal)',
-                      border: 'none',
-                    borderRadius: '8px',
-                      color: '#FFFFFF',
-                      fontSize: '13px',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                      gap: '6px',
-                      margin: '0 auto',
-                    }}
-                  >
-                    <SettingsIcon size={14} />
-                    Configurações Avançadas
-                  </button>
-                </div>
-              </div>
-            )}
-
             {activeTab === 'logs' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                <div>
-                  <h3 style={{
-                    fontSize: '18px',
-                    fontWeight: 600,
-                    color: isDark ? '#FFFFFF' : '#1F2937',
-                    marginBottom: '16px',
-                    margin: 0
-                  }}>
-                    Logs e Monitoramento
-                  </h3>
-                  <p style={{
-                    fontSize: '14px',
-                    color: isDark ? '#A0A0A0' : '#6B7280',
-                    marginBottom: '24px',
-                    margin: '8px 0 24px 0'
-                  }}>
-                    Sistema de logs estruturados para monitoramento de segurança, performance e auditoria.
-                  </p>
-                  </div>
-
-                {/* Logs do Sistema */}
-                <div style={{
-                  padding: '20px',
-                  backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                  borderRadius: '12px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                    <div>
-                      <h4 style={{
-                        fontSize: '16px',
-                        fontWeight: 600,
-                        color: isDark ? '#FFFFFF' : '#1F2937',
-                        margin: 0
-                      }}>
-                        Visualizar Logs do Sistema
-                      </h4>
-                      <p style={{
-                        fontSize: '13px',
-                        color: isDark ? '#A0A0A0' : '#6B7280',
-                        margin: '4px 0 0 0'
-                      }}>
-                        Acesse logs estruturados de segurança, performance e auditoria
-                      </p>
-                    </div>
-                    <Button onClick={() => setShowLogViewer(true)}>
-                      Abrir Logs
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Crash Reports */}
-                <div style={{
-                  padding: '20px',
-                  backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                  borderRadius: '12px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                    <div>
-                      <h4 style={{
-                        fontSize: '16px',
-                        fontWeight: 600,
-                        color: isDark ? '#FFFFFF' : '#1F2937',
-                        margin: 0
-                      }}>
-                        Crash Reports
-                      </h4>
-                      <p style={{
-                        fontSize: '13px',
-                        color: isDark ? '#A0A0A0' : '#6B7280',
-                        margin: '4px 0 0 0'
-                      }}>
-                        Visualize relatórios detalhados de crashes e erros críticos
-                      </p>
-                    </div>
-                    <Button onClick={() => setShowCrashReportViewer(true)}>
-                      Ver Crash Reports
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Exportar Dados */}
-                <div style={{
-                  padding: '20px',
-                  backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                  borderRadius: '12px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                    <div>
-                      <h4 style={{
-                        fontSize: '16px',
-                        fontWeight: 600,
-                        color: isDark ? '#FFFFFF' : '#1F2937',
-                        margin: 0
-                      }}>
-                        Exportar Dados de Log
-                      </h4>
-                      <p style={{
-                        fontSize: '13px',
-                        color: isDark ? '#A0A0A0' : '#6B7280',
-                        margin: '4px 0 0 0'
-                      }}>
-                        Exporte logs e crash reports para análise externa
-                      </p>
-                    </div>
-                    <Button onClick={exportLogData} variant="secondary">
-                      Exportar
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Limpar Dados */}
-                <div style={{
-                  padding: '20px',
-                  backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                  borderRadius: '12px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                    <div>
-                      <h4 style={{
-                        fontSize: '16px',
-                        fontWeight: 600,
-                        color: isDark ? '#FFFFFF' : '#1F2937',
-                        margin: 0
-                      }}>
-                        Limpar Dados de Log
-                      </h4>
-                      <p style={{
-                        fontSize: '13px',
-                        color: isDark ? '#A0A0A0' : '#6B7280',
-                        margin: '4px 0 0 0'
-                      }}>
-                        Remova logs antigos para liberar espaço
-                      </p>
-                    </div>
-                    <Button onClick={clearLogData} variant="danger">
-                      Limpar
-                    </Button>
-                  </div>
-                </div>
+                <LogViewerContent isDark={isDark} />
               </div>
             )}
 
@@ -3598,211 +2245,21 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
               <Save size={16} strokeWidth={1.7} />
               {t('settings.save')}
             </button>
+
+            {/* ImportExportModal */}
+            {importExportModalOpen && (
+              <ImportExportModal
+                open={importExportModalOpen}
+                onClose={() => setImportExportModalOpen(false)}
+                mode={importExportMode}
+                onExport={handleImportExportExport}
+                onImportPreview={handleImportExportPreview}
+                onImportApply={handleImportExportApply}
+              />
+            )}
           </div>
         </div>
       </div>
-      
-      {/* Advanced AI Settings Modal */}
-      {showAdvancedAI && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1001,
-          backdropFilter: 'blur(4px)',
-        }}>
-          <div style={{
-            backgroundColor: isDark ? '#141414' : '#FFFFFF',
-            border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-            borderRadius: '16px',
-            width: '90%',
-            maxWidth: '800px',
-            maxHeight: '85vh',
-            overflow: 'hidden',
-            boxShadow: isDark ? '0 20px 40px rgba(0, 0, 0, 0.6)' : '0 20px 40px rgba(0, 0, 0, 0.15)',
-          }}>
-            <div style={{
-              padding: '20px',
-              borderBottom: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}>
-              <h3 style={{
-                margin: 0,
-                fontSize: '20px',
-                fontWeight: 600,
-                color: isDark ? '#FFFFFF' : '#1F2937',
-              }}>
-                Configurações Avançadas da IA
-              </h3>
-              <button
-                onClick={() => setShowAdvancedAI(false)}
-                style={{
-                  background: 'none',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                  borderRadius: '8px',
-                  color: isDark ? '#A0A0A0' : '#6B7280',
-                  padding: '8px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div style={{
-              maxHeight: 'calc(85vh - 120px)',
-              overflowY: 'auto',
-            }}>
-              <AISettings onBack={() => setShowAdvancedAI(false)} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Log Viewers - Renderizados dentro do modal */}
-      {showLogViewer && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1001,
-          backdropFilter: 'blur(4px)',
-        }}>
-          <div style={{
-            backgroundColor: isDark ? '#141414' : '#FFFFFF',
-            border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-            borderRadius: '16px',
-            width: '90%',
-            maxWidth: '800px',
-            maxHeight: '85vh',
-            overflow: 'hidden',
-            boxShadow: isDark ? '0 20px 40px rgba(0, 0, 0, 0.6)' : '0 20px 40px rgba(0, 0, 0, 0.15)',
-          }}>
-            <div style={{
-              padding: '20px',
-              borderBottom: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}>
-              <h3 style={{
-                margin: 0,
-                fontSize: '20px',
-                fontWeight: 600,
-                color: isDark ? '#FFFFFF' : '#1F2937',
-              }}>
-                Visualizador de Logs
-              </h3>
-              <button
-                onClick={() => setShowLogViewer(false)}
-                style={{
-                  background: 'none',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                  borderRadius: '8px',
-                  color: isDark ? '#A0A0A0' : '#6B7280',
-                  padding: '8px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div style={{
-              maxHeight: 'calc(85vh - 120px)',
-              overflowY: 'auto',
-              padding: '20px',
-            }}>
-              <LogViewerContent isDark={isDark} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showCrashReportViewer && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1001,
-          backdropFilter: 'blur(4px)',
-        }}>
-          <div style={{
-            backgroundColor: isDark ? '#141414' : '#FFFFFF',
-            border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-            borderRadius: '16px',
-            width: '90%',
-            maxWidth: '800px',
-            maxHeight: '85vh',
-            overflow: 'hidden',
-            boxShadow: isDark ? '0 20px 40px rgba(0, 0, 0, 0.6)' : '0 20px 40px rgba(0, 0, 0, 0.15)',
-          }}>
-            <div style={{
-              padding: '20px',
-              borderBottom: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}>
-              <h3 style={{
-                margin: 0,
-                fontSize: '20px',
-                fontWeight: 600,
-                color: isDark ? '#FFFFFF' : '#1F2937',
-              }}>
-                Crash Reports
-              </h3>
-              <button
-                onClick={() => setShowCrashReportViewer(false)}
-                style={{
-                  background: 'none',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                  borderRadius: '8px',
-                  color: isDark ? '#A0A0A0' : '#6B7280',
-                  padding: '8px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div style={{
-              maxHeight: 'calc(85vh - 120px)',
-              overflowY: 'auto',
-              padding: '20px',
-            }}>
-              <CrashReportViewerContent isDark={isDark} />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }; 

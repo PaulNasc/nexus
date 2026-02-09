@@ -110,23 +110,14 @@ export interface ElectronAPI {
     logError: (userId: string, error: Error, context: string) => Promise<unknown>;
   };
 
-  // Version and update operations
-  version: {
-    getCurrentVersion: () => Promise<unknown>;
-    getUpdateSettings: () => Promise<unknown>;
-    updateSettings: (settings: unknown) => Promise<unknown>;
-    checkForUpdates: (force?: boolean) => Promise<unknown>;
-    getUpdateStatus: () => Promise<unknown>;
-    isCheckingForUpdates: () => Promise<boolean>;
-    forceCheck: () => Promise<unknown>;
-  };
-
-  // Update download operations
-  update: {
-    download: (updateInfo: unknown) => Promise<unknown>;
-    cancelDownload: () => Promise<unknown>;
-    isDownloading: () => Promise<boolean>;
-    cleanupOldDownloads: (keepLast?: number) => Promise<unknown>;
+  // Updater (electron-updater)
+  updater: {
+    getStatus: () => Promise<unknown>;
+    checkForUpdates: () => Promise<unknown>;
+    downloadUpdate: () => Promise<unknown>;
+    quitAndInstall: () => Promise<void>;
+    getVersion: () => Promise<string>;
+    onStatus: (callback: (status: unknown) => void) => () => void;
   };
 
   // Backup operations
@@ -276,23 +267,18 @@ const electronAPI: ElectronAPI = {
     logError: (userId: string, error: Error, context: string) => ipcRenderer.invoke('logging:logError', userId, error.message, error.stack, context),
   },
 
-  // Version and update operations
-  version: {
-    getCurrentVersion: () => ipcRenderer.invoke('version:getCurrentVersion'),
-    getUpdateSettings: () => ipcRenderer.invoke('version:getUpdateSettings'),
-    updateSettings: (settings: unknown) => ipcRenderer.invoke('version:updateSettings', settings),
-    checkForUpdates: (force?: boolean) => ipcRenderer.invoke('version:checkForUpdates', force),
-    getUpdateStatus: () => ipcRenderer.invoke('version:getUpdateStatus'),
-    isCheckingForUpdates: () => ipcRenderer.invoke('version:isCheckingForUpdates'),
-    forceCheck: () => ipcRenderer.invoke('version:forceCheck'),
-  },
-
-  // Update download operations
-  update: {
-    download: (updateInfo: unknown) => ipcRenderer.invoke('update:download', updateInfo),
-    cancelDownload: () => ipcRenderer.invoke('update:cancelDownload'),
-    isDownloading: () => ipcRenderer.invoke('update:isDownloading'),
-    cleanupOldDownloads: (keepLast?: number) => ipcRenderer.invoke('update:cleanupOldDownloads', keepLast),
+  // Updater (electron-updater)
+  updater: {
+    getStatus: () => ipcRenderer.invoke('updater:getStatus'),
+    checkForUpdates: () => ipcRenderer.invoke('updater:checkForUpdates'),
+    downloadUpdate: () => ipcRenderer.invoke('updater:downloadUpdate'),
+    quitAndInstall: () => ipcRenderer.invoke('updater:quitAndInstall'),
+    getVersion: () => ipcRenderer.invoke('updater:getVersion'),
+    onStatus: (callback: (status: unknown) => void) => {
+      const handler = (_event: unknown, status: unknown) => callback(status);
+      ipcRenderer.on('updater:status', handler);
+      return () => { ipcRenderer.removeListener('updater:status', handler); };
+    },
   },
 
   // Backup operations
@@ -363,13 +349,7 @@ const electronAPI: ElectronAPI = {
       'task-deleted',
       'timer-tick',
       'notification-show',
-      'update-checking',
-      'update-available',
-      'update-not-available',
-      'update-error',
-      'update-required',
-      'open-update-settings',
-      'update:downloaded',
+      'updater:status',
       'auth:oauth-callback'
     ];
 

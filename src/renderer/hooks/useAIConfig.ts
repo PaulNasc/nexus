@@ -14,7 +14,7 @@ const DEFAULT_AI_CONFIG: AIConfig = {
   selectedProvider: 'local',
 };
 
-const STORAGE_KEY = 'krigzis-ai-config';
+const STORAGE_KEY = 'nexus-ai-config';
 
 const loadConfig = (): AIConfig => {
   try {

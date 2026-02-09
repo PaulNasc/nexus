@@ -105,31 +105,46 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const createCategory = useCallback(async (data: Partial<Category>): Promise<Category | null> => {
     try {
-      if (!useCloud) {
-        setError('Criação de categorias requer modo cloud');
-        return null;
+      const now = new Date().toISOString();
+
+      if (useCloud) {
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData?.user?.id;
+        if (!userId) throw new Error('Usuário não autenticado');
+
+        const { data: inserted, error: insertError } = await supabase
+          .from('categories')
+          .insert({
+            user_id: userId,
+            name: data.name || 'Nova Categoria',
+            color: data.color || '#7B3FF2',
+            icon: data.icon || 'Folder',
+            is_system: false,
+            order: categories.length + 1,
+          })
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+
+        const newCategory = dbRowToCategory(inserted as SupabaseCategoryRow);
+        setCategories(prev => [...prev, newCategory]);
+        return newCategory;
       }
 
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
-      if (!userId) throw new Error('Usuário não autenticado');
-
-      const { data: inserted, error: insertError } = await supabase
-        .from('categories')
-        .insert({
-          user_id: userId,
-          name: data.name || 'Nova Categoria',
-          color: data.color || '#7B3FF2',
-          icon: data.icon || 'Folder',
-          is_system: false,
-          order: categories.length + 1,
-        })
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
-
-      const newCategory = dbRowToCategory(inserted as SupabaseCategoryRow);
+      // Local-only: create in-memory category with negative ID
+      const minId = categories.reduce((min, c) => Math.min(min, c.id), 0);
+      const newCategory: Category = {
+        id: minId - 1,
+        name: data.name || 'Nova Categoria',
+        color: data.color || '#7B3FF2',
+        icon: data.icon || 'Folder',
+        isSystem: false,
+        order: categories.length + 1,
+        workspace_id: 1,
+        created_at: now,
+        updated_at: now,
+      };
       setCategories(prev => [...prev, newCategory]);
       return newCategory;
     } catch (err) {

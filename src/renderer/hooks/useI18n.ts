@@ -81,7 +81,7 @@ const translations: Translations = {
     'startTimerDescription': 'Começar a cronometrar',
     
     // Footer
-    'version': 'Nexus v1.0.0 - Fase 2 Completa',
+    'version': 'Nexus',
     
     // Loading
     'loading': 'Carregando Nexus...',
@@ -258,7 +258,7 @@ const translations: Translations = {
     'startTimerDescription': 'Start timing',
     
     // Footer
-    'version': 'Nexus v1.0.0 - Phase 2 Complete',
+    'version': 'Nexus',
     
     // Loading
     'loading': 'Loading Nexus...',
@@ -403,7 +403,7 @@ const translations: Translations = {
     'startTimerDescription': 'Comenzar a cronometrar',
     
     // Footer
-    'version': 'Nexus v1.0.0 - Fase 2 Completa',
+    'version': 'Nexus',
     
     // Loading
     'loading': 'Cargando Nexus...',

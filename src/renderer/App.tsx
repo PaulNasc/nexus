@@ -350,9 +350,10 @@ const App: React.FC<AppProps> = () => {
 
         // Get system information
         if (window.electronAPI) {
+          const ver = await window.electronAPI.updater?.getVersion?.() || window.electronAPI.system.version || '';
           setSystemInfo({
             platform: window.electronAPI.system.platform,
-            version: window.electronAPI.system.version
+            version: typeof ver === 'string' ? ver : String(ver)
           });
         }
 

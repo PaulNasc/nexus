@@ -62,7 +62,7 @@ export class SecureLogger implements LogManager {
       // Tentar carregar configuração do localStorage (renderer) ou arquivo (main)
       if (typeof (globalThis as any).window !== 'undefined') {
         const stored = (globalThis as any).window.localStorage.getItem('nexus-log-config')
-          || (globalThis as any).window.localStorage.getItem('krigzis-log-config');
+          || (globalThis as any).window.localStorage.getItem('nexus-log-config');
         if (stored) {
           (globalThis as any).window.localStorage.setItem('nexus-log-config', stored);
           return { ...defaultConfig, ...JSON.parse(stored) };
@@ -362,7 +362,7 @@ export class SecureLogger implements LogManager {
 
     try {
       if (typeof (globalThis as any).window !== 'undefined') {
-        (globalThis as any).window.localStorage.setItem('krigzis-log-config', JSON.stringify(this.config));
+        (globalThis as any).window.localStorage.setItem('nexus-log-config', JSON.stringify(this.config));
       }
     } catch (error) {
       console.error('Error saving log config:', error);

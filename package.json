@@ -64,6 +64,7 @@
     "cheerio": "^1.1.0",
     "csv-parse": "^6.1.0",
     "csv-stringify": "^6.6.0",
+    "electron-updater": "^6.7.3",
     "events": "^3.3.0",
     "extract-zip": "^2.0.1",
     "fast-xml-parser": "^5.3.3",
@@ -121,59 +122,59 @@
       "provider": "github",
       "repo": "nexus",
       "owner": "PaulNasc"
+    },
+    "mac": {
+      "icon": "assets/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "Office"
+    },
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false,
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Nexus"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "sign": false,
+      "verifyUpdateCodeSignature": false,
+      "requestedExecutionLevel": "asInvoker"
     }
-  },
-  "mac": {
-    "icon": "assets/icon.icns",
-    "target": [
-      {
-        "target": "dmg",
-        "arch": [
-          "x64",
-          "arm64"
-        ]
-      }
-    ]
-  },
-  "linux": {
-    "target": [
-      {
-        "target": "AppImage",
-        "arch": [
-          "x64"
-        ]
-      }
-    ],
-    "icon": "assets/icon.png",
-    "category": "Office"
-  },
-  "npmRebuild": false,
-  "buildDependenciesFromSource": false,
-  "nsis": {
-    "oneClick": false,
-    "allowToChangeInstallationDirectory": true,
-    "createDesktopShortcut": true,
-    "createStartMenuShortcut": true,
-    "shortcutName": "Nexus"
-  },
-  "win": {
-    "target": [
-      {
-        "target": "nsis",
-        "arch": [
-          "x64"
-        ]
-      },
-      {
-        "target": "portable",
-        "arch": [
-          "x64"
-        ]
-      }
-    ],
-    "icon": "assets/icon.ico",
-    "sign": false,
-    "verifyUpdateCodeSignature": false,
-    "requestedExecutionLevel": "asInvoker"
   }
 }

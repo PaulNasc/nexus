@@ -5,9 +5,7 @@ import DatabaseManager from './database-manager';
 import { SecureLogger, logger, logInfo, logError } from './logging/logger';
 import { crashReporterManager } from './logging/crash-reporter';
 import { auditLogger } from './logging/audit-logger';
-import VersionManager from './version/version-manager';
-import UpdateChecker from './version/update-checker';
-import UpdateDownloader from './version/update-downloader';
+import { AppUpdater } from './updater/auto-updater';
 import { BackupManager } from './backup/backup-manager';
 import * as cheerio from 'cheerio';
 import type { BackupConfig, ImportResult, RestorePreview } from '../shared/types/backup';
@@ -21,18 +19,14 @@ class MainApplication {
   private isDev = !app.isPackaged || process.env.NODE_ENV === 'development';
   private database: DatabaseManager;
   private logger: SecureLogger;
-  private versionManager: VersionManager;
-  private updateChecker: UpdateChecker;
-  private updateDownloader: UpdateDownloader;
+  private appUpdater: AppUpdater;
   private backupManager: BackupManager;
   private cloudSyncManager: CloudSyncManager;
 
   constructor() {
     this.database = DatabaseManager.getInstance();
     this.logger = SecureLogger.getInstance();
-    this.versionManager = VersionManager.getInstance();
-    this.updateChecker = UpdateChecker.getInstance();
-    this.updateDownloader = UpdateDownloader.getInstance();
+    this.appUpdater = AppUpdater.getInstance();
     this.backupManager = BackupManager.getInstance();
     this.cloudSyncManager = CloudSyncManager.getInstance();
 
@@ -162,17 +156,17 @@ class MainApplication {
         const candidates: string[] = [];
         if (process.platform === 'win32') {
           candidates.push(
-            // Priorizar icon.ico (multi-size) e depois krigzis.ico
+            // Priorizar icon.ico (multi-size) e depois nexus.ico
             path.join(__dirname, '../assets/icon.ico'),
             path.join(__dirname, 'assets/icon.ico'),
             path.resolve(process.resourcesPath || '', 'assets/icon.ico'),
             path.resolve(process.cwd(), 'assets/icon.ico'),
             path.resolve(__dirname, '../../assets/icon.ico'),
-            path.join(__dirname, '../assets/krigzis.ico'),
-            path.join(__dirname, 'assets/krigzis.ico'),
-            path.resolve(process.resourcesPath || '', 'assets/krigzis.ico'),
-            path.resolve(process.cwd(), 'assets/krigzis.ico'),
-            path.resolve(__dirname, '../../assets/krigzis.ico'),
+            path.join(__dirname, '../assets/nexus.ico'),
+            path.join(__dirname, 'assets/nexus.ico'),
+            path.resolve(process.resourcesPath || '', 'assets/nexus.ico'),
+            path.resolve(process.cwd(), 'assets/nexus.ico'),
+            path.resolve(__dirname, '../../assets/nexus.ico'),
             // PNG fallbacks
             path.join(__dirname, '../assets/icon.png'),
             path.join(__dirname, 'assets/icon.png'),
@@ -278,18 +272,13 @@ class MainApplication {
           this.mainWindow?.webContents.openDevTools();
         }
 
-        // Configurar update checker com a janela principal
-        this.updateChecker.setMainWindow(this.mainWindow!);
+        // Configurar auto-updater com a janela principal
+        this.appUpdater.setMainWindow(this.mainWindow!);
 
-        // Iniciar verificação de atualizações
-        this.updateChecker.start();
-
-        // Verificar suporte da versão atual
-        this.updateChecker.checkVersionSupport().catch(error => {
-          logger.error('Failed to check version support', 'system', {
-            error: error instanceof Error ? error.message : String(error)
-          });
-        });
+        // Verificar atualizações após 30s (apenas em produção)
+        if (!this.isDev) {
+          setTimeout(() => this.appUpdater.checkForUpdates(), 30000);
+        }
 
         logInfo('Main window ready and shown', 'system');
       });
@@ -1384,207 +1373,9 @@ class MainApplication {
   }
 
   private setupVersionHandlers(): void {
-    // Handlers para operações de versionamento e atualização
-    
-    // Obter versão atual
-    ipcMain.handle('version:getCurrentVersion', async () => {
-      try {
-        return this.versionManager.getCurrentVersion();
-      } catch (error) {
-        logger.error('Failed to get current version', 'system', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-        throw error;
-      }
-    });
-    
-    // Obter configurações de atualização
-    ipcMain.handle('version:getUpdateSettings', async () => {
-      try {
-        return this.versionManager.getUpdateSettings();
-      } catch (error) {
-        logger.error('Failed to get update settings', 'system', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-        throw error;
-      }
-    });
-    
-    // Atualizar configurações de atualização
-    ipcMain.handle('version:updateSettings', async (event, settings) => {
-      try {
-        this.versionManager.updateSettings(settings);
-        this.updateChecker.updateSettings(settings);
-        
-        auditLogger.logSettingsChange('system', 'updateSettings', {}, settings);
-        
-        return { success: true };
-      } catch (error) {
-        logger.error('Failed to update version settings', 'system', {
-          error: error instanceof Error ? error.message : String(error),
-          settings
-        });
-        return { success: false, error: error instanceof Error ? error.message : String(error) };
-      }
-    });
-    
-    // Verificar atualizações manualmente
-    ipcMain.handle('version:checkForUpdates', async (event, force = false) => {
-      try {
-        const result = await this.updateChecker.checkForUpdates(force);
-        
-        auditLogger.logAction({
-          action: 'manual_update_check',
-          resource: 'version',
-          userId: 'system',
-          success: true,
-          details: {
-            hasUpdate: result.hasUpdate,
-            currentVersion: result.currentVersion.versionString,
-            latestVersion: result.latestVersion?.versionString,
-            force
-          }
-        });
-        
-        return result;
-      } catch (error) {
-        logger.error('Failed to check for updates', 'system', {
-          error: error instanceof Error ? error.message : String(error),
-          force
-        });
-        
-        auditLogger.logAction({
-          action: 'manual_update_check',
-          resource: 'version',
-          userId: 'system',
-          success: false,
-          details: {
-            error: error instanceof Error ? error.message : String(error),
-            force
-          }
-        });
-        
-        throw error;
-      }
-    });
-    
-    // Obter status do verificador de atualizações
-    ipcMain.handle('version:getUpdateStatus', async () => {
-      try {
-        return {
-          checker: this.updateChecker.getStatus(),
-          version: this.versionManager.getSystemInfo()
-        };
-      } catch (error) {
-        logger.error('Failed to get update status', 'system', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-        throw error;
-      }
-    });
-    
-    // Verificar se está verificando atualizações
-    ipcMain.handle('version:isCheckingForUpdates', async () => {
-      try {
-        return this.updateChecker.isCheckingForUpdates();
-      } catch (error) {
-        logger.error('Failed to check update status', 'system', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-        return false;
-      }
-    });
-    
-    // Forçar verificação de atualizações
-    ipcMain.handle('version:forceCheck', async () => {
-      try {
-        const result = await this.updateChecker.forceCheck();
-        
-        auditLogger.logAction({
-          action: 'force_update_check',
-          resource: 'version',
-          userId: 'system',
-          success: true,
-          details: {
-            hasUpdate: result.hasUpdate,
-            currentVersion: result.currentVersion.versionString,
-            latestVersion: result.latestVersion?.versionString
-          }
-        });
-        
-        return result;
-      } catch (error) {
-        logger.error('Failed to force update check', 'system', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-        
-        auditLogger.logAction({
-          action: 'force_update_check',
-          resource: 'version',
-          userId: 'system',
-          success: false,
-          details: {
-            error: error instanceof Error ? error.message : String(error)
-          }
-        });
-        
-        throw error;
-      }
-    });
-    
-    // Handlers para download de atualizações
-    ipcMain.handle('update:download', async (event, updateInfo) => {
-      try {
-        logger.info('Starting update download', 'update-download', { updateInfo });
-        
-        const result = await this.updateDownloader.downloadUpdate(updateInfo);
-        
-        if (result.success) {
-          logger.info('Update download completed successfully', 'update-download', {
-            filePath: result.filePath,
-            verified: result.verified
-          });
-          // Abrir pasta de download para update manual
-          if (result.filePath) {
-            const folder = path.dirname(result.filePath);
-            shell.showItemInFolder(result.filePath);
-            this.mainWindow?.webContents.send('update:downloaded', { filePath: result.filePath, folder });
-          }
-        }
-        
-        return result;
-      } catch (error) {
-        logger.error('Update download failed', 'update-download', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-        throw error;
-      }
-    });
-
-    ipcMain.handle('update:cancelDownload', async () => {
-      this.updateDownloader.cancelDownload();
-      logger.info('Update download cancelled', 'update-download');
-      return { success: true };
-    });
-
-    ipcMain.handle('update:isDownloading', async () => {
-      return this.updateDownloader.isDownloading();
-    });
-
-    ipcMain.handle('update:cleanupOldDownloads', async (event, keepLast = 3) => {
-      try {
-        this.updateDownloader.cleanupOldDownloads(keepLast);
-        logger.info('Old downloads cleaned up', 'update-download', { keepLast });
-        return { success: true };
-      } catch (error) {
-        logger.error('Failed to cleanup old downloads', 'update-download', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-        return { success: false, error: error instanceof Error ? error.message : String(error) };
-      }
-    });
-    
-    logger.info('Version handlers configured', 'system');
+    // IPC handlers for updater are registered inside AppUpdater.setupIpcHandlers()
+    // This method is kept for backward compatibility with the constructor call
+    logger.info('Version handlers configured (electron-updater)', 'system');
   }
 
   private setupGlobalShortcuts(): void {
