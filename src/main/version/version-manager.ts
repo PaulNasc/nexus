@@ -7,9 +7,9 @@
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as https from 'https';
 import { logger } from '../logging/logger';
 import { 
-  Version, 
   VersionInfo, 
   UpdateCheckResult, 
   UpdateSettings, 
@@ -29,6 +29,12 @@ interface GitHubReleaseData {
     size: number;
   }>;
 }
+
+type HttpResponse = {
+  statusCode: number;
+  statusMessage: string;
+  body: string;
+};
 
 export class VersionManager {
   private static instance: VersionManager;
@@ -173,7 +179,7 @@ export class VersionManager {
    * Busca o manifest de atualizações do servidor
    */
   private async fetchUpdateManifest(): Promise<UpdateManifest> {
-    // Repositório GitHub oficial do Krigzis
+    // Repositório GitHub oficial do Nexus (mantendo URL atual)
     const updateServerUrl = 'https://api.github.com/repos/PauloHYBEX/krigzis/releases/latest';
     
     try {
@@ -182,19 +188,16 @@ export class VersionManager {
         throw new Error('Update checks disabled in development mode');
       }
 
-      // Aqui você implementaria a busca real do GitHub Releases ou seu servidor
-      const response = await fetch(updateServerUrl, {
-        headers: {
-          'Accept': 'application/vnd.github+json',
-          'User-Agent': 'Krigzis-Updater'
-        }
+      const { statusCode, statusMessage, body } = await this.httpGet(updateServerUrl, {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'Nexus-Updater',
       });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+      if (statusCode < 200 || statusCode >= 300) {
+        throw new Error(`HTTP ${statusCode}: ${statusMessage}`);
       }
-      
-      const releaseData = await response.json() as GitHubReleaseData;
+
+      const releaseData = JSON.parse(body) as GitHubReleaseData;
       
       // Converter dados do GitHub para formato interno
       const manifest: UpdateManifest = {
@@ -215,7 +218,7 @@ export class VersionManager {
         deprecatedVersions: [],
         releaseNotes: [],
         updateServer: {
-          baseUrl: 'https://api.github.com/repos/seu-usuario/krigzis',
+          baseUrl: 'https://api.github.com/repos/seu-usuario/krigzis', // Repositório GitHub oficial do Nexus
           publicKey: ''
         }
       };
@@ -231,6 +234,27 @@ export class VersionManager {
       
       throw new Error('Unable to check for updates at this time');
     }
+  }
+
+  private async httpGet(url: string, headers: Record<string, string>): Promise<HttpResponse> {
+    return await new Promise<HttpResponse>((resolve, reject) => {
+      const req = https.request(url, { method: 'GET', headers }, (res) => {
+        const statusCode = typeof res.statusCode === 'number' ? res.statusCode : 0;
+        const statusMessage = res.statusMessage || '';
+
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          resolve({ statusCode, statusMessage, body });
+        });
+      });
+
+      req.on('error', reject);
+      req.end();
+    });
   }
   
   /**

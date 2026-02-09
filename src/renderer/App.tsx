@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useNotifications } from './hooks/useNotifications';
 import { useTheme } from './hooks/useTheme';
-import { useDatabase } from './hooks/useDatabase';
+import { useTasks } from './contexts/TasksContext';
 import { useI18n } from './hooks/useI18n';
 import { useSettings } from './hooks/useSettings';
-import { useCategories } from './hooks/useCategories';
+import { useCategories } from './contexts/CategoriesContext';
+import { useProductivityInsights } from './hooks/useProductivityInsights';
 import { TaskModal } from './components/TaskModal';
 import { TaskList } from './components/TaskList';
 import { Timer } from './components/Timer';
@@ -16,9 +17,12 @@ import { NoteModal } from './components/NoteModal';
 import { useToast } from './components/Toast';
 import { useAppearance } from './hooks/useAppearance';
 import { Task, TaskStatus } from '../shared/types/task';
-import { NavigationState, Screen } from '../shared/types/navigation';
-import { Settings as SettingsIcon, Plus, TestTube } from 'lucide-react';
-import { AIAssistant } from './components/AIAssistant';
+import { Screen } from '../shared/types/navigation';
+import { ThemeConfig } from './types/theme';
+import { UserSettings } from './hooks/useSettings';
+import { Settings as SettingsIcon, Plus, LogOut } from 'lucide-react';
+import { useAuth } from './contexts/AuthContext';
+import ProactiveSuggestionsWidget from './components/ProactiveSuggestionsWidget';
 import UpdateNotification from './components/UpdateNotification';
 
 // Import styles
@@ -34,16 +38,22 @@ type AppScreen = Screen | 'timer' | 'reports' | 'notes';
 interface AppNavigationState {
   currentScreen: AppScreen;
   selectedList?: string;
+  selectedNoteId?: number;
 }
 
-interface AppProps {}
+interface AppProps { }
 
-// Novo componente AppHeader
+interface TabItem {
+  key: string;
+  label: string;
+  onClick: () => void;
+}
+
 interface AppHeaderProps {
-  settings: any;
+  settings: UserSettings;
   settingsVersion: number;
-  navigation: any;
-  theme: any;
+  navigation: AppNavigationState;
+  theme: ThemeConfig;
   systemInfo: { platform: string; version: string; };
   goToDashboard: () => void;
   openTimer: () => void;
@@ -51,6 +61,7 @@ interface AppHeaderProps {
   openNotes: () => void;
   handleOpenSettings: () => void;
   handleOpenTaskModal: () => void;
+  onSignOut: () => void;
 }
 
 const AppHeader: React.FC<AppHeaderProps> = ({
@@ -64,11 +75,17 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   openReports,
   openNotes,
   handleOpenSettings,
-  handleOpenTaskModal
+  handleOpenTaskModal,
+  onSignOut
 }) => {
   const [draggedTab, setDraggedTab] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [dragOverTab, setDragOverTab] = useState<string | null>(null);
   const { updateTabOrder } = useSettings();
+
+  const safeVersion = typeof systemInfo?.version === 'string'
+    ? systemInfo.version
+    : (systemInfo?.version ? String(systemInfo.version) : '');
 
   // Definir abas disponíveis com base nas configurações
   const availableTabs = [
@@ -79,11 +96,11 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   ];
 
   // Ordenar abas baseado na configuração
-  const orderedTabs = settings.tabOrder 
+  const orderedTabs = settings.tabOrder
     ? settings.tabOrder
-        .map((key: string) => availableTabs.find((tab: any) => tab.key === key))
-        .filter(Boolean)
-        .concat(availableTabs.filter((tab: any) => !settings.tabOrder.includes(tab.key)))
+      .map((key: string) => availableTabs.find((tab: TabItem) => tab.key === key))
+      .filter((tab): tab is TabItem => Boolean(tab))
+      .concat(availableTabs.filter((tab: TabItem) => !settings.tabOrder.includes(tab.key)))
     : availableTabs;
 
   const handleDragStart = (e: React.DragEvent, tabKey: string) => {
@@ -104,14 +121,14 @@ const AppHeader: React.FC<AppHeaderProps> = ({
 
   const handleDrop = (e: React.DragEvent, targetTabKey: string) => {
     e.preventDefault();
-    
+
     if (!draggedTab || draggedTab === targetTabKey) {
       setDraggedTab(null);
       setDragOverTab(null);
       return;
     }
 
-    const currentOrder = orderedTabs.map((tab: any) => tab.key);
+    const currentOrder = orderedTabs.map((tab: TabItem) => tab.key);
     const draggedIndex = currentOrder.indexOf(draggedTab);
     const targetIndex = currentOrder.indexOf(targetTabKey);
 
@@ -119,7 +136,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
       const newOrder = [...currentOrder];
       newOrder.splice(draggedIndex, 1);
       newOrder.splice(targetIndex, 0, draggedTab);
-      
+
       updateTabOrder(newOrder);
     }
 
@@ -131,12 +148,12 @@ const AppHeader: React.FC<AppHeaderProps> = ({
     <header className="app-header" key={settingsVersion}>
       <div className="header-content">
         <div className="header-left">
-          <h1 className="app-title">Krigzis</h1>
-          <span className="app-version">v{systemInfo.version || '1.0.0'}</span>
+          <h1 className="app-title">Nexus</h1>
+          <span className="app-version">v{safeVersion || '1.0.0'}</span>
         </div>
         <div className="header-center">
           <nav className="navigation">
-            {orderedTabs.map((tab: any, index: number) => (
+            {orderedTabs.map((tab: TabItem, index: number) => (
               <button
                 key={tab.key}
                 className={`nav-button ${navigation.currentScreen === tab.key ? 'active' : ''}`}
@@ -166,21 +183,40 @@ const AppHeader: React.FC<AppHeaderProps> = ({
           <button
             className="hover-button"
             onClick={handleOpenSettings}
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              background: 'none', 
-              border: theme.mode === 'dark' ? '1px solid #2A2A2A' : '1px solid var(--color-border-primary)', 
-              borderRadius: 8, 
-              width: 36, 
-              height: 36, 
-              marginRight: 8,
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'none',
+              border: theme.mode === 'dark' ? '1px solid #2A2A2A' : '1px solid var(--color-border-primary)',
+              borderRadius: 8,
+              width: 36,
+              height: 36,
+              marginRight: 4,
               color: theme.mode === 'dark' ? '#FFFFFF' : '#1F2937'
             }}
             title="Configurações"
           >
             <SettingsIcon size={20} />
+          </button>
+          <button
+            className="hover-button"
+            onClick={onSignOut}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'none',
+              border: theme.mode === 'dark' ? '1px solid #2A2A2A' : '1px solid var(--color-border-primary)',
+              borderRadius: 8,
+              width: 36,
+              height: 36,
+              marginRight: 8,
+              color: theme.mode === 'dark' ? '#FFFFFF' : '#1F2937'
+            }}
+            title="Sair"
+          >
+            <LogOut size={18} />
           </button>
           <button
             className="add-task-button hover-button"
@@ -209,33 +245,41 @@ const App: React.FC<AppProps> = () => {
     version: string;
   }>({ platform: '', version: '' });
   const [dailyGoalReached, setDailyGoalReached] = useState(false);
-  const [tasksList, setTasksList] = useState<Task[]>([]);
-  const [isAppReady, setIsAppReady] = useState(false);
 
   // Theme hook
-  const { theme, colors } = useTheme();
-  const { t } = useI18n();
+  const { theme } = useTheme();
+  useI18n();
   const { settings, settingsVersion } = useSettings();
-  
+
   // Aplicar configurações de aparência
   useAppearance();
-  
-  // Hook para gerenciar tarefas via banco de dados
-  const { 
+
+  // Hooks centralizados via Context (instância única)
+  const { signOut } = useAuth();
+  const {
     tasks,
     stats,
-    loading: tasksLoading, 
-    createTask, 
+    loading: tasksLoading,
     updateTask,
-    deleteTask,
-    getTasksByStatus
-  } = useDatabase();
-  
-  const { categories } = useCategories(tasks);
-  
+    deleteTask
+  } = useTasks();
+
+  const { categories } = useCategories();
+  const { proactiveSuggestions } = useProductivityInsights({ 
+    tasks, 
+    stats, 
+    settings: {
+      dailyGoal: settings.dailyGoal,
+      aiResponseMode: settings.aiResponseMode,
+      aiProactiveMode: settings.aiProactiveMode,
+      showProductivityTips: settings.showProductivityTips,
+      showProgressInsights: settings.showProgressInsights
+    }
+  });
+
   // Debug settings - only in development
   if (process.env.NODE_ENV === 'development') {
-  console.log('App - settings:', settings);
+    console.log('App - settings:', settings);
   }
 
   // Hook para notificações
@@ -278,7 +322,17 @@ const App: React.FC<AppProps> = () => {
     };
   }, []);
 
-
+  // Listen for navigateToNote event from quick actions
+  useEffect(() => {
+    const handleNavigateToNote = (event: Event) => {
+      const noteId = (event as CustomEvent).detail?.noteId;
+      if (noteId) openNoteById(noteId);
+    };
+    window.addEventListener('navigateToNote', handleNavigateToNote);
+    return () => {
+      window.removeEventListener('navigateToNote', handleNavigateToNote);
+    };
+  }, []);
 
   // Force re-render when settings change for hot reload - optimized
   useEffect(() => {
@@ -295,16 +349,13 @@ const App: React.FC<AppProps> = () => {
         await requestPermission();
 
         // Get system information
-        if ((window as any).electronAPI) {
+        if (window.electronAPI) {
           setSystemInfo({
-            platform: (window as any).electronAPI.system.platform,
-            version: (window as any).electronAPI.system.version
+            platform: window.electronAPI.system.platform,
+            version: window.electronAPI.system.version
           });
         }
 
-        // Simulate loading time for better UX
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
         setIsLoading(false);
       } catch (error) {
         console.error('Error loading app:', error);
@@ -321,6 +372,7 @@ const App: React.FC<AppProps> = () => {
       setDailyGoalReached(true);
       showDailyGoal(stats.concluido, DAILY_GOAL);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stats?.concluido, dailyGoalReached, showDailyGoal, DAILY_GOAL]);
 
   // Navegação
@@ -345,7 +397,11 @@ const App: React.FC<AppProps> = () => {
   };
 
   const openNotes = () => {
-    navigateTo('notes');
+    setNavigation({ currentScreen: 'notes' });
+  };
+
+  const openNoteById = (noteId: number) => {
+    setNavigation({ currentScreen: 'notes', selectedNoteId: noteId });
   };
 
   // Modal functions
@@ -362,11 +418,6 @@ const App: React.FC<AppProps> = () => {
   const handleCloseTaskModal = () => {
     setIsTaskModalOpen(false);
     setEditingTask(undefined);
-    
-    // Forçar atualização dos dados quando fechar o modal
-    setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('tasksUpdated'));
-    }, 100);
   };
 
   // Settings functions
@@ -378,27 +429,13 @@ const App: React.FC<AppProps> = () => {
     setIsSettingsOpen(false);
   };
 
-  // Task operations
-  const handleSaveTask = async (taskData: Parameters<typeof createTask>[0]) => {
-    try {
-      if (editingTask) {
-        // Editar tarefa existente
-        await updateTask(editingTask.id, taskData);
-        showToast('Tarefa atualizada com sucesso!', 'success');
-      } else {
-        // Criar nova tarefa
-        await createTask(taskData);
-        showToast('Tarefa criada com sucesso!', 'success');
-      }
-      
-      // Disparar evento customizado para atualizar contadores
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('tasksUpdated'));
-      }, 100);
-      
-    } catch (error) {
-      console.error('Erro ao salvar tarefa:', error);
-      showToast('Erro ao salvar tarefa', 'error');
+  // Task operations — TaskModal already handles create/update internally,
+  // so this callback only shows the toast feedback.
+  const handleSaveTask = async (_savedTask: Task) => {
+    if (editingTask) {
+      showToast('Tarefa atualizada com sucesso!', 'success');
+    } else {
+      showToast('Tarefa criada com sucesso!', 'success');
     }
   };
 
@@ -416,21 +453,19 @@ const App: React.FC<AppProps> = () => {
   };
 
   const handleMoveTask = async (taskId: number, newStatus: string) => {
-    // Get task details before moving for notification
     const task = tasks.find(t => t.id === taskId);
 
     await updateTask(taskId, { status: toTaskStatus(newStatus) });
-    
+
     const statusNames = {
       backlog: 'Backlog',
       esta_semana: 'Esta Semana',
       hoje: 'Hoje',
       concluido: 'Concluído'
     };
-    
+
     showToast(`Tarefa movida para ${statusNames[newStatus as keyof typeof statusNames]}!`, 'info');
 
-    // Show notification when task is completed
     if (newStatus === 'concluido' && task) {
       showTaskComplete(task.title);
     }
@@ -438,14 +473,13 @@ const App: React.FC<AppProps> = () => {
 
   // Habilitar DevTools automaticamente em dev
   useEffect(() => {
-    if (process.env.NODE_ENV === 'development' && (window as any).electronAPI?.openDevTools) {
-      (window as any).electronAPI.openDevTools();
+    if (process.env.NODE_ENV === 'development' && window.electronAPI?.openDevTools) {
+      window.electronAPI.openDevTools();
     }
-    // Atalho Ctrl+Shift+I
     const handleKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'i') {
-        if ((window as any).electronAPI?.toggleDevTools) {
-          (window as any).electronAPI.toggleDevTools();
+        if (window.electronAPI?.toggleDevTools) {
+          window.electronAPI.toggleDevTools();
         }
       }
     };
@@ -458,7 +492,7 @@ const App: React.FC<AppProps> = () => {
       <div className="loading-screen">
         <div className="loading-content">
           <div className="loading-spinner" />
-          <h2 className="loading-title">Carregando Krigzis...</h2>
+          <h2 className="loading-title">Carregando Nexus...</h2>
           <p className="loading-subtitle">Preparando seu ambiente de produtividade</p>
         </div>
       </div>
@@ -467,17 +501,15 @@ const App: React.FC<AppProps> = () => {
 
   // Obter título da lista baseado no status
   const getListTitle = (status: string) => {
-    // Primeiro verifica se é uma categoria customizada
     if (status.startsWith('category_')) {
       const categoryId = parseInt(status.replace('category_', ''));
       const category = categories.find(cat => cat.id === categoryId);
       return category?.name || 'Categoria';
     }
-    
-    // Se não for customizada, usa o mapeamento padrão
+
     const listNames = {
       backlog: 'Backlog',
-      esta_semana: 'Esta Semana', 
+      esta_semana: 'Esta Semana',
       hoje: 'Hoje',
       concluido: 'Concluído'
     };
@@ -487,21 +519,17 @@ const App: React.FC<AppProps> = () => {
   // Renderização condicional baseada na navegação - apenas para task-list
   if (navigation.currentScreen === 'task-list' && navigation.selectedList) {
     let tasksList: Task[] = [];
-    
-    // Verifica se é uma categoria customizada
+
     if (navigation.selectedList.startsWith('category_')) {
       const categoryId = parseInt(navigation.selectedList.replace('category_', ''));
-      
-      // Use type assertion para resolver erro de TypeScript
       tasksList = tasks.filter((task: Task) => {
         const taskWithCategory = task as Task & { category_id?: number };
         return taskWithCategory.category_id === categoryId;
       });
     } else {
-      // Se não for customizada, filtra por status
       tasksList = tasks.filter((task: Task) => task.status === navigation.selectedList);
     }
-    
+
     return (
       <div className="app-container" data-theme={theme.mode}>
         <AppHeader
@@ -517,9 +545,9 @@ const App: React.FC<AppProps> = () => {
           openNotes={openNotes}
           handleOpenSettings={handleOpenSettings}
           handleOpenTaskModal={handleOpenTaskModal}
+          onSignOut={signOut}
         />
 
-        {/* Main Content */}
         <main className="app-main">
           <TaskList
             title={getListTitle(navigation.selectedList)}
@@ -531,7 +559,6 @@ const App: React.FC<AppProps> = () => {
           />
         </main>
 
-        {/* Task Modal */}
         {isTaskModalOpen && (
           <TaskModal
             editingTask={editingTask}
@@ -541,15 +568,11 @@ const App: React.FC<AppProps> = () => {
           />
         )}
 
-        {/* Settings Modal */}
         <Settings
           isOpen={isSettingsOpen}
           onClose={handleCloseSettings}
         />
 
-
-
-        {/* Toast Container */}
         <ToastContainer />
       </div>
     );
@@ -571,9 +594,9 @@ const App: React.FC<AppProps> = () => {
         openNotes={openNotes}
         handleOpenSettings={handleOpenSettings}
         handleOpenTaskModal={handleOpenTaskModal}
+        onSignOut={signOut}
       />
 
-      {/* Main Content - Abas */}
       <main className="app-main">
         {navigation.currentScreen === 'dashboard' && (
           <Dashboard
@@ -584,7 +607,6 @@ const App: React.FC<AppProps> = () => {
             onOpenReports={settings.showReports ? openReports : undefined}
             showQuickActions={settings.showQuickActions}
             showTaskCounters={settings.showTaskCounters}
-            showTimer={settings.showTimer}
           />
         )}
         {navigation.currentScreen === 'timer' && settings.showTimer && (
@@ -598,17 +620,15 @@ const App: React.FC<AppProps> = () => {
           </div>
         )}
         {navigation.currentScreen === 'notes' && (
-          <Notes onBack={goToDashboard} />
+          <Notes onBack={goToDashboard} initialNoteId={navigation.selectedNoteId} />
         )}
 
-        {/* Note Modal */}
         <NoteModal
           isOpen={isNoteModalOpen}
           onClose={() => setIsNoteModalOpen(false)}
         />
       </main>
 
-      {/* Task Modal */}
       {isTaskModalOpen && (
         <TaskModal
           editingTask={editingTask}
@@ -618,24 +638,30 @@ const App: React.FC<AppProps> = () => {
         />
       )}
 
-      {/* Settings Modal */}
       <Settings
         isOpen={isSettingsOpen}
         onClose={handleCloseSettings}
       />
 
+      {settings.aiProactiveMode && settings.showProactiveSuggestionsWidget && (
+        <ProactiveSuggestionsWidget 
+          suggestions={proactiveSuggestions}
+          settings={{
+            fontSizePx: settings.fontSizePx || 14,
+            cardOpacity: settings.cardOpacity || 95,
+            reduceAnimations: settings.reduceAnimations || false,
+            interfaceDensity: settings.interfaceDensity || 'normal',
+            widgetButtonOpacity: settings.widgetButtonOpacity || 100,
+            widgetButtonSize: settings.widgetButtonSize || 56
+          }}
+        />
+      )}
 
-
-      {/* Toast Container */}
       <ToastContainer />
-      
-      {/* AI Assistant - Global floating button */}
-      <AIAssistant />
-      
-      {/* Update Notification */}
+
       <UpdateNotification isDark={true} />
     </div>
   );
 };
 
-export default App; 
+export default App;

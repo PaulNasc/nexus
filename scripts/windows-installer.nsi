@@ -12,10 +12,10 @@
 !define MUI_UNICON "assets\\icon.ico"
 !endif
 
-!define APP_NAME "Krigzis"
+!define APP_NAME "Nexus"
 Name "${APP_NAME} ${APP_VERSION}"
-OutFile "release\\Krigzis-Setup-${APP_VERSION}.exe"
-InstallDir "$LOCALAPPDATA\\Krigzis"
+OutFile "release\\Nexus-Setup-${APP_VERSION}.exe"
+InstallDir "$LOCALAPPDATA\\Nexus"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
 
@@ -29,16 +29,16 @@ Section "Install"
 SetShellVarContext current
 SetOutPath "$INSTDIR"
 File /r "release\\win-unpacked\\*"
-CreateDirectory "$SMPROGRAMS\\Krigzis"
-CreateShortCut "$SMPROGRAMS\\Krigzis\\Krigzis.lnk" "$INSTDIR\\Krigzis.exe" "" "$INSTDIR\\Krigzis.exe" 0
-CreateShortCut "$DESKTOP\\Krigzis.lnk" "$INSTDIR\\Krigzis.exe" "" "$INSTDIR\\Krigzis.exe" 0
+CreateDirectory "$SMPROGRAMS\\Nexus"
+CreateShortCut "$SMPROGRAMS\\Nexus\\Nexus.lnk" "$INSTDIR\\Nexus.exe" "" "$INSTDIR\\Nexus.exe" 0
+CreateShortCut "$DESKTOP\\Nexus.lnk" "$INSTDIR\\Nexus.exe" "" "$INSTDIR\\Nexus.exe" 0
 WriteUninstaller "$INSTDIR\\Uninstall.exe"
 SectionEnd
 
 Section "Uninstall"
 SetShellVarContext current
-Delete "$SMPROGRAMS\\Krigzis\\Krigzis.lnk"
-RMDir "$SMPROGRAMS\\Krigzis"
-Delete "$DESKTOP\\Krigzis.lnk"
+Delete "$SMPROGRAMS\\Nexus\\Nexus.lnk"
+RMDir "$SMPROGRAMS\\Nexus"
+Delete "$DESKTOP\\Nexus.lnk"
 RMDir /r "$INSTDIR"
 SectionEnd

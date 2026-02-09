@@ -13,9 +13,12 @@ const DEFAULT_SETTINGS: TimerSettings = {
   notificationsEnabled: true,
 };
 
-const SETTINGS_STORAGE_KEY = 'krigzis-timer-settings';
-const STATS_STORAGE_KEY = 'krigzis-timer-stats';
-const SESSION_STORAGE_KEY = 'krigzis-current-session';
+const SETTINGS_STORAGE_KEY = 'nexus-timer-settings';
+const STATS_STORAGE_KEY = 'nexus-timer-stats';
+const SESSION_STORAGE_KEY = 'nexus-current-session';
+const LEGACY_SETTINGS_STORAGE_KEY = 'krigzis-timer-settings';
+const LEGACY_STATS_STORAGE_KEY = 'krigzis-timer-stats';
+const LEGACY_SESSION_STORAGE_KEY = 'krigzis-current-session';
 
 export const useTimer = () => {
   const [currentSession, setCurrentSession] = useState<TimerSession | null>(null);
@@ -39,21 +42,36 @@ export const useTimer = () => {
   // Load data from localStorage
   useEffect(() => {
     try {
-      const savedSettings = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      const savedSettings = localStorage.getItem(SETTINGS_STORAGE_KEY) || localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY);
+
       if (savedSettings) {
         setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) });
+        if (localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY)) {
+          localStorage.setItem(SETTINGS_STORAGE_KEY, savedSettings);
+          localStorage.removeItem(LEGACY_SETTINGS_STORAGE_KEY);
+        }
       }
 
-      const savedStats = localStorage.getItem(STATS_STORAGE_KEY);
+      const savedStats = localStorage.getItem(STATS_STORAGE_KEY) || localStorage.getItem(LEGACY_STATS_STORAGE_KEY);
+
       if (savedStats) {
         setStats(JSON.parse(savedStats));
+        if (localStorage.getItem(LEGACY_STATS_STORAGE_KEY)) {
+          localStorage.setItem(STATS_STORAGE_KEY, savedStats);
+          localStorage.removeItem(LEGACY_STATS_STORAGE_KEY);
+        }
       }
 
-      const savedSession = localStorage.getItem(SESSION_STORAGE_KEY);
+      const savedSession = localStorage.getItem(SESSION_STORAGE_KEY) || localStorage.getItem(LEGACY_SESSION_STORAGE_KEY);
+
       if (savedSession) {
         const session = JSON.parse(savedSession);
         if (session.status !== 'completed') {
           setCurrentSession(session);
+        }
+        if (localStorage.getItem(LEGACY_SESSION_STORAGE_KEY)) {
+          localStorage.setItem(SESSION_STORAGE_KEY, savedSession);
+          localStorage.removeItem(LEGACY_SESSION_STORAGE_KEY);
         }
       }
     } catch (error) {

@@ -4,7 +4,7 @@ import { useI18n } from '../hooks/useI18n';
 import { useTheme } from '../hooks/useTheme';
 import { useAIConfig } from '../hooks/useAIConfig';
 import { useNotifications } from '../hooks/useNotifications';
-import { useCategories } from '../hooks/useCategories';
+import { useCategories } from '../contexts/CategoriesContext';
 import { CategoryManager } from './CategoryManager';
 import { AISettings } from './AISettings';
 import { Button } from './ui/Button';
@@ -758,7 +758,8 @@ import {
   AlertCircle,
   Shield,
   Copy,
-  Layout
+  Layout,
+  HardDrive
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -766,7 +767,7 @@ interface SettingsProps {
   onClose: () => void;
 }
 
-type TabType = 'geral' | 'aparencia' | 'produtividade' | 'notificacoes' | 'acessibilidade' | 'inteligencia-artificial' | 'backup' | 'logs' | 'atualizacoes' | 'sobre';
+type TabType = 'geral' | 'aparencia' | 'produtividade' | 'notificacoes' | 'acessibilidade' | 'inteligencia-artificial' | 'backup' | 'armazenamento' | 'logs' | 'atualizacoes' | 'sobre';
 
 export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   const { 
@@ -910,6 +911,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     { id: 'acessibilidade', label: t('settings.accessibility'), icon: <Eye size={16} strokeWidth={1.7} /> },
     { id: 'inteligencia-artificial', label: 'Inteligência Artificial', icon: <Brain size={16} strokeWidth={1.7} /> },
     { id: 'backup', label: t('settings.backup'), icon: <Download size={16} strokeWidth={1.7} /> },
+    { id: 'armazenamento', label: 'Dados & Armazenamento', icon: <HardDrive size={16} strokeWidth={1.7} /> },
     { id: 'logs', label: 'Logs', icon: <Database size={16} strokeWidth={1.7} /> },
     { id: 'atualizacoes', label: 'Atualizações', icon: <RefreshCw size={16} strokeWidth={1.7} /> },
     { id: 'sobre', label: t('settings.about'), icon: <Info size={16} strokeWidth={1.7} /> },
@@ -1351,8 +1353,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           </div>
                           <div style={{
                             fontSize: '12px',
-                            color: '#A0A0A0',
-                            lineHeight: '1.4'
+                            color: '#A0A0A0'
                           }}>
                             {density.desc}
                           </div>
@@ -1428,11 +1429,11 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       display: 'flex',
                       alignItems: 'center',
                       gap: '12px',
+                      cursor: 'pointer',
                       padding: '12px',
                       backgroundColor: '#0A0A0A',
                       border: '1px solid #2A2A2A',
                       borderRadius: '8px',
-                      cursor: 'pointer',
                       transition: 'all 0.2s ease'
                     }}>
                       <input
@@ -1467,11 +1468,11 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       display: 'flex',
                       alignItems: 'center',
                       gap: '12px',
+                      cursor: 'pointer',
                       padding: '12px',
                       backgroundColor: '#0A0A0A',
                       border: '1px solid #2A2A2A',
                       borderRadius: '8px',
-                      cursor: 'pointer',
                       transition: 'all 0.2s ease'
                     }}>
                       <input
@@ -1792,7 +1793,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         display: 'block',
                         fontSize: '14px',
                         fontWeight: 500,
-                        color: isDark ? '#FFFFFF' : '#1F2937',
+                        color: isDark ? '#FFFFFF' : '#374151',
                         marginBottom: '8px',
                       }}>
                         Modo de resposta da IA
@@ -2624,6 +2625,84 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       </select>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'armazenamento' && (
+              <div style={{ display: 'grid', gap: '24px' }}>
+                <div>
+                  <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: 600, color: '#FFFFFF' }}>
+                    Modo de Armazenamento
+                  </h4>
+                  <p style={{ fontSize: '12px', color: '#888', margin: '0 0 16px 0' }}>
+                    Define onde notas, tarefas e categorias são salvos. Outros usuários com acesso à mesma base Supabase compartilham os dados no modo Cloud.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {[
+                      { value: 'cloud' as const, label: 'Cloud (Supabase)', desc: 'Dados salvos na nuvem. Requer autenticação. Compartilhável entre dispositivos e usuários.' },
+                      { value: 'local' as const, label: 'Local (Offline)', desc: 'Dados salvos apenas no dispositivo. Não requer internet nem login.' },
+                      { value: 'hybrid' as const, label: 'Híbrido', desc: 'Salva em ambos. Lê da nuvem quando autenticado, fallback local quando offline.' },
+                    ].map(opt => (
+                      <label
+                        key={opt.value}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '12px',
+                          padding: '14px 16px',
+                          borderRadius: '10px',
+                          border: `1.5px solid ${(settings.storageMode || 'cloud') === opt.value ? 'var(--color-primary-teal)' : 'rgba(255,255,255,0.08)'}`,
+                          backgroundColor: (settings.storageMode || 'cloud') === opt.value ? 'rgba(45,212,191,0.06)' : 'rgba(255,255,255,0.02)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="storageMode"
+                          value={opt.value}
+                          checked={(settings.storageMode || 'cloud') === opt.value}
+                          onChange={() => updateSettings({ storageMode: opt.value })}
+                          style={{ marginTop: '3px', accentColor: 'var(--color-primary-teal)' }}
+                        />
+                        <div>
+                          <div style={{
+                            fontSize: '14px',
+                            fontWeight: 500,
+                            color: '#FFFFFF',
+                            marginBottom: '2px'
+                          }}>
+                            {opt.label}
+                          </div>
+                          <div style={{
+                            fontSize: '12px',
+                            color: '#888',
+                            lineHeight: '1.4'
+                          }}>
+                            {opt.desc}
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{
+                  padding: '14px 16px',
+                  borderRadius: '10px',
+                  backgroundColor: 'rgba(59,130,246,0.08)',
+                  border: '1px solid rgba(59,130,246,0.2)',
+                }}>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                    <AlertCircle size={16} style={{ color: '#3B82F6', marginTop: '2px', flexShrink: 0 }} />
+                    <div style={{ fontSize: '12px', color: '#93C5FD', lineHeight: '1.5' }}>
+                      <strong>Validação de dados:</strong> No modo Cloud, dados são validados antes de inserir no Supabase (dedup por título, sanitização).
+                      Cada usuário só acessa seus próprios dados via Row Level Security (RLS).
+                      <br /><br />
+                      <strong>Nota:</strong> Alterar o modo não migra dados automaticamente. Use Importar/Exportar para transferir dados entre modos.
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTheme } from '../hooks/useTheme';
-import useNotes from '../hooks/useNotes';
-import { useDatabase } from '../hooks/useDatabase';
+import { useNotes } from '../contexts/NotesContext';
+import { useTasks } from '../contexts/TasksContext';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { X, Save, Link2 } from 'lucide-react';
@@ -14,7 +14,7 @@ interface NoteModalProps {
 export const NoteModal: React.FC<NoteModalProps> = ({ isOpen, onClose }) => {
   const { theme } = useTheme();
   const { createNote } = useNotes();
-  const { tasks } = useDatabase();
+  const { tasks } = useTasks();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [linkedTaskId, setLinkedTaskId] = useState<number | undefined>();

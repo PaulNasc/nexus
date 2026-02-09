@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { ThemeConfig, ThemeContextType, ThemeColors } from '../types/theme';
 
 // Default theme configuration - only dark mode
@@ -13,20 +13,21 @@ const defaultTheme: ThemeConfig = {
 };
 
 // Simplified hook - only dark theme
-export const useTheme = (storageKey = 'krigzis-theme'): ThemeContextType => {
+export const useTheme = (storageKey = 'nexus-theme'): ThemeContextType => {
   const [theme, setThemeState] = useState<ThemeConfig>(defaultTheme);
 
   // Load theme from localStorage on mount
   useEffect(() => {
-    try {
-      const storedTheme = localStorage.getItem(storageKey);
-      if (storedTheme) {
-        const parsedTheme = JSON.parse(storedTheme);
-        // Force dark mode regardless of stored preference
-        setThemeState(prev => ({ ...prev, ...parsedTheme, mode: 'dark' }));
+    const savedTheme = localStorage.getItem(storageKey) || localStorage.getItem('krigzis-theme');
+    if (savedTheme) {
+      try {
+        const parsed = JSON.parse(savedTheme) as ThemeConfig;
+        setThemeState(parsed);
+        localStorage.setItem(storageKey, savedTheme);
+        localStorage.removeItem('krigzis-theme');
+      } catch {
+        // ignore
       }
-    } catch (error) {
-      console.error('Failed to load theme from localStorage:', error);
     }
   }, [storageKey]);
 
@@ -40,7 +41,7 @@ export const useTheme = (storageKey = 'krigzis-theme'): ThemeContextType => {
   }, [theme, storageKey]);
 
   // Always dark mode
-  const effectiveMode: 'dark' = 'dark';
+  const effectiveMode = 'dark' as const;
 
   // Apply dark theme to document
   useEffect(() => {

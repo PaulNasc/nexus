@@ -1,11 +1,11 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { File, CheckCircle, Timer, Clock, Flame, TrendingUp, BarChart3, Target, Trophy, ChevronLeft, BookOpen, Link2 } from 'lucide-react';
-import { useDatabase } from '../hooks/useDatabase';
+import { useTasks } from '../contexts/TasksContext';
 import { useTimer } from '../hooks/useTimer';
 import { useTheme } from '../hooks/useTheme';
-import { useCategories } from '../hooks/useCategories';
+import { useCategories } from '../contexts/CategoriesContext';
 import { useSettings } from '../hooks/useSettings';
-import useNotes from '../hooks/useNotes';
+import { useNotes } from '../contexts/NotesContext';
 
 interface ReportsProps {
   onClose?: () => void;
@@ -15,9 +15,9 @@ interface ReportsProps {
 export const Reports: React.FC<ReportsProps> = ({ onClose, onBack }) => {
   const { theme } = useTheme();
   const { settings } = useSettings();
-  const { tasks, stats } = useDatabase();
+  const { tasks, stats } = useTasks();
   const { stats: timerStats, formatDuration } = useTimer();
-  const { categories, reloadCategories } = useCategories(tasks);
+  const { categories, reloadCategories } = useCategories();
   const { notes, getNoteStats } = useNotes();
   const [noteStats, setNoteStats] = useState<any>(null);
 

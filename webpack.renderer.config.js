@@ -2,9 +2,11 @@ const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const webpack = require('webpack');
 
+const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+
 module.exports = {
   entry: './src/renderer/index.tsx',
-  target: 'electron-renderer',
+  target: 'web',
   mode: process.env.NODE_ENV || 'development',
   
   module: {
@@ -43,7 +45,7 @@ module.exports = {
   output: {
     filename: 'renderer.js',
     path: path.resolve(__dirname, 'dist/renderer'),
-    publicPath: './',
+    publicPath: isDev ? '/' : './',
     clean: true,
   },
   
@@ -68,7 +70,12 @@ module.exports = {
     port: 3000,
     hot: false, // Desabilitando hot reload para evitar loops
     liveReload: false, // Desabilitando live reload
-    historyApiFallback: true,
+    devMiddleware: {
+      publicPath: '/',
+    },
+    historyApiFallback: {
+      index: '/index.html',
+    },
     watchFiles: {
       paths: ['src/**/*'],
       options: {
@@ -88,4 +95,4 @@ module.exports = {
   },
   
   devtool: process.env.NODE_ENV === 'production' ? 'source-map' : 'eval-source-map',
-}; 
+};

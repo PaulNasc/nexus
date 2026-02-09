@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Krigzis Icon Generator</title>
+    <title>Nexus Icon Generator</title>
     <style>
         body {
             margin: 0;
@@ -46,7 +46,7 @@
     </style>
 </head>
 <body>
-    <h1>Krigzis Icon Generator</h1>
+    <h1>Nexus Icon Generator</h1>
     <p>Ícones baseados no design da aplicação</p>
     
     <div class="icon-container">
@@ -85,7 +85,7 @@
     </div>
 
     <script>
-        // Cores do gradiente Krigzis
+        // Cores do gradiente Nexus
         const colors = {
             teal: '#00D4AA',
             purple: '#7B3FF2',
@@ -124,7 +124,8 @@
             ctx.lineWidth = size * 0.01;
             ctx.stroke();
             
-            // Desenhar letra "K" estilizada
+            // Desenhar letra "N" estilizada
+
             ctx.fillStyle = colors.white;
             ctx.font = `bold ${size * 0.6}px Arial, sans-serif`;
             ctx.textAlign = 'center';
@@ -136,7 +137,8 @@
             ctx.shadowOffsetX = size * 0.01;
             ctx.shadowOffsetY = size * 0.01;
             
-            ctx.fillText('K', centerX, centerY);
+            ctx.fillText('N', centerX, centerY);
+
             
             // Limpar sombra
             ctx.shadowColor = 'transparent';

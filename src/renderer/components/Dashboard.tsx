@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  ClipboardList, 
-  CalendarDays, 
-  Zap, 
-  CheckCircle, 
-  Timer, 
-  BarChart2, 
+import React, { useState } from 'react';
+
+import {
+  ClipboardList,
+  CalendarDays,
+  Zap,
+  CheckCircle,
+  Timer,
+  BarChart2,
   Plus,
   Folder,
   Home,
@@ -30,29 +31,34 @@ import {
   GripVertical,
   X,
   Brain,
-  ChevronDown,
-  ChevronUp,
   LogOut,
   Share2,
-  UserX,
   Download,
   Upload,
-  Trash2
+  Trash2,
+  type LucideIcon
 } from 'lucide-react';
+
 import { Card, Button, Badge } from './ui';
 import { UnifiedCard } from './ui/Card';
+import { ImportExportModal } from './ImportExportModal';
 import { useTheme } from '../hooks/useTheme';
-import { useDatabase } from '../hooks/useDatabase';
 import { useI18n } from '../hooks/useI18n';
 import { useSettings } from '../hooks/useSettings';
-import { useCategories } from '../hooks/useCategories';
-import { useAIConfig } from '../hooks/useAIConfig';
-import { useNotifications } from '../hooks/useNotifications';
-import { useRef } from 'react';
 
+import { useTasks } from '../contexts/TasksContext';
+import { useCategories } from '../contexts/CategoriesContext';
+import { useNotes } from '../contexts/NotesContext';
+import { useProductivityInsights } from '../hooks/useProductivityInsights';
+import { useStorageMode } from '../hooks/useStorageMode';
+import type { Task } from '../../shared/types/task';
+import type { Category } from '../../shared/types/task';
+import type { QuickAction } from '../hooks/useSettings';
+import type { ImportResult, RestorePreview } from '../../shared/types/backup';
+import type { ElectronAPI } from '../../main/preload';
 
 // Mapping de ícones
-const iconMap: { [key: string]: React.ComponentType<any> } = {
+const iconMap: Record<string, LucideIcon> = {
   ClipboardList,
   CalendarDays,
   Zap,
@@ -86,28 +92,17 @@ const renderIcon = (iconName: string, size: number = 20, color?: string) => {
   return <IconComponent size={size} strokeWidth={1.5} color={color} />;
 };
 
-// Mapear os status antigos para os novos
-const mapStatusToNew = (status: string) => {
-  const mapping: { [key: string]: string } = {
-    'backlog': 'backlog',
-    'week': 'esta_semana', 
-    'today': 'hoje',
-    'done': 'concluido'
-  };
-  return mapping[status] || status;
+type DisplayCard = {
+  key: string;
+  categoryId: number;
+  title: string;
+  desc: string;
+  count: number;
+  icon: string;
+  accentColor: string;
+  isSystem: boolean;
 };
 
-interface DashboardProps {
-  onViewTaskList: (status: string) => void;
-  onOpenTaskModal: () => void;
-  onOpenTimer?: () => void;
-  onOpenReports?: () => void;
-  showQuickActions?: boolean;
-  showTaskCounters?: boolean;
-  showTimer?: boolean;
-}
-
-// Definir tipo para os cards de ação rápida
 interface QuickActionCard {
   key: string;
   title: string;
@@ -117,6 +112,15 @@ interface QuickActionCard {
   onClick?: () => void;
 }
 
+interface DashboardProps {
+  onViewTaskList: (status: string) => void;
+  onOpenTaskModal: () => void;
+  onOpenTimer?: () => void;
+  onOpenReports?: () => void;
+  showQuickActions?: boolean;
+  showTaskCounters?: boolean;
+}
+
 export const Dashboard: React.FC<DashboardProps> = ({
   onViewTaskList,
   onOpenTaskModal,
@@ -124,292 +128,94 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenReports,
   showQuickActions = true,
   showTaskCounters = true,
-  showTimer = true,
 }) => {
   const { theme } = useTheme();
   const { t } = useI18n();
-  const { settings, getGreeting, getEnabledTaskCards, getEnabledQuickActions, updateQuickActions, enableQuickAction, disableQuickAction, reorderQuickActions } = useSettings();
-  const { tasks, stats, loading, error, getTasksByStatus, createTask, updateTask, clearError } = useDatabase();
-  const { categories, loading: categoriesLoading, error: categoriesError, reloadCategories } = useCategories(tasks);
-  const { aiConfig } = useAIConfig();
-  const [statusTasks, setStatusTasks] = useState<any[]>([]);
+  const { settings, getGreeting, getEnabledQuickActions, updateQuickActions } = useSettings();
+  const { tasks, stats, getTasksByStatus, updateTask, createTask } = useTasks();
+  const { categories } = useCategories();
+  const { createNote, fetchNotes } = useNotes();
+  const { useCloud } = useStorageMode();
+
+  const [statusTasks, setStatusTasks] = useState<Task[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
-  const [taskModalData, setTaskModalData] = useState<any>(null);
 
+  const { tipText, progressText } = useProductivityInsights({
+    tasks,
+    stats,
+    settings: {
+      dailyGoal: settings.dailyGoal,
+      aiResponseMode: settings.aiResponseMode,
+      aiProactiveMode: settings.aiProactiveMode,
+      showProductivityTips: settings.showProductivityTips,
+      showProgressInsights: settings.showProgressInsights,
+    },
+  });
 
-  
   const isDark = theme.mode === 'dark';
 
-  // DEBUG: Log todos os estados importantes - only in development
-  if (process.env.NODE_ENV === 'development') {
-    console.log('=== DASHBOARD DEBUG ===');
-    console.log('Categories:', categories);
-    console.log('CategoriesLoading:', categoriesLoading);
-    console.log('CategoriesError:', categoriesError);
-    console.log('Tasks:', tasks);
-    console.log('Stats:', stats);
-    console.log('Loading:', loading);
-    console.log('Error:', error);
-    console.log('Settings:', settings);
-    console.log('EnabledTaskCards:', getEnabledTaskCards());
-    console.log('EnabledQuickActions:', getEnabledQuickActions());
-    console.log('========================');
-  }
+  type ImportExportModalProps = React.ComponentProps<typeof ImportExportModal>;
+  type ImportIntent = Parameters<ImportExportModalProps['onImportPreview']>[0];
+  type ExportFormat = Parameters<ImportExportModalProps['onExport']>[0];
 
-  // Funções para gerar dicas e insights
-  const getProductivityTip = () => {
-    const tips = [
-      "Use a técnica Pomodoro: 25 minutos focado, 5 minutos de pausa.",
-      "Organize suas tarefas por prioridade no início do dia.",
-      "Elimine distrações: desligue notificações desnecessárias.",
-      "Faça uma pausa de 2 minutos a cada hora para descansar os olhos.",
-      "Mantenha sua área de trabalho organizada e limpa.",
-      "Defina metas específicas e mensuráveis para cada tarefa.",
-      "Use listas de verificação para não esquecer nada importante.",
-      "Reserve tempo para planejar o próximo dia antes de dormir."
-    ];
-    
-    const today = new Date();
-    const dayIndex = today.getDate() % tips.length;
-    return tips[dayIndex];
-  };
+  const [importExportModalOpen, setImportExportModalOpen] = useState(false);
+  const [importExportMode, setImportExportMode] = useState<'import' | 'export'>('export');
+  const [initialImportIntent, setInitialImportIntent] = useState<ImportIntent | null>(null);
 
-  const getProgressInsight = () => {
-    const totalTasks = (stats?.backlog || 0) + (stats?.esta_semana || 0) + (stats?.hoje || 0) + (stats?.concluido || 0);
-    const completedTasks = stats?.concluido || 0;
-    const todayTasks = stats?.hoje || 0;
-    
-    if (totalTasks === 0) {
-      return "Comece criando suas primeiras tarefas para acompanhar seu progresso!";
-    }
-    
-    const completionRate = Math.round((completedTasks / totalTasks) * 100);
-    
-    if (completionRate >= 80) {
-      return `Excelente! Você já concluiu ${completionRate}% das suas tarefas. Continue assim!`;
-    } else if (completionRate >= 50) {
-      return `Bom trabalho! ${completionRate}% concluído. Você tem ${todayTasks} tarefas para hoje.`;
-    } else if (completionRate >= 25) {
-      return `Você está no caminho certo com ${completionRate}% concluído. Foque nas tarefas de hoje!`;
-    } else {
-      return `Comece pequeno: você tem ${todayTasks} tarefas para hoje. Uma de cada vez!`;
+  const displayCards: DisplayCard[] = (categories || [])
+    .slice()
+    .sort((a: Category, b: Category) => (a.order || 0) - (b.order || 0))
+    .map((category: Category) => {
+      const statusMap: Record<string, string> = {
+        Backlog: 'backlog',
+        'Esta Semana': 'esta_semana',
+        Hoje: 'hoje',
+        Concluído: 'concluido',
+      };
+
+      const isSystem = Boolean(category.isSystem);
+      const key = isSystem ? (statusMap[category.name] || category.name.toLowerCase()) : `category_${category.id}`;
+      const count = isSystem
+        ? (stats?.[key as keyof NonNullable<typeof stats>] as unknown as number) || 0
+        : (tasks || []).filter((t) => t.category_id === category.id).length;
+
+      return {
+        key,
+        categoryId: category.id,
+        title: category.name,
+        desc: `${count} ${count === 1 ? 'tarefa' : 'tarefas'}`,
+        count,
+        icon: category.icon || 'Folder',
+        accentColor: category.color,
+        isSystem,
+      };
+    });
+
+  const loadStatusTasks = async (status: string) => {
+    try {
+      const nextTasks = await getTasksByStatus(status);
+      setStatusTasks(nextTasks);
+      setSelectedStatus(status);
+    } catch (e) {
+      console.error('Error loading status tasks:', e);
     }
   };
 
-  const getAISuggestion = () => {
-    const suggestions = [
-      "Que tal agrupar tarefas similares para fazer em sequência?",
-      "Considere dividir tarefas grandes em subtarefas menores.",
-      "Suas tarefas de maior prioridade merecem sua energia matinal.",
-      "Revise suas metas semanais e ajuste suas prioridades.",
-      "Um ambiente organizado aumenta sua produtividade em 23%.",
-      "Considere usar blocos de tempo específicos para cada tipo de tarefa."
-    ];
-    
-    const randomIndex = Math.floor(Math.random() * suggestions.length);
-    return suggestions[randomIndex];
+  const handleCompleteTask = async (taskId: number) => {
+    await updateTask(taskId, { status: 'concluido' });
+    if (selectedStatus) {
+      await loadStatusTasks(selectedStatus);
+    }
   };
 
-  // Escutar mudanças nas categorias - optimized
-  useEffect(() => {
-    // Export handler
-    const handleExport = async () => {
-      try {
-        const json = await (window as any).electronAPI?.database?.exportData?.();
-        if (!json) return;
-        const blob = new Blob([json], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `krigzis-backup-${new Date().toISOString().slice(0,10)}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-      } catch (err) {
-        console.error('Export failed:', err);
-      }
-    };
-
-    // Import handler
-    const handleImport = async () => {
-      try {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'application/json';
-        input.onchange = async () => {
-          const file = input.files?.[0];
-          if (!file) return;
-          const content = await file.text();
-          const res = await (window as any).electronAPI?.database?.importData?.(content);
-          if (res?.success !== false) {
-            // Forçar recarregar dados em memória e UI
-            await (window as any).electronAPI?.tasks?.getAll?.();
-            window.dispatchEvent(new Event('tasksUpdated'));
-            window.dispatchEvent(new Event('categoriesUpdated'));
-            // Recarregar a página para garantir estado consistente
-            setTimeout(() => window.location.reload(), 200);
-          } else {
-            console.error('Import failed:', res?.error);
-          }
-        };
-        input.click();
-      } catch (err) {
-        console.error('Import failed:', err);
-      }
-    };
-
-    const handleClear = async () => {
-      try {
-        await (window as any).electronAPI?.tasks?.clearAll?.();
-        window.dispatchEvent(new Event('tasksUpdated'));
-        window.dispatchEvent(new Event('categoriesUpdated'));
-      } catch (err) {
-        console.error('Clear failed:', err);
-      }
-    };
-
-    window.addEventListener('exportData', handleExport);
-    window.addEventListener('importData', handleImport);
-    window.addEventListener('clearAllData', handleClear);
-    return () => {
-      window.removeEventListener('exportData', handleExport);
-      window.removeEventListener('importData', handleImport);
-      window.removeEventListener('clearAllData', handleClear);
-    };
-  }, [reloadCategories]);
-
-  // Efeito separado para listeners de categorias/tarefas
-  useEffect(() => {
-    const handleCategoriesUpdate = () => {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Categories updated event fired');
-      }
-      reloadCategories();
-    };
-
-    const handleTasksUpdate = () => {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Tasks updated event fired');
-      }
-      // Forçar recarregamento das categorias quando tarefas mudam
-      setTimeout(() => {
-        reloadCategories();
-      }, 200);
-    };
-
-    window.addEventListener('categoriesUpdated', handleCategoriesUpdate);
-    window.addEventListener('tasksUpdated', handleTasksUpdate);
-    
-    return () => {
-      window.removeEventListener('categoriesUpdated', handleCategoriesUpdate);
-      window.removeEventListener('tasksUpdated', handleTasksUpdate);
-    };
-  }, [reloadCategories]);
-
-  // Force o carregamento das categorias quando o componente montar - optimized
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Dashboard mounted - forcing categories reload');
-    }
-    
-    // Primeiro, garantir que temos categorias no localStorage
-    const ensureDefaultCategories = () => {
-      const stored = localStorage.getItem('krigzis_categories');
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Stored categories:', stored);
-      }
-      
-      if (!stored || stored === '[]' || stored === 'null') {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('No categories found, creating default ones');
-        }
-        const defaultCategories = [
-          {
-            id: 1,
-            name: 'Backlog',
-            color: '#6B7280',
-            icon: 'ClipboardList',
-            isSystem: true,
-            order: 1,
-            workspace_id: 1,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          },
-          {
-            id: 2,
-            name: 'Esta Semana',
-            color: '#3B82F6',
-            icon: 'CalendarDays',
-            isSystem: true,
-            order: 2,
-            workspace_id: 1,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          },
-          {
-            id: 3,
-            name: 'Hoje',
-            color: '#F59E0B',
-            icon: 'Zap',
-            isSystem: true,
-            order: 3,
-            workspace_id: 1,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          },
-          {
-            id: 4,
-            name: 'Concluído',
-            color: '#10B981',
-            icon: 'CheckCircle',
-            isSystem: true,
-            order: 4,
-            workspace_id: 1,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        ];
-        
-        localStorage.setItem('krigzis_categories', JSON.stringify(defaultCategories));
-        if (process.env.NODE_ENV === 'development') {
-          console.log('Default categories saved:', defaultCategories);
-        }
-      }
-    };
-
-    ensureDefaultCategories();
-
-    // Depois, recarregar as categorias
-    const timer1 = setTimeout(() => {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Triggering categories reload');
-      }
-      reloadCategories();
-    }, 100);
-    
-    // Força uma segunda tentativa se as categorias estiverem vazias
-    const timer2 = setTimeout(() => {
-      if (categories.length === 0) {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('Second attempt - forcing categories reload');
-        }
-        reloadCategories();
-      }
-    }, 1000);
-
-    return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-    };
-  }, []); // Remove reloadCategories from dependencies to prevent infinite loops
+  const closeTaskModal = () => {
+    setSelectedStatus(null);
+    setStatusTasks([]);
+  };
 
   const getGreetingText = () => {
     const greetingKey = getGreeting();
     return t(greetingKey, { name: settings.userName });
-  };
-
-  const getTotalTasks = () => {
-    if (!stats) return 0;
-    return stats.backlog + stats.esta_semana + stats.hoje;
   };
 
   const getTodayTasks = () => {
@@ -424,106 +230,150 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return Math.round((stats.concluido / total) * 100);
   };
 
-  // CORREÇÃO: Sempre garantir que as categorias padrão sejam exibidas
-  // Obter os task cards habilitados das configurações como fallback
-  const enabledTaskCards = getEnabledTaskCards();
-  
-  // Fallback robusto: sempre garantir que há categorias para exibir
-  const hasCategories = Array.isArray(categories) && categories.length > 0;
-  let displayCards: any[] = [];
+  const getElectron = (): ElectronAPI => {
+    return (window as unknown as { electronAPI: ElectronAPI }).electronAPI;
+  };
 
-  if (hasCategories) {
-    // Categorias do sistema
-    const systemCards = categories
-      .filter(cat => cat.isSystem)
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
-    .map(category => {
-      const statusMap: { [key: string]: string } = {
-        'Backlog': 'backlog',
-        'Esta Semana': 'esta_semana',
-        'Hoje': 'hoje',
-        'Concluído': 'concluido'
-      };
-      const status = statusMap[category.name] || category.name.toLowerCase();
-      const count = stats?.[status as keyof typeof stats] || 0;
-      return {
-        key: status,
-        categoryId: category.id,
-        title: category.name,
-        desc: `${count} ${count === 1 ? 'tarefa' : 'tarefas'}`,
-        count: count,
-        icon: category.icon || 'Folder',
-        accentColor: category.color,
-        isSystem: true
-      };
-    });
-    // Categorias customizadas
-    const customCards = categories
-    .filter(cat => !cat.isSystem)
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
-    .map(category => ({
-      key: `category_${category.id}`,
-      categoryId: category.id,
-      title: category.name,
-      desc: `${category.task_count || 0} ${category.task_count === 1 ? 'tarefa' : 'tarefas'}`,
-      count: category.task_count || 0,
-      icon: category.icon || 'Folder',
-      accentColor: category.color,
-      isSystem: false
-    }));
-    displayCards = [...systemCards, ...customCards];
-  } else {
-    // Fallback: categorias padrão
-    displayCards = [
-    {
-      key: 'backlog',
-      categoryId: 1,
-      title: 'Backlog',
-      desc: `${stats?.backlog || 0} tarefas`,
-      count: stats?.backlog || 0,
-      icon: 'ClipboardList',
-      accentColor: '#6B7280',
-      isSystem: true
-    },
-    {
-      key: 'esta_semana',
-      categoryId: 2,
-      title: 'Esta Semana',
-      desc: `${stats?.esta_semana || 0} tarefas`,
-      count: stats?.esta_semana || 0,
-      icon: 'CalendarDays',
-      accentColor: '#3B82F6',
-      isSystem: true
-    },
-    {
-      key: 'hoje',
-      categoryId: 3,
-      title: 'Hoje',
-      desc: `${stats?.hoje || 0} tarefas`,
-      count: stats?.hoje || 0,
-      icon: 'Zap',
-      accentColor: '#F59E0B',
-      isSystem: true
-    },
-    {
-      key: 'concluido',
-      categoryId: 4,
-      title: 'Concluído',
-      desc: `${stats?.concluido || 0} tarefas`,
-      count: stats?.concluido || 0,
-      icon: 'CheckCircle',
-      accentColor: '#10B981',
-      isSystem: true
+  const handleClearAllData = async () => {
+    try {
+      const electron = getElectron();
+      await electron.tasks.clearAll();
+      window.dispatchEvent(new Event('tasksUpdated'));
+      window.dispatchEvent(new Event('categoriesUpdated'));
+    } catch (err) {
+      console.error('Clear failed:', err);
     }
-  ];
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('Dashboard fallback: exibindo categorias padrão. Verifique o hook useCategories ou o localStorage.');
-    }
-  }
+  };
 
-  if (process.env.NODE_ENV === 'development') {
-    console.log('Final displayCards:', displayCards);
-  }
+  const openImportExportModal = (mode: 'import' | 'export') => {
+    setImportExportMode(mode);
+    setInitialImportIntent(null);
+    setImportExportModalOpen(true);
+  };
+
+  const handleImportExportPreview = async (intent: ImportIntent): Promise<RestorePreview | null> => {
+    try {
+      const electron = getElectron();
+      if (intent?.kind === 'zip') {
+        return await electron.backup.importZipPreview({ source: 'external', filePath: intent.filePath });
+      }
+      if (intent?.kind === 'zip-backup') {
+        return await electron.backup.importZipPreview({ source: 'backupId', backupId: intent.backupId });
+      }
+      if (intent?.kind === 'json') {
+        return await electron.backup.importJsonPreview({ filePath: intent.filePath });
+      }
+      if (intent?.kind === 'csv') {
+        return await electron.backup.importCsvPreview({ filePath: intent.filePath });
+      }
+      if (intent?.kind === 'enex') {
+        return await electron.backup.importEnexPreview({ filePath: intent.filePath });
+      }
+      if (intent?.kind === 'html-file') {
+        return await electron.invoke('import:html-preview', { filePath: intent.filePath }) as RestorePreview;
+      }
+      if (intent?.kind === 'pdf-file') {
+        return await electron.invoke('import:pdf-preview', { filePath: intent.filePath }) as RestorePreview;
+      }
+      if (intent?.kind === 'folder') {
+        return await electron.invoke('import:folder-preview', { folderPath: intent.folderPath }) as RestorePreview;
+      }
+      return null;
+    } catch (err) {
+      console.error('Erro ao gerar preview do import:', err);
+      return null;
+    }
+  };
+
+  const handleImportExportApply = async (intent: ImportIntent): Promise<ImportResult | null> => {
+    try {
+      const electron = getElectron();
+      let result: ImportResult | null = null;
+      if (intent?.kind === 'zip') {
+        result = await electron.backup.importZipApply({ source: 'external', filePath: intent.filePath });
+      } else if (intent?.kind === 'zip-backup') {
+        result = await electron.backup.importZipApply({ source: 'backupId', backupId: intent.backupId });
+      } else if (intent?.kind === 'json') {
+        result = await electron.backup.importJsonApply({ filePath: intent.filePath });
+      } else if (intent?.kind === 'csv') {
+        result = await electron.backup.importCsvApply({ filePath: intent.filePath });
+      } else if (intent?.kind === 'enex') {
+        result = await electron.backup.importEnexApply({ filePath: intent.filePath });
+      } else if (intent?.kind === 'html-file') {
+        result = await electron.invoke('import:html-apply', { filePath: intent.filePath }) as ImportResult;
+      } else if (intent?.kind === 'pdf-file') {
+        result = await electron.invoke('import:pdf-apply', { filePath: intent.filePath }) as ImportResult;
+      } else if (intent?.kind === 'folder') {
+        result = await electron.invoke('import:folder-apply', { folderPath: intent.folderPath }) as ImportResult;
+      }
+
+      if (result?.success) {
+        // Sync imported data to cloud when storage mode uses cloud
+        // IPC import already wrote to local MemoryDB, so only cloud sync is needed
+        if (useCloud) {
+          if (result.importedNotes && result.importedNotes.length > 0) {
+            for (const note of result.importedNotes) {
+              try {
+                await createNote({
+                  title: note.title,
+                  content: note.content,
+                  format: note.format || 'text',
+                  tags: note.tags,
+                  attachedImages: note.attachedImages,
+                });
+              } catch (e) {
+                console.error('Failed to sync imported note to cloud:', e);
+              }
+            }
+            await fetchNotes();
+          }
+
+          if (result.importedTasks && result.importedTasks.length > 0) {
+            for (const task of result.importedTasks) {
+              try {
+                await createTask({
+                  title: task.title,
+                  description: task.description,
+                  status: (task.status as 'backlog' | 'esta_semana' | 'hoje' | 'concluido') || 'backlog',
+                  priority: (task.priority as 'low' | 'medium' | 'high') || 'medium',
+                });
+              } catch (e) {
+                console.error('Failed to sync imported task to cloud:', e);
+              }
+            }
+          }
+        }
+
+        window.dispatchEvent(new Event('tasksUpdated'));
+        window.dispatchEvent(new Event('categoriesUpdated'));
+        window.dispatchEvent(new Event('notesUpdated'));
+      }
+
+      return result;
+    } catch (err) {
+      console.error('Erro ao aplicar import:', err);
+      return null;
+    }
+  };
+
+  const handleImportExportExport = async (format: ExportFormat) => {
+    try {
+      const electron = getElectron();
+      if (format === 'zip') {
+        await electron.backup.exportZip({ source: 'current' });
+        return;
+      }
+      if (format === 'json') {
+        await electron.backup.exportJson();
+        return;
+      }
+      if (format === 'csv') {
+        await electron.backup.exportCsv();
+      }
+    } catch (err) {
+      console.error('Erro ao exportar:', err);
+    }
+  };
 
   const quickActionMap: Record<string, QuickActionCard> = {
     timer: {
@@ -564,7 +414,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       desc: 'Exportar dados',
       icon: <Download size={16} strokeWidth={1.5} />,
       gradient: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-      onClick: () => window.dispatchEvent(new CustomEvent('exportData'))
+      onClick: () => openImportExportModal('export')
     },
     import: {
       key: 'import',
@@ -572,7 +422,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       desc: 'Restaurar dados',
       icon: <Upload size={16} strokeWidth={1.5} />,
       gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-      onClick: () => window.dispatchEvent(new CustomEvent('importData'))
+      onClick: () => openImportExportModal('import')
     },
     clearData: {
       key: 'clearData',
@@ -580,7 +430,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       desc: 'Apagar dados',
       icon: <Trash2 size={16} strokeWidth={1.5} />,
       gradient: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
-      onClick: () => window.dispatchEvent(new CustomEvent('clearAllData'))
+      onClick: handleClearAllData
     },
     profile: {
       key: 'profile',
@@ -633,52 +483,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
       onClick: () => window.dispatchEvent(new CustomEvent('openSettings'))
     }
   };
-  const enabledQuickActions = getEnabledQuickActions();
-  const [showQuickActionsModal, setShowQuickActionsModal] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const loadStatusTasks = async (status: string) => {
-    try {
-      const tasks = await getTasksByStatus(status);
-      setStatusTasks(tasks);
-      setSelectedStatus(status);
-    } catch (error) {
-      console.error('Error loading status tasks:', error);
-    }
-  };
-
-  const handleCreateSampleTask = async () => {
-    const sampleTasks = [
-      { title: '📝 Revisar código do projeto', status: 'hoje' as const, priority: 'medium' as const },
-      { title: '🎯 Preparar apresentação', status: 'esta_semana' as const, priority: 'high' as const },
-      { title: '📚 Estudar novas tecnologias', status: 'backlog' as const, priority: 'low' as const },
-      { title: '🗂️ Organizar workspace', status: 'hoje' as const, priority: 'low' as const }
-    ];
-
-    const randomTask = sampleTasks[Math.floor(Math.random() * sampleTasks.length)];
-    await createTask(randomTask);
-  };
-
-  const handleCompleteTask = async (taskId: number) => {
-    await updateTask(taskId, { 
-      status: 'concluido'
-    });
-    
-    if (selectedStatus) {
-      loadStatusTasks(selectedStatus);
-    }
-  };
-
-  const closeTaskModal = () => {
-    setSelectedStatus(null);
-    setStatusTasks([]);
-  };
-
-  const allQuickActions = [
-    'timer', 'reports', 'newTask', 'categories', 'backup', 'import', 'clearData', 'profile', 'share', 'logout',
-    ...(settings.showNotes ? ['notes', 'newNote'] : []), 
-    'settings'
-  ];
 
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -707,18 +511,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
   function handleToggleAction(key: string) {
     // Verificar se a funcionalidade correspondente está habilitada nos parâmetros
     const isFeatureEnabled = checkFeatureEnabled(key);
-    
+
     if (!isFeatureEnabled) {
       // Mostrar toast em vez de alert
       setToastMessage('⚠️ Habilitar parâmetro nas configurações antes de ativar esta funcionalidade');
       setTimeout(() => setToastMessage(null), 3000);
       return;
     }
-    
+
     const updated = settings.quickActions.map(a => a.key === key ? { ...a, enabled: !a.enabled } : a);
     updateQuickActions(updated);
   }
-  
+
   // Função para verificar se a funcionalidade está habilitada
   function checkFeatureEnabled(key: string): boolean {
     switch (key) {
@@ -743,16 +547,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
         return true;
     }
   }
+
   function handleCloseModal() {
     setShowQuickActionsModal(false);
     setDraggedIdx(null);
     setDragOverIdx(null);
   }
 
-
+  const enabledQuickActions = getEnabledQuickActions();
+  const [showQuickActionsModal, setShowQuickActionsModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   return (
     <div className="dashboard-container" style={{ padding: 'var(--space-4)' }}>
+      <ImportExportModal
+        mode={importExportMode}
+        open={importExportModalOpen}
+        onClose={() => setImportExportModalOpen(false)}
+        onExport={handleImportExportExport}
+        onImportPreview={handleImportExportPreview}
+        onImportApply={handleImportExportApply}
+        initialImportIntent={initialImportIntent}
+      />
       {/* Header Section */}
       <header style={{ marginBottom: 'var(--space-4)' }}>
         <div className="flex flex-between" style={{ alignItems: 'flex-start' }}>
@@ -764,7 +580,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               marginBottom: 'var(--space-1)'
             }}>
               <Home size={28} style={{ color: 'var(--color-primary-teal)' }} />
-              <h1 className="gradient-text" style={{ 
+              <h1 className="gradient-text" style={{
                 fontSize: 'var(--font-size-3xl)',
                 fontWeight: 'var(--font-weight-bold)',
                 margin: 0,
@@ -781,7 +597,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {t('subtitle')} Você tem {getTodayTasks()} {getTodayTasks() === 1 ? t('task') : t('tasks')} para hoje.
             </p>
           </div>
-          
+
           <div className="flex" style={{ gap: 'var(--space-3)' }}>
             <Card variant="glass" padding="sm">
               <div style={{ textAlign: 'center' }}>
@@ -812,22 +628,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <section style={{ marginBottom: 'var(--space-4)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
             <h2 style={{ fontSize: 'var(--font-size-base)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--color-text-primary)', margin: 0 }}>
-          {t('quickActions')}
-        </h2>
+              {t('quickActions')}
+            </h2>
             <button onClick={() => setShowQuickActionsModal(true)} style={{ background: 'none', border: 'none', color: 'var(--color-primary-teal)', fontSize: 18, cursor: 'pointer', padding: 2, borderRadius: 6, transition: 'background 0.2s' }} title="Adicionar/Editar Ação Rápida">
               <Plus />
             </button>
-                </div>
+          </div>
           {enabledQuickActions.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 16, color: 'var(--color-text-secondary)', fontSize: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
               <span>Adicionar ação rápida</span>
               <button onClick={() => setShowQuickActionsModal(true)} style={{ background: 'var(--color-primary-teal)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 18, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 4, cursor: 'pointer' }}>
                 <Plus />
               </button>
-                </div>
+            </div>
           ) : (
             <div className="dashboard-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 6, padding: 0 }}>
-              {enabledQuickActions.map(action => {
+              {enabledQuickActions.map((action: QuickAction) => {
                 const card = quickActionMap[action.key];
                 if (!card || !card.icon) return null;
                 return (
@@ -842,10 +658,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   />
                 );
               })}
-          </div>
-        )}
+            </div>
+          )}
           {showQuickActionsModal && (
-            <div 
+            <div
               className="quick-actions-modal"
               style={{
                 position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000,
@@ -854,8 +670,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
               }}
               onClick={handleCloseModal}
             >
-              <div 
-            style={{
+              <div
+                style={{
                   background: isDark ? '#1a1a1d' : '#fff',
                   borderRadius: 16, minWidth: 340, maxWidth: 420, width: '90%',
                   boxShadow: '0 12px 40px rgba(0,0,0,0.25)',
@@ -868,12 +684,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 }}
                 onClick={e => e.stopPropagation()}
               >
-                <button 
-                  onClick={handleCloseModal} 
-                  style={{ 
-                    position: 'absolute', top: 16, right: 16, 
-                    background: 'none', border: 'none', 
-                    color: 'var(--color-text-secondary)', 
+                <button
+                  onClick={handleCloseModal}
+                  style={{
+                    position: 'absolute', top: 16, right: 16,
+                    background: 'none', border: 'none',
+                    color: 'var(--color-text-secondary)',
                     fontSize: 18, cursor: 'pointer',
                     borderRadius: 6, padding: 4,
                     transition: 'all 0.2s'
@@ -888,14 +704,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   }}
                 >
                   <X />
-          </button>
-                  <h3 style={{
-                  fontSize: 20, fontWeight: 600, margin: 0, 
+                </button>
+                <h3 style={{
+                  fontSize: 20, fontWeight: 600, margin: 0,
                   color: 'var(--color-text-primary)'
-                  }}>
+                }}>
                   Gerenciar Ações Rápidas
-                  </h3>
-                  <p style={{
+                </h3>
+                <p style={{
                   fontSize: 14, color: 'var(--color-text-secondary)',
                   margin: '-8px 0 8px 0'
                 }}>
@@ -909,8 +725,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       if (!card) return null;
                       const isDragging = draggedIdx === idx;
                       const isDragOver = dragOverIdx === idx;
-            return (
-              <div
+                      return (
+                        <div
                           key={action.key}
                           draggable
                           onDragStart={() => handleDragStart(idx)}
@@ -931,13 +747,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <span style={{ cursor: 'grab', color: 'var(--color-text-muted)' }}>
                             <GripVertical size={16} />
                           </span>
-                          <input 
-                            type="checkbox" 
-                            checked={action.enabled} 
+                          <input
+                            type="checkbox"
+                            checked={action.enabled}
                             onChange={() => handleToggleAction(action.key)}
                             disabled={!checkFeatureEnabled(action.key)}
-                            style={{ 
-                              width: 18, height: 18, 
+                            style={{
+                              width: 18, height: 18,
                               cursor: checkFeatureEnabled(action.key) ? 'pointer' : 'not-allowed',
                               accentColor: 'var(--color-primary-teal)',
                               opacity: checkFeatureEnabled(action.key) ? 1 : 0.5
@@ -946,17 +762,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <span style={{ fontSize: 20, display: 'flex', alignItems: 'center' }}>
                             {card.icon}
                           </span>
-                          <span style={{ 
+                          <span style={{
                             fontWeight: 500, fontSize: 15, flex: 1,
                             color: 'var(--color-text-primary)'
-                  }}>
-                    {card.title}
+                          }}>
+                            {card.title}
                           </span>
                           {!checkFeatureEnabled(action.key) && (
-                            <span 
-                              style={{ 
-                                fontSize: 12, 
-                                color: 'var(--color-accent-amber)', 
+                            <span
+                              style={{
+                                fontSize: 12,
+                                color: 'var(--color-accent-amber)',
                                 fontWeight: 500,
                                 backgroundColor: 'rgba(245, 158, 11, 0.1)',
                                 padding: '2px 6px',
@@ -967,33 +783,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               ⚠️ Desabilitado
                             </span>
                           )}
-              </div>
-            );
-          })}
-        </div>
-                <button 
-                  onClick={handleCloseModal} 
-          style={{
-                    marginTop: 8, background: 'var(--color-primary-teal)', 
-                    color: '#fff', border: 'none', borderRadius: 10, 
-                    fontWeight: 600, fontSize: 15, padding: '12px 0', 
+                        </div>
+                      );
+                    })}
+                </div>
+                <button
+                  onClick={handleCloseModal}
+                  style={{
+                    marginTop: 8, background: 'var(--color-primary-teal)',
+                    color: '#fff', border: 'none', borderRadius: 10,
+                    fontWeight: 600, fontSize: 15, padding: '12px 0',
                     cursor: 'pointer', transition: 'all 0.2s'
-          }}
-          onMouseEnter={e => {
+                  }}
+                  onMouseEnter={e => {
                     e.currentTarget.style.transform = 'translateY(-1px)';
                     e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,212,170,0.3)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.transform = 'translateY(0)';
                     e.currentTarget.style.boxShadow = 'none';
-          }}
-        >
+                  }}
+                >
                   Salvar
                 </button>
-      </div>
+              </div>
             </div>
           )}
-      </section>
+        </section>
       )}
 
       {/* Categorias - Grid Unificado */}
@@ -1001,7 +817,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <h2 style={{
           fontSize: 'var(--font-size-base)',
           fontWeight: 'var(--font-weight-semibold)',
-                          color: 'var(--color-text-primary)',
+          color: 'var(--color-text-primary)',
           marginBottom: 'var(--space-3)',
           margin: '0 0 var(--space-3) 0'
         }}>
@@ -1015,12 +831,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
         }}>
           {displayCards.map((card) => (
             <UnifiedCard
-                key={card.key}
+              key={card.key}
               icon={renderIcon(card.icon, 20, card.accentColor)}
               title={card.title}
               count={showTaskCounters ? card.count : undefined}
               accentColor={card.accentColor}
-              onCardClick={() => onViewTaskList(card.key)}
+              onCardClick={() => {
+                onViewTaskList(card.key);
+                if (card.isSystem) {
+                  void loadStatusTasks(card.key);
+                }
+              }}
             />
           ))}
         </div>
@@ -1042,13 +863,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <Brain size={18} color="var(--color-primary-teal)" />
             Insights de Produtividade
           </h2>
-          
+
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: '16px'
+            gap: '16px',
+            maxHeight: '140px',
+            overflow: 'auto'
           }}>
-            
+
             {/* Dicas de Produtividade */}
             {settings.showProductivityTips && (
               <div style={{
@@ -1067,7 +890,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   height: '100%',
                   background: 'linear-gradient(135deg, var(--color-primary-teal), var(--color-accent-purple))'
                 }} />
-                
+
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1084,14 +907,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     Dica do Dia
                   </h3>
                 </div>
-                
+
                 <p style={{
                   fontSize: '13px',
                   color: 'var(--color-text-secondary)',
                   lineHeight: '1.5',
                   margin: 0
                 }}>
-                  {getProductivityTip()}
+                  {tipText}
                 </p>
               </div>
             )}
@@ -1114,7 +937,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   height: '100%',
                   background: 'linear-gradient(135deg, var(--color-accent-orange), var(--color-accent-violet))'
                 }} />
-                
+
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1131,61 +954,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     Seu Progresso
                   </h3>
                 </div>
-                
-                <p style={{
-                  fontSize: '13px',
-                  color: 'var(--color-text-secondary)',
-                  lineHeight: '1.5',
-                  margin: 0
-                }}>
-                  {getProgressInsight()}
-                </p>
-              </div>
-            )}
 
-            {/* Sugestão de IA (se configurada) */}
-            {aiConfig.selectedProvider !== 'local' && aiConfig.apiKey && settings.aiProactiveMode && (
-              <div style={{
-                backgroundColor: 'var(--color-bg-secondary)',
-                border: '1px solid var(--color-border-primary)',
-                borderRadius: '12px',
-                padding: '16px',
-                position: 'relative',
-                overflow: 'hidden'
-              }}>
-                <div style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '4px',
-                  height: '100%',
-                  background: 'linear-gradient(135deg, var(--color-accent-violet), var(--color-primary-teal))'
-                }} />
-                
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  marginBottom: '12px'
-                }}>
-                  <Brain size={16} color="var(--color-accent-violet)" />
-                  <h3 style={{
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    color: 'var(--color-text-primary)',
-                    margin: 0
-                  }}>
-                    Sugestão IA
-                  </h3>
-                </div>
-                
                 <p style={{
                   fontSize: '13px',
                   color: 'var(--color-text-secondary)',
                   lineHeight: '1.5',
                   margin: 0
                 }}>
-                  {getAISuggestion()}
+                  {progressText}
                 </p>
               </div>
             )}
@@ -1196,7 +972,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Modal de Detalhes do Status */}
       {selectedStatus && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={closeTaskModal}>
-          <div 
+          <div
             className="bg-gray-800 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
@@ -1218,7 +994,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               ) : (
                 <div className="space-y-3">
                   {statusTasks.map((task) => (
-                    <div 
+                    <div
                       key={task.id}
                       className="bg-gray-700/50 rounded-lg p-4 flex items-center justify-between hover:bg-gray-700/70 transition-colors"
                     >
@@ -1275,6 +1051,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           {toastMessage}
         </div>
       )}
+
     </div>
   );
-}; 
+};

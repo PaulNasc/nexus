@@ -41,7 +41,7 @@ jobs:
       - name: Zip win-unpacked
         shell: pwsh
         run: |
-          Compress-Archive -Path "release/win-unpacked/*" -DestinationPath "release/Krigzis-${{ github.ref_name }}-win.zip"
+          Compress-Archive -Path "release/win-unpacked/*" -DestinationPath "release/Nexus-${{ github.ref_name }}-win.zip"
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v1
@@ -50,7 +50,7 @@ jobs:
           files: |
             release/**/*.exe
             release/**/*.zip
-            release/**/Krigzis.exe
+            release/**/Nexus.exe
             release/**/*.yml
             release/**/*.blockmap
         env:

@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useTheme } from '../hooks/useTheme';
-import { useDatabase } from '../hooks/useDatabase';
+import { useTasks } from '../contexts/TasksContext';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { 
-  ArrowLeft, Save, Trash2, Pin, Tag, Link2, 
-  Image, Paperclip, Bold, Italic, List, 
-  Hash, Quote, Code, Eye, Edit, Copy,
+  ArrowLeft, Save, Trash2, Tag, Link2, 
+  Image, Bold, Italic, List, 
+  Hash, Eye, Edit, Copy,
   ChevronDown, ChevronUp, Upload, X
 } from 'lucide-react';
 import { Note, CreateNoteData } from '../../shared/types/note';
@@ -27,21 +27,20 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
   onClose 
 }) => {
   const { theme } = useTheme();
-  const { tasks } = useDatabase();
+  const { tasks } = useTasks();
   const [title, setTitle] = useState(note?.title || '');
   const [content, setContent] = useState(note?.content || '');
   const [tags, setTags] = useState<string[]>(note?.tags || []);
   const [linkedTaskIds, setLinkedTaskIds] = useState<number[]>(note?.linkedTaskIds || []);
   const [color, setColor] = useState(note?.color || '');
-  const [isPinned, setIsPinned] = useState(note?.is_pinned || false);
   const [format, setFormat] = useState<'markdown' | 'text'>(note?.format || 'text');
   const [previewMode, setPreviewMode] = useState(false);
   const [newTag, setNewTag] = useState('');
-  const [showTaskSelector, setShowTaskSelector] = useState(false);
   const [isTagsExpanded, setIsTagsExpanded] = useState(false);
   const [isLinkedTasksExpanded, setIsLinkedTasksExpanded] = useState(false);
   const [attachedImages, setAttachedImages] = useState<string[]>(note?.attachedImages || []);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [copied, setCopied] = useState(false);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -135,15 +134,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
   }, [note]);
 
   const handleSave = () => {
-    console.log('📝 NoteEditor: handleSave called');
-    console.log('📝 Title:', title);
-    console.log('📝 Content length:', content.length);
-    console.log('📝 LinkedTaskIds:', linkedTaskIds);
-    
-    if (!title.trim()) {
-      console.log('❌ NoteEditor: Title is empty, not saving');
-      return;
-    }
+    if (!title.trim()) return;
     
     const noteData: CreateNoteData = {
       title: title.trim(),
@@ -152,18 +143,12 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
       tags,
       linkedTaskIds,
       color: color || undefined,
-      attachedImages: attachedImages // Incluir imagens anexadas
+      attachedImages,
     };
 
-    console.log('📝 NoteEditor: Saving note data:', noteData);
-    console.log('📝 NoteEditor: onSave available:', !!onSave);
-    console.log('📝 NoteEditor: onClose available:', !!onClose);
-
     if (onSave) {
-      console.log('📝 NoteEditor: Calling onSave');
       onSave(noteData);
     } else if (onClose) {
-      console.log('📝 NoteEditor: Calling onClose');
       onClose();
     }
   };
@@ -468,24 +453,26 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
             <button
               onClick={() => {
                 navigator.clipboard.writeText(content);
-                // TODO: Add toast notification
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
               }}
               style={{
-                background: 'none',
-                border: `1px solid ${isDark ? 'var(--color-border-primary)' : '#E5E7EB'}`,
-                color: isDark ? 'var(--color-text-primary)' : '#374151',
+                background: copied ? (isDark ? 'rgba(0, 212, 170, 0.15)' : 'rgba(0, 212, 170, 0.1)') : 'none',
+                border: `1px solid ${copied ? 'var(--color-primary-teal)' : (isDark ? 'var(--color-border-primary)' : '#E5E7EB')}`,
+                color: copied ? 'var(--color-primary-teal)' : (isDark ? 'var(--color-text-primary)' : '#374151'),
                 cursor: 'pointer',
                 padding: '6px 12px',
                 borderRadius: 6,
                 fontSize: 14,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6
+                gap: 6,
+                transition: 'all 0.2s ease',
               }}
               title="Copiar conteúdo"
             >
               <Copy size={14} />
-              Copiar
+              {copied ? 'Copiado!' : 'Copiar'}
             </button>
           )}
 

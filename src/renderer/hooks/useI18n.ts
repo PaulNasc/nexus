@@ -81,10 +81,10 @@ const translations: Translations = {
     'startTimerDescription': 'Começar a cronometrar',
     
     // Footer
-    'version': 'Krigzis v1.0.0 - Fase 2 Completa',
+    'version': 'Nexus v1.0.0 - Fase 2 Completa',
     
     // Loading
-    'loading': 'Carregando Krigzis...',
+    'loading': 'Carregando Nexus...',
     'loadingDescription': 'Preparando seu ambiente de produtividade',
     
     // Meta
@@ -123,8 +123,40 @@ const translations: Translations = {
     'accessibility.clearDataSuccess': 'Todos os dados foram removidos com sucesso',
     'accessibility.hostOnly': 'Disponível apenas para hosts de sessão',
 
+    // Productivity
+    'productivity.title': 'Produtividade',
+    'productivity.tips': 'Dicas de Produtividade',
+    'productivity.tipsDesc': 'Exibir dicas diárias no Dashboard',
+    'productivity.insights': 'Insights de Progresso',
+    'productivity.insightsDesc': 'Exibir análises do seu progresso no Dashboard',
+    'productivity.aiAssistant': 'Assistente IA',
+    'productivity.aiResponseMode': 'Modo de Resposta da IA',
+    'productivity.aiResponseModeDesc': 'Define o nível de detalhe nas respostas da IA',
+    'productivity.aiProactive': 'Modo Proativo',
+    'productivity.aiProactiveDesc': 'IA sugere ações e melhorias automaticamente',
+    'productivity.aiDetailed': 'Detalhado',
+    'productivity.aiBalanced': 'Balanceado',
+    'productivity.aiConcise': 'Conciso',
+
+    // Notifications
+    'notifications.generalSettings': 'Configurações Gerais',
+    'notifications.enable': 'Ativar Notificações',
+    'notifications.enableDesc': 'Receber notificações do sistema',
+    'notifications.sound': 'Som de Notificação',
+    'notifications.soundDesc': 'Tocar som ao receber notificações',
+    'notifications.categories': 'Categorias de Notificação',
+    'notifications.taskReminders': 'Lembretes de Tarefas',
+    'notifications.taskRemindersDesc': 'Notificar sobre tarefas com prazo próximo',
+    'notifications.todayTasks': 'Tarefas do Dia',
+    'notifications.todayTasksDesc': 'Notificar sobre tarefas agendadas para hoje',
+    'notifications.overdueTasks': 'Tarefas Atrasadas',
+    'notifications.overdueTasksDesc': 'Notificar sobre tarefas com prazo vencido',
+    'notifications.productivityInsights': 'Insights de Produtividade',
+    'notifications.productivityInsightsDesc': 'Notificar sobre conquistas e estatísticas',
+    'notifications.testDesc': 'Envia uma notificação de teste para verificar as configurações',
+
     // About Section
-    'about.title': 'Sobre o Krigzis',
+    'about.title': 'Sobre o Nexus',
     'about.version': 'Versão {{version}}',
     'about.description': 'Sistema de gerenciamento de tarefas com foco em produtividade',
     'about.machineId': 'ID da Máquina',
@@ -226,10 +258,10 @@ const translations: Translations = {
     'startTimerDescription': 'Start timing',
     
     // Footer
-    'version': 'Krigzis v1.0.0 - Phase 2 Complete',
+    'version': 'Nexus v1.0.0 - Phase 2 Complete',
     
     // Loading
-    'loading': 'Loading Krigzis...',
+    'loading': 'Loading Nexus...',
     'loadingDescription': 'Preparing your productivity environment',
     
     // Meta
@@ -269,7 +301,7 @@ const translations: Translations = {
     'accessibility.hostOnly': 'Available only for session hosts',
 
     // About Section
-    'about.title': 'About Krigzis',
+    'about.title': 'About Nexus',
     'about.version': 'Version {{version}}',
     'about.description': 'Task management system focused on productivity',
     'about.machineId': 'Machine ID',
@@ -371,10 +403,10 @@ const translations: Translations = {
     'startTimerDescription': 'Comenzar a cronometrar',
     
     // Footer
-    'version': 'Krigzis v1.0.0 - Fase 2 Completa',
+    'version': 'Nexus v1.0.0 - Fase 2 Completa',
     
     // Loading
-    'loading': 'Cargando Krigzis...',
+    'loading': 'Cargando Nexus...',
     'loadingDescription': 'Preparando tu entorno de productividad',
     
     // Meta
@@ -414,7 +446,7 @@ const translations: Translations = {
     'accessibility.hostOnly': 'Disponible solo para hosts de sesión',
 
     // About Section
-    'about.title': 'Acerca de Krigzis',
+    'about.title': 'Acerca de Nexus',
     'about.version': 'Versión {{version}}',
     'about.description': 'Sistema de gestión de tareas enfocado en productividad',
     'about.machineId': 'ID de Máquina',
@@ -446,7 +478,9 @@ const translations: Translations = {
   }
 };
 
-const STORAGE_KEY = 'krigzis-language';
+const STORAGE_KEY = 'nexus-language';
+const LEGACY_STORAGE_KEY = 'krigzis-language';
+
 const DEFAULT_LANGUAGE: Language = 'pt-BR';
 
 export const useI18n = () => {
@@ -455,9 +489,10 @@ export const useI18n = () => {
   // Load language from localStorage on mount
   useEffect(() => {
     try {
-      const storedLanguage = localStorage.getItem(STORAGE_KEY) as Language;
+      const storedLanguage = (localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY)) as Language;
       if (storedLanguage && translations[storedLanguage]) {
         setCurrentLanguage(storedLanguage);
+        localStorage.setItem(STORAGE_KEY, storedLanguage);
       }
     } catch (error) {
       console.error('Error loading language preference:', error);

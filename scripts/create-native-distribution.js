@@ -1,5 +1,5 @@
 /**
- * Script para criar distribuição nativa do Krigzis
+ * Script para criar distribuição nativa do Nexus
  * Gera executável com ícone próprio e atalho na área de trabalho
  */
 
@@ -14,7 +14,7 @@ async function createNativeDistribution() {
     const packageJson = require(PACKAGE_JSON_PATH);
     const version = packageJson.version;
     
-    console.log(`🚀 Criando distribuição nativa do Krigzis v${version}...`);
+    console.log(`🚀 Criando distribuição nativa do Nexus v${version}...`);
     
     try {
         // 1. Preparar dados limpos para distribuição
@@ -51,7 +51,7 @@ async function cleanUserData() {
     const cleanDataScript = `
 // Script para limpar dados do usuário na primeira execução
 (function() {
-    const isFirstRun = !localStorage.getItem('krigzis-first-run-completed');
+    const isFirstRun = !localStorage.getItem('nexus-first-run-completed');
     
     if (isFirstRun) {
         console.log('🧹 Primeira execução: limpando dados de desenvolvimento...');
@@ -59,7 +59,7 @@ async function cleanUserData() {
         // Limpar todos os dados de desenvolvimento
         const allKeys = Object.keys(localStorage);
         allKeys.forEach(key => {
-            if (key.startsWith('krigzis-')) {
+            if (key.startsWith('krigzis-') || key.startsWith('nexus-')) {
                 localStorage.removeItem(key);
             }
         });
@@ -95,8 +95,8 @@ async function cleanUserData() {
             showProgressInsights: true
         };
         
-        localStorage.setItem('krigzis-user-settings', JSON.stringify(cleanSettings));
-        localStorage.setItem('krigzis-first-run-completed', 'true');
+        localStorage.setItem('nexus-user-settings', JSON.stringify(cleanSettings));
+        localStorage.setItem('nexus-first-run-completed', 'true');
         
         console.log('✅ Dados limpos e configurações padrão aplicadas');
     }
@@ -133,7 +133,7 @@ async function updatePackageForDistribution() {
         main: "./dist/main/index.js",
         build: {
             ...packageJson.build,
-            artifactName: "Krigzis-v${version}-${os}-${arch}.${ext}",
+            artifactName: "Nexus-v${version}-${os}-${arch}.${ext}",
             directories: {
                 output: "dist",
                 buildResources: "assets"
@@ -163,7 +163,7 @@ async function updatePackageForDistribution() {
                 allowToChangeInstallationDirectory: true,
                 createDesktopShortcut: true,
                 createStartMenuShortcut: true,
-                shortcutName: "Krigzis",
+                shortcutName: "Nexus",
                 displayLanguageSelector: false,
                 installerLanguages: ["portuguese_br"],
                 language: "2070", // Portuguese Brazil
@@ -241,12 +241,12 @@ async function createPortableDistribution() {
     // Criar executável PowerShell melhorado
     const executableScript = `
 @echo off
-title Krigzis - Gerenciador de Tarefas
+title Nexus - Gerenciador de Tarefas
 cd /d "%~dp0"
 
 echo.
 echo ========================================
-echo       Krigzis - Task Manager v${packageJson.version}
+echo       Nexus - Task Manager v${packageJson.version}
 echo ========================================
 echo.
 
@@ -255,7 +255,7 @@ where node >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo ❌ Node.js não encontrado!
     echo.
-    echo Para usar o Krigzis, instale o Node.js:
+    echo Para usar o Nexus, instale o Node.js:
     echo https://nodejs.org/
     echo.
     pause
@@ -274,7 +274,7 @@ if not exist node_modules\\electron (
 )
 
 REM Iniciar aplicação
-echo ✅ Iniciando Krigzis...
+echo ✅ Iniciando Nexus...
 echo.
 npx electron . --no-sandbox
 
@@ -286,15 +286,15 @@ if %ERRORLEVEL% NEQ 0 (
 )
 `;
     
-    await fs.writeFile(path.join(BUILD_DIR, 'Krigzis.bat'), executableScript);
+    await fs.writeFile(path.join(BUILD_DIR, 'Nexus.bat'), executableScript);
     
     // Criar README detalhado
-    const readme = `# Krigzis v${packageJson.version} - Distribuição Portável
+    const readme = `# Nexus v${packageJson.version} - Distribuição Portável
 
 ## 🚀 Como usar
 
 ### Execução simples:
-1. Clique duas vezes em \`Krigzis.bat\`
+1. Clique duas vezes em \`Nexus.bat\`
 2. Aguarde a instalação automática das dependências
 3. A aplicação será iniciada
 
@@ -322,8 +322,8 @@ Na primeira execução, o sistema:
 ## 📁 Estrutura de arquivos
 
 \`\`\`
-Krigzis/
-├── Krigzis.bat          # Executável principal
+Nexus/
+├── Nexus.bat          # Executável principal
 ├── dist/                # Aplicação compilada
 ├── assets/              # Ícones e recursos
 ├── package.json         # Configurações
@@ -332,7 +332,7 @@ Krigzis/
 
 ## 🆔 Ícone personalizado
 
-Esta distribuição inclui o ícone oficial do Krigzis com o gradiente
+Esta distribuição inclui o ícone oficial do Nexus com o gradiente
 teal/purple característico da marca.
 
 ---

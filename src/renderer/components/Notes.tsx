@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import useNotes from '../hooks/useNotes';
+import { useNotes } from '../contexts/NotesContext';
+import { useTasks } from '../contexts/TasksContext';
 import { Note, CreateNoteData } from '../../shared/types/note';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
@@ -13,10 +14,12 @@ import { ConfirmDeleteNoteModal } from './ConfirmDeleteNoteModal';
 
 interface NotesProps {
   onBack?: () => void;
+  initialNoteId?: number;
 }
 
-export const Notes: React.FC<NotesProps> = ({ onBack }) => {
+export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
   const { notes, isLoading, error, fetchNotes, deleteNote, createNote, updateNote } = useNotes();
+  const { tasks: allTasks } = useTasks();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -34,32 +37,17 @@ export const Notes: React.FC<NotesProps> = ({ onBack }) => {
   });
 
   const [viewer, setViewer] = useState<{ isOpen: boolean; note: Note | null }>({ isOpen: false, note: null });
+
+  // Auto-abrir nota quando vindo de TaskList com initialNoteId
+  useEffect(() => {
+    if (initialNoteId && notes.length > 0) {
+      const note = notes.find(n => n.id === initialNoteId);
+      if (note) {
+        setViewer({ isOpen: true, note });
+      }
+    }
+  }, [initialNoteId, notes]);
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; note: Note | null; taskTitles: string[] }>({ isOpen: false, note: null, taskTitles: [] });
-
-  // Debug: Verificar se as variáveis CSS estão sendo aplicadas
-  useEffect(() => {
-    const rootStyle = getComputedStyle(document.documentElement);
-    console.log('🎨 Debug CSS Variables:');
-    console.log('--space-6:', rootStyle.getPropertyValue('--space-6'));
-    console.log('--color-text-primary:', rootStyle.getPropertyValue('--color-text-primary'));
-    console.log('--color-bg-card:', rootStyle.getPropertyValue('--color-bg-card'));
-    console.log('--font-size-2xl:', rootStyle.getPropertyValue('--font-size-2xl'));
-  }, []);
-
-  // Debug: Verificar dados das notas
-  useEffect(() => {
-    console.log('📝 Notes Debug:');
-    console.log('Notes count:', notes.length);
-    console.log('Notes data:', notes);
-    notes.forEach((note, index) => {
-      console.log(`Note ${index + 1}:`, {
-        id: note.id,
-        title: note.title,
-        linkedTaskIds: note.linkedTaskIds,
-        hasLinks: note.linkedTaskIds && note.linkedTaskIds.length > 0
-      });
-    });
-  }, [notes]);
 
   useEffect(() => {
     fetchNotes();
@@ -71,59 +59,32 @@ export const Notes: React.FC<NotesProps> = ({ onBack }) => {
     (note.tags && note.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())))
   );
 
-  // Debug: Verificar notes filtradas
-  useEffect(() => {
-    console.log('🔍 Filtered notes debug:');
-    console.log('Total notes:', notes.length);
-    console.log('Filtered notes:', filteredNotes.length);
-    filteredNotes.forEach((note, index) => {
-      console.log(`Filtered note ${index + 1}:`, {
-        id: note.id,
-        title: note.title,
-        linkedTaskIds: note.linkedTaskIds,
-        hasLinks: note.linkedTaskIds && note.linkedTaskIds.length > 0,
-        shouldShowLink: Boolean(note.linkedTaskIds && note.linkedTaskIds.length > 0)
-      });
-    });
-  }, [filteredNotes, notes]);
-
   const handleNoteClick = (note: Note) => {
     setSelectedNote(note);
     setIsEditing(true);
   };
 
   const handleNewNote = () => {
-    console.log('📝 Creating new note...');
     setSelectedNote(null);
     setIsEditing(true);
   };
 
   const handleCloseEditor = useCallback(() => {
-    console.log('📝 Notes: handleCloseEditor called');
     setIsEditing(false);
     setSelectedNote(null);
-    console.log('📝 Notes: fetchNotes called after editor close');
-    fetchNotes(); // Refresh notes after editing
+    fetchNotes();
   }, [fetchNotes]);
 
   const handleSaveNote = useCallback(async (noteData: CreateNoteData) => {
-    console.log('📝 Notes: handleSaveNote called with:', noteData);
     try {
       if (selectedNote) {
-        // Updating existing note
-        console.log('📝 Notes: Updating existing note:', selectedNote.id);
         await updateNote(selectedNote.id, noteData);
-        console.log('✅ Notes: Note updated successfully');
       } else {
-        // Creating new note
-        console.log('📝 Notes: Creating new note');
-        const newNote = await createNote(noteData);
-        console.log('✅ Notes: Note created successfully:', newNote);
+        await createNote(noteData);
       }
-      // Close editor after successful save
       handleCloseEditor();
     } catch (error) {
-      console.error('❌ Notes: Error saving note:', error);
+      console.error('Error saving note:', error);
     }
   }, [selectedNote, createNote, updateNote, handleCloseEditor]);
 
@@ -131,20 +92,11 @@ export const Notes: React.FC<NotesProps> = ({ onBack }) => {
     try {
       const linkedIds = note.linkedTaskIds || [];
       if (linkedIds.length > 0) {
-        try {
-          const allTasks = await (window as any).electronAPI?.database?.getAllTasks?.();
-          const linkedTitles: string[] = Array.isArray(allTasks)
-            ? allTasks
-                .filter((t: any) => linkedIds.includes(t.id))
-                .map((t: any) => String(t.title))
-            : [];
-          setConfirmDelete({ isOpen: true, note, taskTitles: linkedTitles });
-          return;
-        } catch (err) {
-          console.warn('Não foi possível carregar títulos das tarefas vinculadas:', err);
-          setConfirmDelete({ isOpen: true, note, taskTitles: [] });
-          return;
-        }
+        const linkedTitles: string[] = allTasks
+          .filter(t => linkedIds.includes(t.id))
+          .map(t => String(t.title));
+        setConfirmDelete({ isOpen: true, note, taskTitles: linkedTitles });
+        return;
       }
       // Sem vínculos: excluir direto com modal simples
       setConfirmDelete({ isOpen: true, note, taskTitles: [] });
@@ -403,7 +355,6 @@ export const Notes: React.FC<NotesProps> = ({ onBack }) => {
                             <div
                               onClick={(e) => {
                                 e.stopPropagation();
-                                console.log('🔗 Task link clicked for note:', note.id, 'linkedTaskIds:', note.linkedTaskIds);
                                 showLinkedTasks(note);
                               }}
                               className="task-link"

@@ -3,7 +3,7 @@ const CopyPlugin = require('copy-webpack-plugin');
 
 module.exports = {
   mode: process.env.NODE_ENV || 'development',
-  entry: './src/main/index.ts',
+  entry: './src/main/bootstrap.ts',
   target: 'electron-main',
   output: {
     path: path.resolve(__dirname, 'dist/main'),
@@ -49,7 +49,8 @@ module.exports = {
   plugins: [
     new CopyPlugin({
       patterns: [
-        { from: 'assets', to: '../assets' }
+        { from: 'assets', to: '../assets' },
+        { from: 'node_modules/node-unrar-js/dist/js/unrar.wasm', to: 'unrar.wasm' }
       ],
     }),
   ]

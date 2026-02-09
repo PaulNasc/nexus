@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Task } from '../../shared/types/task';
+import { useTasks } from '../contexts/TasksContext';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { Badge } from './ui/Badge';
@@ -20,28 +21,10 @@ export const LinkedTasksModal: React.FC<LinkedTasksModalProps> = ({
   noteTitle,
   linkedTaskIds
 }) => {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const { tasks: allTasks, loading: isLoading } = useTasks();
   const [expandedTasks, setExpandedTasks] = useState<Set<number>>(new Set());
-  const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && linkedTaskIds.length > 0) {
-      loadLinkedTasks();
-    }
-  }, [isOpen, linkedTaskIds]);
-
-  const loadLinkedTasks = async () => {
-    setIsLoading(true);
-    try {
-      const allTasks = await (window as any).electronAPI.database.getAllTasks();
-      const linkedTasks = allTasks.filter((task: Task) => linkedTaskIds.includes(task.id));
-      setTasks(linkedTasks);
-    } catch (error) {
-      console.error('Error loading linked tasks:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const tasks = allTasks.filter((task: Task) => linkedTaskIds.includes(task.id));
 
   const toggleTaskExpansion = (taskId: number) => {
     setExpandedTasks(prev => {

@@ -7,7 +7,6 @@ import {
   Save, 
   X, 
   Palette,
-  Hash,
   AlertCircle,
   Check,
   ShieldCheck,
@@ -34,12 +33,12 @@ import {
   Zap,
   CheckCircle
 } from 'lucide-react';
-import { useCategories } from '../hooks/useCategories';
-import { useDatabase } from '../hooks/useDatabase';
+import { useCategories } from '../contexts/CategoriesContext';
 import { useTheme } from '../hooks/useTheme';
 import { Category } from '../../shared/types/task';
 
 // Mapeamento de ícones
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const iconMap: { [key: string]: React.ComponentType<any> } = {
   Folder,
   Home,
@@ -83,8 +82,7 @@ interface CategoryManagerProps {
 }
 
 export const CategoryManager: React.FC<CategoryManagerProps> = ({ onSave }) => {
-  const { tasks } = useDatabase();
-  const { categories, loading, error, createCategory, updateCategory, deleteCategory } = useCategories(tasks);
+  const { categories, loading, error, createCategory, updateCategory, deleteCategory } = useCategories();
   const { theme } = useTheme();
   
   const isDark = theme.mode === 'dark';
@@ -124,9 +122,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onSave }) => {
     }
 
     try {
-      console.log('🔍 CategoryManager: Criando categoria:', newCategory);
-      const createdCategory = createCategory(newCategory);
-      console.log('✅ CategoryManager: Categoria criada:', createdCategory);
+      createCategory(newCategory);
       
       setNewCategory({ name: '', color: '#00D4AA', icon: 'Folder' });
       setShowAddForm(false);
@@ -158,8 +154,8 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onSave }) => {
     }
 
     try {
-      const success = deleteCategory(categoryId);
-      if (success) {
+      const deleted = await deleteCategory(categoryId);
+      if (deleted) {
         setSuccess('Categoria excluída com sucesso!');
         if (onSave) onSave();
       }
@@ -167,11 +163,6 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onSave }) => {
       setLocalError('Erro ao excluir categoria');
       console.error('Error deleting category:', err);
     }
-  };
-
-  const clearMessages = () => {
-    setLocalError(null);
-    setSuccess(null);
   };
 
   if (loading) {

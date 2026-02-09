@@ -1,12 +1,12 @@
 /**
- * Gerador de Ícones Simples para Krigzis
+ * Gerador de Ícones Simples para Nexus
  * Cria ícones SVG que podem ser convertidos para outros formatos
  */
 
 const fs = require('fs');
 const path = require('path');
 
-// Cores do Krigzis
+// Cores do Nexus
 const COLORS = {
     teal: '#00D4AA',
     purple: '#7B3FF2',
@@ -21,7 +21,7 @@ function createSVGIcon(size) {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="krigzisGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="nexusGradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:${COLORS.teal};stop-opacity:1" />
       <stop offset="100%" style="stop-color:${COLORS.purple};stop-opacity:1" />
     </linearGradient>
@@ -31,9 +31,9 @@ function createSVGIcon(size) {
   </defs>
   
   <!-- Fundo circular com gradiente -->
-  <circle cx="${center}" cy="${center}" r="${radius}" fill="url(#krigzisGradient)" stroke="rgba(255,255,255,0.2)" stroke-width="${Math.max(1, size/128)}"/>
+  <circle cx="${center}" cy="${center}" r="${radius}" fill="url(#nexusGradient)" stroke="rgba(255,255,255,0.2)" stroke-width="${Math.max(1, size/128)}"/>
   
-  <!-- Letra K estilizada -->
+  <!-- Letra N estilizada -->
   <text x="${center}" y="${center}" 
         font-family="Arial, sans-serif" 
         font-size="${fontSize}" 
@@ -41,7 +41,7 @@ function createSVGIcon(size) {
         text-anchor="middle" 
         dominant-baseline="central" 
         fill="${COLORS.white}" 
-        filter="url(#textShadow)">K</text>
+        filter="url(#textShadow)">N</text>
 </svg>`;
 }
 
@@ -87,7 +87,7 @@ function createFaviconICO() {
 }
 
 function main() {
-    console.log('🚀 Criando ícones Krigzis...');
+    console.log('🚀 Criando ícones Nexus...');
     
     // Criar diretório assets
     const assetsDir = path.join(__dirname, 'assets');
@@ -111,7 +111,7 @@ function main() {
     console.log('✅ Criado: assets/icon.svg (ícone principal)');
     
     // Criar README com instruções
-    const readme = `# Ícones Krigzis
+    const readme = `# Ícones Nexus
 
 Ícones criados automaticamente baseados no design da aplicação.
 

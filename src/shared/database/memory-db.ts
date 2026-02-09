@@ -1,7 +1,8 @@
 // Banco de dados em memória com persistência em arquivo JSON
 import fs from 'fs';
 import path from 'path';
-import { Note, CreateNoteData, UpdateNoteData, NoteStats, NoteAttachment } from '../types/note';
+import { Note, CreateNoteData, UpdateNoteData, NoteStats } from '../types/note';
+import type { ImportResult } from '../types/backup';
 
 export interface Task {
   id: number;
@@ -37,7 +38,21 @@ class MemoryDatabase {
   private constructor() {
     // Usar o diretório de dados do usuário ou fallback para o diretório atual
     const userDataPath = process.env.APPDATA || process.env.HOME || process.cwd();
-    const dataDir = path.join(userDataPath, 'Krigzis', 'data');
+    const legacy = path.join(userDataPath, 'Krigzis', 'data');
+    const target = path.join(userDataPath, 'Nexus', 'data');
+    try {
+      if (fs.existsSync(legacy) && !fs.existsSync(target)) {
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.renameSync(legacy, target);
+      }
+    } catch {
+      // fallback to legacy if migration fails
+      if (fs.existsSync(legacy)) {
+        this.dataPath = path.join(legacy, 'memory-data.json');
+        return;
+      }
+    }
+    const dataDir = target;
     this.dataPath = path.join(dataDir, 'memory-data.json');
   }
 
@@ -377,25 +392,20 @@ class MemoryDatabase {
   }
 
   public async unlinkNoteFromTask(noteId: number): Promise<void> {
-    // Remove todas as tarefas vinculadas a esta nota
     const note = this.notes.find(n => n.id === noteId);
     if (!note || !note.linkedTaskIds) return;
 
     note.linkedTaskIds.forEach(taskId => {
       const task = this.tasks.find(t => t.id === taskId);
-      if (task) {
-        task.linkedNoteId = undefined;
-      }
+      if (task) task.linkedNoteId = undefined;
     });
-    
+
     note.linkedTaskIds = [];
     this.saveToFile();
   }
 
   public async close(): Promise<void> {
-    // Salvar dados antes de fechar
     this.saveToFile();
-    // Memory database saved and closed
   }
 
   public async clearAll(): Promise<void> {
@@ -404,7 +414,6 @@ class MemoryDatabase {
     this.nextTaskId = 1;
     this.nextNoteId = 1;
     this.saveToFile();
-    // All data cleared from memory database
   }
 
   public async exportData(): Promise<string> {
@@ -418,27 +427,144 @@ class MemoryDatabase {
   }
 
   public async importData(jsonData: string): Promise<void> {
-    try {
-      const data = JSON.parse(jsonData);
-      if (data.tasks && Array.isArray(data.tasks)) {
-        this.tasks = data.tasks;
-        this.nextTaskId = Math.max(...this.tasks.map(t => t.id), 0) + 1;
-        
-        if (data.notes && Array.isArray(data.notes)) {
-          this.notes = data.notes;
-          this.nextNoteId = Math.max(...this.notes.map(n => n.id), 0) + 1;
-        }
-        
-        this.saveToFile();
-        // Data imported successfully
-      } else {
-        throw new Error('Invalid data format');
-      }
-    } catch (error) {
-      console.error('❌ Failed to import data:', error);
-      throw error;
+    const data = JSON.parse(jsonData);
+    if (data.tasks && Array.isArray(data.tasks)) {
+      this.tasks = data.tasks;
+      this.nextTaskId = Math.max(...this.tasks.map((t: Task) => t.id), 0) + 1;
     }
+    if (data.notes && Array.isArray(data.notes)) {
+      this.notes = data.notes;
+      this.nextNoteId = Math.max(...this.notes.map((n: Note) => n.id), 0) + 1;
+    }
+    this.saveToFile();
+  }
+
+  public async mergeData(data: { tasks: Task[]; notes: Note[] }): Promise<ImportResult> {
+    const result: ImportResult = {
+      success: true,
+      imported: { tasks: 0, notes: 0, categories: 0 },
+      warnings: [],
+      errors: [],
+    };
+
+    const taskIdMap = new Map<number, number>();
+    const noteIdMap = new Map<number, number>();
+
+    for (const incomingTask of data.tasks) {
+      const existingTask = this.tasks.find((t) => t.id === incomingTask.id);
+      if (existingTask) {
+        const newId = this.nextTaskId++;
+        taskIdMap.set(incomingTask.id, newId);
+        const now = new Date().toISOString();
+        this.tasks.push({ ...incomingTask, id: newId, created_at: now, updated_at: now });
+        result.imported.tasks++;
+        result.warnings.push({ type: 'task', message: `Tarefa com ID ${incomingTask.id} já existe, importada com novo ID ${newId}.`, item: incomingTask });
+      } else {
+        if (incomingTask.id >= this.nextTaskId) {
+          this.nextTaskId = incomingTask.id + 1;
+        }
+        this.tasks.push(incomingTask);
+        result.imported.tasks++;
+      }
+    }
+
+    for (const incomingNote of data.notes) {
+      const existingNote = this.notes.find((n) => n.id === incomingNote.id);
+      if (existingNote) {
+        const newId = this.nextNoteId++;
+        noteIdMap.set(incomingNote.id, newId);
+        const now = new Date().toISOString();
+        const nextNote: Note = { ...incomingNote, id: newId, created_at: now, updated_at: now };
+        if (Array.isArray(nextNote.attachments)) {
+          nextNote.attachments = nextNote.attachments.map((a) => ({ ...a, noteId: newId }));
+        }
+        this.notes.push(nextNote);
+        result.imported.notes++;
+        result.warnings.push({ type: 'note', message: `Nota com ID ${incomingNote.id} já existe, importada com novo ID ${newId}.`, item: incomingNote });
+      } else {
+        if (incomingNote.id >= this.nextNoteId) {
+          this.nextNoteId = incomingNote.id + 1;
+        }
+        const nextId = incomingNote.id;
+        const nextNote: Note = { ...incomingNote, id: nextId };
+        if (Array.isArray(nextNote.attachments)) {
+          nextNote.attachments = nextNote.attachments.map((a) => ({ ...a, noteId: nextId }));
+        }
+        this.notes.push(nextNote);
+        result.imported.notes++;
+      }
+    }
+
+    this.tasks.forEach(task => {
+      if (task.linkedNoteId && noteIdMap.has(task.linkedNoteId)) {
+        task.linkedNoteId = noteIdMap.get(task.linkedNoteId);
+      }
+    });
+
+    this.notes.forEach(note => {
+      if (note.linkedTaskIds) {
+        note.linkedTaskIds = note.linkedTaskIds
+          .map(taskId => taskIdMap.has(taskId) ? taskIdMap.get(taskId)! : taskId)
+          .filter(id => this.tasks.some(t => t.id === id));
+      }
+      if (Array.isArray(note.attachments)) {
+        note.attachments = note.attachments.map((a) => {
+          if (noteIdMap.has(a.noteId)) {
+            return { ...a, noteId: noteIdMap.get(a.noteId)! };
+          }
+          return a;
+        });
+      }
+    });
+
+    this.saveToFile();
+
+    // Attach imported data so the renderer can sync to Supabase
+    result.importedNotes = data.notes.map(n => ({
+      title: n.title,
+      content: n.content,
+      format: n.format || 'text',
+      tags: n.tags,
+      attachedImages: n.attachedImages,
+    }));
+    result.importedTasks = data.tasks.map(t => ({
+      title: t.title,
+      description: t.description,
+      status: t.status,
+      priority: typeof t.priority === 'number' ? String(t.priority) : t.priority,
+    }));
+
+    return result;
+  }
+
+  // Métodos para backup/restore
+  public setDataPath(newPath: string): void {
+    this.dataPath = newPath;
+  }
+
+  public getDataPath(): string {
+    return this.dataPath;
+  }
+
+  public async backupData(): Promise<void> {
+    const data = await this.exportData();
+    const backupPath = path.join(path.dirname(this.dataPath), 'backup.json');
+    fs.writeFileSync(backupPath, data);
+  }
+
+  public async restoreData(): Promise<void> {
+    const backupPath = path.join(path.dirname(this.dataPath), 'backup.json');
+    const data = fs.readFileSync(backupPath, 'utf8');
+    await this.importData(data);
+  }
+
+  public getNextTaskId(): number {
+    return this.nextTaskId;
+  }
+
+  public getNextNoteId(): number {
+    return this.nextNoteId;
   }
 }
 
-export default MemoryDatabase; 
+export default MemoryDatabase;

@@ -1,5 +1,5 @@
 /**
- * Build manual do Krigzis - Contorna problemas do electron-builder
+ * Build manual do Nexus - Contorna problemas do electron-builder
  * Cria uma distribuição funcional sem problemas de permissões
  */
 
@@ -11,7 +11,7 @@ const BUILD_DIR = path.join(__dirname, '..', 'manual-build');
 const DIST_DIR = path.join(__dirname, '..', 'dist');
 
 async function createManualBuild() {
-    console.log('🚀 Criando build manual do Krigzis...');
+    console.log('🚀 Criando build manual do Nexus...');
     
     try {
         // 1. Limpar diretório de build
@@ -58,9 +58,9 @@ async function createManualBuild() {
         
         // 5. Criar script de inicialização
         const startScript = `@echo off
-title Krigzis - Task Manager
+title Nexus - Task Manager
 echo.
-echo 🚀 Iniciando Krigzis...
+echo 🚀 Iniciando Nexus...
 echo.
 
 REM Verificar se Node.js está disponível
@@ -68,7 +68,7 @@ where node >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo ❌ Node.js não encontrado!
     echo.
-    echo Para usar o Krigzis, você precisa instalar o Node.js:
+    echo Para usar o Nexus, você precisa instalar o Node.js:
     echo https://nodejs.org/
     echo.
     pause
@@ -112,7 +112,7 @@ if %ERRORLEVEL% NEQ 0 (
         fs.writeFileSync(path.join(BUILD_DIR, 'start.bat'), startScript);
         
         // 6. Criar README
-        const readme = `# Krigzis - Gerenciador de Tarefas
+        const readme = `# Nexus - Gerenciador de Tarefas
 
 ## 🚀 Como executar
 
@@ -154,7 +154,7 @@ a nova versão do GitHub Releases.
 
 ## 📧 Suporte
 
-Para suporte, visite: https://github.com/SEU-USUARIO/krigzis/issues
+Para suporte, visite: https://github.com/SEU-USUARIO/nexus/issues
 
 ---
 

@@ -1,1 +1,179 @@
-ewogICJuYW1lIjogImtyaWd6aXMiLAogICJ2ZXJzaW9uIjogIjEuMC4yIiwKICAiZGVzY3JpcHRpb24iOiAiVW0gc2lzdGVtYSBkZXNrdG9wIGRlIGdlcmVuY2lhbWVudG8gZGUgdGFyZWZhcyBjb20gSUEgaW50ZWdyYWRhLCBkZXNlbm9sdmlkbyBjb20gRWxlY3Ryb24sIFJlYWN0IGUgVHlwZVNjcmlwdC4iLAogICJtYWluIjogImRpc3QvbWFpbi9pbmRleC5qcyIsCiAgImhvbWVwYWdlIjogIi4vIiwKICAic2NyaXB0cyI6IHsKICAgICJpY29ucyI6ICJub2RlIGFzc2V0cy9nZW5lcmF0ZS1pY29ucy5qcyIsCiAgICAiZGV2IjogImNvbmN1cnJlbnRseSBcIm5wbSBydW4gZGV2OnJlbmRlcmVyXCIgXCIibnBtIHJ1biBkZXY6bWFpblwiIFwiW25wbSBydW4gc3RhcnQ6ZWxlY3Ryb25dXCIiIiwKICAgICJkZXY6c2ltcGxlIjogImNvbmN1cnJlbnRseSBcIm5wbSBydW4gYnVpbGQ6cmVuZGVyZXI6d2F0Y2hcIiBcIm5wbSBydW4gZGV2Om1haW5cIiBcIm5wbSBydW4gc3RhcnQ6ZWxlY3Ryb246d2FpdFwiIiwKICAgICJkZXY6d2F0Y2giOiAiY29uY3VycmVudGx5IFwibnBtIHJ1biBidWlsZDp yZW5kZXJlcjp3YXRjaFwiIFwibnBtIHJ1biBkZXY6bWFpblwiIFwibnBtIHJ1biBzdGFydDplbGVjdHJvbjp3YWl0XCIiLAogICAgImRldjptYWluIjogImNvbmN1cnJlbnRseSBcIndlYnBhY2sgLS1jb25maWcgd2VicGFjay5tYWluLmNvbmZpZy5qcyAtLW1vZGUgZGV2ZWxvcG1lbnQgLS13YXRjaFwiIFwi d2VicGFjayAtLWNvbmZpZyB3ZWJwYWNrLnByZWxvYWQuY29uZmlnLmpzIC0tbW9kZSBkZXZlbG9wbWVudCAtLXdhdGNoXCIiLAogICAgImRldjp yZW5kZXJlciI6ICJ3ZWJwYWNrIHNlcnZlIC0tY29uZmlnIHdlYnBhY2sucmVuZGVyZXIuY29uZmlnLmpzIC0tbW9kZSBkZXZlbG9wbWVudCIsCiAgICAiYnVpbGQiOiAibnBtIHJ1biBidWlsZDptYWluICYmIG5wbSBydW4gYnVpbGQ6cHJlbG9hZCAmJiBucG0gcnVuIGJ1aWxkOnJlbmRlcmVyIiwKICAgICJidWlsZDptYWluIjogIndlYnBhY2sgLS1jb25maWcgd2VicGFjay5tYWluLmNvbmZpZy5qcyAtLW1vZGUgcHJvZHVjdGlvbiIsCiAgICAiYnVpbGQ6cHJlbG9hZCI6ICJ3ZWJwYWNrIC0tY29uZmlnIHdlYnBhY2sucHJlbG9hZC5jb25maWcuanMgLS1tb2RlIHByb2R1Y3Rpb24iLAogICAgImJ1aWxkOnJlbmRlcmVyIjogIndlYnBhY2sgLS1jb25maWcgd2VicGFjay5yZW5kZXJlci5jb25maWcuanMgLS1tb2RlIHByb2R1Y3Rpb24iLAogICAgImJ1aWxkOnJlbmRlcmVyOndhdGNoIjogIndlYnBhY2sgLS1jb25maWcgd2VicGFjay5yZW5kZXJlci5zaW1wbGUuY29uZmlnLmpzIC0tbW9kZSBkZXZlbG9wbWVudCAtLXdhdGNoIiwKICAgICJzdGFydCI6ICJlbGVjdHJvbiAuIiwKICAgICJzdGFydDplbGVjdHJvbiI6ICJ3YWl0LW9uIGRpc3QvbWFpbi9pbmRleC5qcyBkaXN0L21haW4vcHJlbG9hZC5qcyAmJiB3YWl0LW9uIGh0dHA6Ly9sb2NhbGhvc3Q6MzAwMCAmJiBlbGVjdHJvbiAuIiwKICAgICJzdGFydDplbGVjdHJvbjp3YWl0IjogIndhaXQtb24gZGlzdC9tYWluL2luZGV4LmpzIGRpc3QvbWFpbi9wcmVsb2FkLmpzICYmIHdhaXQtb24gZGlzdC9yZW5kZXJlci9pbmRleC5odG1sICYmIGVsZWN0cm9uIC4iLAogICAgImNsZWFuIjogInJpbWVmIGRpc3QgcmVsZWFzZSIsCiAgICAibGludCI6ICJlc2xpbnQgc3JjIC0tZXh0IC50cywu dHN4IiwKICAgICJsaW50OmZpeCI6ICJlc2xpbnQgc3JjIC0tZXh0IC50cywu dHN4IC0tZml4IiwKICAgICJmb3JtYXQiOiAicHJldHRpZXIgLS13cml0ZSBcInNyYy8qKi8u e3RzLHRzeCxqcyxqc3gsanNvbixjc3MsbWR9XCIiLAogICAgInRlc3QiOiAiamVzdCIsCiAgICAicGFja2FnZSI6ICJlbGVjdHJvbi1idWlsZGVyIiwKICAgICJwYWNrYWdlOndpbiI6ICJucG0gcnVuIGJ1aWxkICYmIGVsZWN0cm9uLWJ1aWxkZXIgLS13aW4iLAogICAgInBhY2thZ2U6d2luOnBvcnRhYmxlIjogIm5wbSBydW4gYnVpbGQgJiYgZWxlY3Ryb24tYnVpbGRlciAtLXdpbiBwb3J0YWJsZSIsCiAgICAicGFja2FnZTp3aW46d2luc3RhbGxlciI6ICJub2RlIHNjcmlwdHMvYnVpbGQtd2luc3RhbGxlci5qcyIsCiAgICAicGFja2FnZTptYWMiOiAibnBtIHJ1biBidWlsZCAmJiBlbGVjdHJvbi1idWlsZGVyIC0tbWFjIiwKICAgICJwYWNrYWdlOmxpbnV4IjogIm5wbSBydW4gYnVpbGQgJiYgZWxlY3Ryb24tYnVpbGRlciAtLWxpbnV4IiwKICAgICJwYWNrYWdlOmFsbCI6ICJucG0gcnVuIGJ1aWxkICYmIGVsZWN0cm9uLWJ1aWxkZXIgLW13bCIsCiAgICAic2VjdXJpdHk6YXVkaXQiOiAibnBtIGF1ZGl0IiwKICAgICJzZWN1cml0eTpmaXgiOiAibnBtIGF1ZGl0IGZpeCIsCiAgICAibG9nZ2luZzpzZXR1cCI6ICJlY2hvICdMb2dnaW5nIHN5c3RlbSBpbml0aWFsaXplZCciLAogICAgImxvZ2dpbmc6dGVzdCI6ICJlY2hvICdUZXN0aW5nIGxvZ2dpbmcgc3lzdGVtLi4uJyIsCiAgICAibW9uaXRvcmluZzpzZXR1cCI6ICJlY2hvICdNb25pdG9yaW5nIHN5c3RlbSBpbml0aWFsaXplZCciLAogICAgIm1vbml0b3Jpbmc6dGVzdCI6ICJlY2hvICdUZXN0aW5nIG1vbml0b3JpbmcuLi4nIiwKICAgICJjcmFzaDoic2V0dXAiOiAiZWNobyAnQ3Jhc2ggcmVwb3J0aW5nIHN5c3RlbSBpbml0aWFsaXplZCciLAogICAgInVwZGF0ZXI6c2V0dXAiOiAiZWNobyAnQXV0by11cGRhdGVyIHN5c3RlbSBpbml0aWFsaXplZCciLAogICAgInVwZGF0ZXI6dGVzdCI6ICJlY2hvICdUZXN0aW5nIGF1dG8tdXBkYXRlcicuLi4nIiwKICAgICJ0ZXN0OnNldHVwIjogImVjaG8gJ1Rlc3Qgc3lzdGVtIGluaXRpYWxpemVkJyIsCiAgICAidGVzdDp1bml0IjogImplc3QgLS10ZXN0UGF0aFBhdHRlcm49c3JjIC0tdGVzdE5hbWVQYXR0ZXJuPSd1bml0JyIsCiAgICAidGVzdDppbnRlZ3JhdGlvbiI6ICJqZXN0IC0tdGVzdFBhdGhQYXR0ZXJuPXNyYyAtLXRlc3ROYW1lUGF0dGVybj0naW50ZWdyYXRpb24nIiwKICAgICJ0ZXN0OnVpIjogImplc3QgLS10ZXN0UGF0aFBhdHRlcm49c3JjIC0tdGVzdE5hbWVQYXR0ZXJuPSd1aSciLAogICAgImJ1aWxkOm9wdGltaXplIjogIm5wbSBydW4gYnVpbGQgJiYgZWNobyAnQnVuZGxlIG9wdGltaXplZCciLAogICAgImFuYWx5emUiOiAiZWNobyAnQnVuZGxlIGFuYWx5c2lzIGNvbXBsZXRhZG8nIiwKICAgICJkb2NzOm9yZ2FuaXplIjogIm5vZGUgc2NyaXB0cy9kb2NzLW9yZ2FuaXplci5qcyIKICB9LCAKICAia2V5d29yZHMiOiBbInRhc2stbWFuYWdlciIsInByb2R1Y3Rpdml0eSIsImFpIiwiZWxlY3Ryb24iLCJyZWFjdCIsInR5cGVzY3JpcHQiXSwKICAiYXV0aG9yIjogIiIsCiAgImxpY2Vuc2UiOiAiSVNDIiwKICAiZGVwZW5kZW5jaWVzIjoge30sCiAgImRlcGVuZGVuY2llcyI6IHt9LAogICJidWlsZCI6IHsiYXBwSWQiOiAiY29tLmtyaWd6aXMudGFza21hbmFnZXIiLCAicHJvZHVjdE5hbWUiOiAiS3JpZ3ppcyIsICJkaXJlY3RvcmllcyI6eyJvdXRwdXQiOiAicmVsZWFzZSJ9LCAiZmlsZXMiOlsiZGlzdC8qKioiLCJhc3NldHMvKioqIiwicGFja2FnZS5qc29uIl0sICJwdWJsaXNoIjp7InByb3ZpZGVyIjoiZ2l0aHViIiwicmVwbyI6ImtyaWd6aXMiLCJvd25lciI6IlBhdWxvSFlCRVgifX0sICJtYWM iOnsiaWNvbiI6ImFzc2V0cy9pY29uLmljbnMiLCAidGFyZ2V0IjpbeyJ0YXJnZXQiOiJkbWciLCJhcmNoIjpbIng2NCIsImFybTY0Il19XX0sICJsaW51eCI6eyJ0YXJnZXQiOlt7InRhcmdldCI6IkFwcEltYWdlIiwiYXJjaCI6WyJ4NjQiXX1dLCAiaWNvbiI6ImFzc2V0cy9pY29uLnBuZyIsImNhdGVnb3J5IjoiT2ZmaWNlIn0sICJudG1SZWJ1aWxkIjpmYWxzZSwgImJ1aWxkRGVwZW5kZW5jaWVzRnJvbVNvdXJjZSI6ZmFsc2UsICJuc2lzIjp7Im9uZUNsaWNrIjpmYWxzZSwgImFsbG93VG9DaGFuZ2VJbnN0YWxsYXRpb25EaXJlY3RvcnkiOnRydWUsICJjcmVhdGVEZXNrdG9wU2hvcnRjdXQiOnRydWUsICJjcmVhdGVTdGFydE1lbnVT aG9ydGN1dCI6dHJ1ZSwgInNob3J0Y3V0TmFtZSI6IktyaWd6aXMifSwgIndpbiI6eyJ0YXJnZXQiOlt7InRhcmdldCI6Im5zaXMiLCJhcmNoIjpbIng2NCJdfSx7InRhcmdldCI6InBvcnRhYmxlIiwiYXJjaCI6WyJ4NjQiXX1dLCAiaWNvbiI6ImFzc2V0cy9pY29uLmljbyIsInNpZ24iOmZhbHNlLCJ2ZXJpZnlVcGRhdGVDb2RlU2lnbmF0dXJlIjpmYWxzZSwicmVxdWVzdGVkRXhlY3V0aW9uTGV2ZWwiOiJhc0ludm9rZXIifX19
+{
+  "name": "nexus",
+  "version": "1.0.2",
+  "description": "Um sistema desktop de gerenciamento de tarefas com IA integrada, desenvolvido com Electron, React e TypeScript.",
+  "main": "dist/main/index.js",
+  "homepage": "./",
+  "scripts": {
+    "icons": "node assets/generate-icons.js",
+    "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\" \"npm run start:electron\"",
+    "dev:simple": "concurrently \"npm run build:renderer:watch\" \"npm run dev:main\" \"npm run start:electron:wait\"",
+    "dev:watch": "concurrently \"npm run build:renderer:watch\" \"npm run dev:main\" \"npm run start:electron:wait\"",
+    "dev:main": "concurrently \"webpack --config webpack.main.config.js --mode development --watch\" \"webpack --config webpack.preload.config.js --mode development --watch\"",
+    "dev:renderer": "webpack serve --config webpack.renderer.config.js --mode development",
+    "build": "npm run build:main && npm run build:preload && npm run build:renderer",
+    "build:main": "webpack --config webpack.main.config.js --mode production",
+    "build:preload": "webpack --config webpack.preload.config.js --mode production",
+    "build:renderer": "webpack --config webpack.renderer.config.js --mode production",
+    "build:renderer:watch": "webpack --config webpack.renderer.simple.config.js --mode development --watch",
+    "start": "electron .",
+    "start:electron": "wait-on dist/main/index.js dist/main/preload.js && wait-on http://localhost:3000 && electron .",
+    "start:electron:wait": "wait-on dist/main/index.js dist/main/preload.js && wait-on dist/renderer/index.html && electron .",
+    "clean": "rimraf dist release",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "test": "jest",
+    "package": "electron-builder",
+    "package:win": "npm run build && electron-builder --win",
+    "package:win:portable": "npm run build && electron-builder --win portable",
+    "package:win:winstaller": "node scripts/create-native-distribution.js",
+    "package:mac": "npm run build && electron-builder --mac",
+    "package:linux": "npm run build && electron-builder --linux",
+    "package:all": "npm run build && electron-builder -mwl",
+    "security:audit": "npm audit",
+    "security:fix": "npm audit fix",
+    "logging:setup": "echo 'Logging system initialized'",
+    "logging:test": "echo 'Testing logging system...'",
+    "monitoring:setup": "echo 'Monitoring system initialized'",
+    "monitoring:test": "echo 'Testing monitoring...'",
+    "crash:setup": "echo 'Crash reporting system initialized'",
+    "updater:setup": "echo 'Auto-updater system initialized'",
+    "updater:test": "echo 'Testing auto-updater...'",
+    "test:setup": "echo 'Test system initialized'",
+    "test:unit": "jest --testPathPattern=src --testNamePattern='unit'",
+    "test:integration": "jest --testPathPattern=src --testNamePattern='integration'",
+    "test:ui": "jest --testPathPattern=src --testNamePattern='ui'",
+    "build:optimize": "npm run build && echo 'Bundle optimized'",
+    "analyze": "echo 'Bundle analysis completado'",
+    "docs:organize": "node scripts/docs-organizer.js"
+  },
+  "keywords": [
+    "task-manager",
+    "productivity",
+    "electron",
+    "react",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.78.0",
+    "archiver": "^7.0.1",
+    "buffer": "^6.0.3",
+    "cheerio": "^1.1.0",
+    "csv-parse": "^6.1.0",
+    "csv-stringify": "^6.6.0",
+    "events": "^3.3.0",
+    "extract-zip": "^2.0.1",
+    "fast-xml-parser": "^5.3.3",
+    "lucide-react": "^0.523.0",
+    "marked": "^15.0.12",
+    "node-unrar-js": "^2.0.2",
+    "path-browserify": "^1.0.1",
+    "process": "^0.11.10",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/archiver": "^7.0.0",
+    "@types/cheerio": "^0.22.35",
+    "@types/jest": "^29.5.14",
+    "@types/marked": "^5.0.2",
+    "@types/node": "^20.17.12",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^8.2.2",
+    "copy-webpack-plugin": "^11.0.0",
+    "css-loader": "^6.10.0",
+    "electron": "^26.0.0",
+    "electron-builder": "^24.13.3",
+    "eslint": "^8.57.1",
+    "eslint-plugin-react": "^7.37.3",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "fs-extra": "^11.2.0",
+    "html-webpack-plugin": "^5.6.3",
+    "jest": "^29.7.0",
+    "prettier": "^3.4.2",
+    "rimraf": "^5.0.10",
+    "style-loader": "^3.3.4",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.1.0",
+    "wait-on": "^7.2.0",
+    "webpack": "^5.88.0",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^5.2.0"
+  },
+  "build": {
+    "appId": "com.krigzis.taskmanager",
+    "productName": "Nexus",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "publish": {
+      "provider": "github",
+      "repo": "krigzis",
+      "owner": "PauloHYBEX"
+    }
+  },
+  "mac": {
+    "icon": "assets/icon.icns",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      }
+    ]
+  },
+  "linux": {
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "icon": "assets/icon.png",
+    "category": "Office"
+  },
+  "npmRebuild": false,
+  "buildDependenciesFromSource": false,
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Nexus"
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      },
+      {
+        "target": "portable",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "icon": "assets/icon.ico",
+    "sign": false,
+    "verifyUpdateCodeSignature": false,
+    "requestedExecutionLevel": "asInvoker"
+  }
+}

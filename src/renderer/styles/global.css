@@ -1,5 +1,5 @@
 /* =================================
-   KRIGZIS GLOBAL STYLES
+   NEXUS GLOBAL STYLES
    ================================= */
 
 /* Import variables and components */
@@ -580,36 +580,7 @@ button:disabled,
   background-clip: text;
 }
 
-/* === SCROLLBARS MINIMALISTAS E INVISÍVEIS === */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
-  transition: all 0.2s ease;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 212, 170, 0.3);
-}
-
-::-webkit-scrollbar-thumb:active {
-  background: rgba(0, 212, 170, 0.5);
-}
-
-/* Firefox scrollbars */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
-}
+/* Global scrollbar styles are defined in animations.css */
 
 /* === FOCUS STYLES === */
 *:focus {
@@ -728,16 +699,6 @@ textarea:focus {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.btn-primary {
-  background: linear-gradient(135deg, #00D4AA 0%, #7B3FF2 100%);
-  color: white;
-  border: none;
-}
-
-.btn-primary:hover {
-  box-shadow: 0 4px 12px rgba(0, 212, 170, 0.3);
-}
-
 .btn-secondary {
   background: transparent;
   color: var(--color-text-secondary);
@@ -819,7 +780,7 @@ html[data-density="comfortable"] {
 
 /* Transparência dos Cards */
 :root {
-  --card-opacity: 95%;
+  --card-opacity: 0.95;
 }
 
 .card, .card-standard, .unified-card, .task-card, .note-card {
@@ -828,104 +789,88 @@ html[data-density="comfortable"] {
 
 /* =================================
    SCROLLBARS ESTILIZADAS
+   Global scrollbar is defined in animations.css
+   Below are only specialized overrides
    ================================= */
 
-/* Webkit Scrollbars (Chrome, Safari, Edge) */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  transition: all 0.2s ease;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-::-webkit-scrollbar-thumb:active {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
-/* Firefox Scrollbars */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
-}
-
-/* Scrollbars específicos para cards e containers */
-.dashboard-container,
-.task-list-container,
-.notes-container,
-.reports-container,
-.timer-container,
-.settings-container {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0, 212, 170, 0.3) transparent;
-}
-
-.dashboard-container::-webkit-scrollbar-thumb,
-.task-list-container::-webkit-scrollbar-thumb,
-.notes-container::-webkit-scrollbar-thumb,
-.reports-container::-webkit-scrollbar-thumb,
-.timer-container::-webkit-scrollbar-thumb,
-.settings-container::-webkit-scrollbar-thumb {
-  background: rgba(0, 212, 170, 0.2);
-}
-
-.dashboard-container::-webkit-scrollbar-thumb:hover,
-.task-list-container::-webkit-scrollbar-thumb:hover,
-.notes-container::-webkit-scrollbar-thumb:hover,
-.reports-container::-webkit-scrollbar-thumb:hover,
-.timer-container::-webkit-scrollbar-thumb:hover,
-.settings-container::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 212, 170, 0.4);
-}
-
-/* Scrollbars para modais e dropdowns */
-.modal-content,
-.dropdown-content,
-.task-modal,
-.note-modal,
-.settings-modal {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(123, 63, 242, 0.3) transparent;
-}
-
-.modal-content::-webkit-scrollbar-thumb,
-.dropdown-content::-webkit-scrollbar-thumb,
-.task-modal::-webkit-scrollbar-thumb,
-.note-modal::-webkit-scrollbar-thumb,
-.settings-modal::-webkit-scrollbar-thumb {
-  background: rgba(123, 63, 242, 0.2);
-}
-
-.modal-content::-webkit-scrollbar-thumb:hover,
-.dropdown-content::-webkit-scrollbar-thumb:hover,
-.task-modal::-webkit-scrollbar-thumb:hover,
-.note-modal::-webkit-scrollbar-thumb:hover,
-.settings-modal::-webkit-scrollbar-thumb:hover {
-  background: rgba(123, 63, 242, 0.4);
-}
-
-/* Scrollbars para listas de tarefas */
+/* Scrollbars para listas de tarefas - invisíveis por padrão, visíveis no hover */
 .task-list,
 .category-list,
 .note-list {
   overflow-y: auto;
   max-height: calc(100vh - 200px);
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.task-list:hover,
+.category-list:hover,
+.note-list:hover {
+  scrollbar-color: rgba(0, 212, 170, 0.3) transparent;
+}
+
+.task-list::-webkit-scrollbar,
+.category-list::-webkit-scrollbar,
+.note-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.task-list::-webkit-scrollbar-track,
+.category-list::-webkit-scrollbar-track,
+.note-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.task-list::-webkit-scrollbar-thumb,
+.category-list::-webkit-scrollbar-thumb,
+.note-list::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 2px;
+  transition: background-color 0.3s ease;
+}
+
+.task-list:hover::-webkit-scrollbar-thumb,
+.category-list:hover::-webkit-scrollbar-thumb,
+.note-list:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 212, 170, 0.25);
+}
+
+.task-list::-webkit-scrollbar-thumb:hover,
+.category-list::-webkit-scrollbar-thumb:hover,
+.note-list::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 212, 170, 0.45);
+}
+
+/* App main content area - invisible scroll */
+.app-main {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.app-main:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.app-main::-webkit-scrollbar {
+  width: 4px;
+}
+
+.app-main::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-main::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 2px;
+  transition: background-color 0.3s ease;
+}
+
+.app-main:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+.app-main::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.25);
 }
 
 /* === SCROLLBARS ESPECIALIZADAS === */
@@ -1004,4 +949,63 @@ html[data-density="comfortable"] {
 
 .modal-scrollable::-webkit-scrollbar-thumb:hover {
   background: rgba(123, 63, 242, 0.4);
-} 
+}
+
+/* Scrollbar sutil para modal de Settings */
+.subtle-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.subtle-scrollbar:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.subtle-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.subtle-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.subtle-scrollbar::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 3px;
+  transition: background-color 0.2s ease;
+}
+
+.subtle-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.subtle-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.settings-modal {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.settings-modal::-webkit-scrollbar {
+  width: 6px;
+}
+
+.settings-modal::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.settings-modal::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 3px;
+  transition: background-color 0.2s ease;
+}
+
+.settings-modal:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.settings-modal::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}

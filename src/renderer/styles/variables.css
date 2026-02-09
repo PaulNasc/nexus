@@ -1,5 +1,5 @@
 /* =================================
-   KRIGZIS DESIGN SYSTEM VARIABLES
+   NEXUS DESIGN SYSTEM VARIABLES
    ================================= */
 
 :root {
@@ -191,10 +191,7 @@
   --info-bg: rgba(59, 130, 246, 0.1);
   --info-border: rgba(59, 130, 246, 0.3);
 
-  /* AI specific colors */
-  --ai-primary: #7c3aed;
-  --ai-secondary: #a855f7;
-  --ai-accent: #c084fc;
+
 
   /* Component specific variables for compatibility */
   --bg-primary: var(--color-bg-primary);

@@ -1,5 +1,5 @@
 /**
- * Script para criar release do Krigzis
+ * Script para criar release do Nexus
  * Comprime o build manual para distribuição
  */
 
@@ -15,7 +15,7 @@ async function createRelease() {
     const version = packageJson.version;
     const releaseDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
     
-    console.log(`🚀 Criando release do Krigzis v${version}...`);
+    console.log(`🚀 Criando release do Nexus v${version}...`);
     
     try {
         // 1. Verificar se build manual existe
@@ -28,7 +28,7 @@ async function createRelease() {
         fs.ensureDirSync(RELEASES_DIR);
         
         // 3. Nome do arquivo de release
-        const releaseFileName = `Krigzis-v${version}-Windows-Portable.zip`;
+        const releaseFileName = `Nexus-v${version}-Windows-Portable.zip`;
         const releasePath = path.join(RELEASES_DIR, releaseFileName);
         
         // 4. Verificar se PowerShell está disponível para compressão
@@ -43,7 +43,7 @@ async function createRelease() {
         } catch (psError) {
             // Fallback: Copiar pasta com nome de release
             console.log('⚠️ PowerShell Compress-Archive falhou. Criando cópia da pasta...');
-            const releaseFolderPath = path.join(RELEASES_DIR, `Krigzis-v${version}-Windows-Portable`);
+            const releaseFolderPath = path.join(RELEASES_DIR, `Nexus-v${version}-Windows-Portable`);
             
             if (fs.existsSync(releaseFolderPath)) {
                 fs.removeSync(releaseFolderPath);
@@ -55,7 +55,7 @@ async function createRelease() {
         
         // 5. Criar arquivo de informações do release
         const releaseInfo = {
-            name: `Krigzis v${version}`,
+            name: `Nexus v${version}`,
             version: version,
             buildDate: releaseDate,
             platform: 'Windows',
@@ -85,7 +85,7 @@ async function createRelease() {
             ],
             changelog: [
                 '• Implementação do sistema de distribuição',
-                '• Ícones criados com gradiente do Krigzis',
+                '• Ícones criados com gradiente do Nexus',
                 '• Sistema de atualizações via GitHub Releases',
                 '• Títulos padronizados em todas as abas',
                 '• Ícone IA com atualização em tempo real',
@@ -93,8 +93,8 @@ async function createRelease() {
                 '• Build otimizado sem dependências problemáticas'
             ],
             size_mb: 'Aproximadamente 150MB após instalação',
-            github_url: 'https://github.com/PauloHYBEX/krigzis',
-            support_url: 'https://github.com/PauloHYBEX/krigzis/issues'
+            github_url: 'https://github.com/PauloHYBEX/nexus',
+            support_url: 'https://github.com/PauloHYBEX/nexus/issues'
         };
         
         fs.writeJsonSync(
@@ -104,7 +104,7 @@ async function createRelease() {
         );
         
         // 6. Criar changelog em markdown
-        const changelogMd = `# Krigzis v${version} - Release Notes
+        const changelogMd = `# Nexus v${version} - Release Notes
 
 **Data de Lançamento:** ${releaseDate}
 **Tipo:** Versão Portável para Windows
@@ -139,7 +139,7 @@ ${releaseInfo.features.map(feature => `- ${feature}`).join('\n')}
 
 ---
 
-**Download:** [Krigzis-v${version}-Windows-Portable.zip](./releases/${releaseFileName})
+**Download:** [Nexus-v${version}-Windows-Portable.zip](./releases/${releaseFileName})
 `;
         
         fs.writeFileSync(

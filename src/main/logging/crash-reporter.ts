@@ -1,41 +1,37 @@
-import { crashReporter as electronCrashReporter, app } from 'electron';
+import { app, crashReporter as electronCrashReporter } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import { SecureLogger } from './logger';
-import { SecurityLogEntry } from '../../shared/types/logging';
+import { createHash } from 'crypto';
 
 export interface CrashReport {
   id: string;
   timestamp: string;
-  version: string;
+  type: 'main' | 'renderer' | 'gpu';
+  error?: string;
+  stack?: string;
+  context?: Record<string, unknown>;
+  sessionId: string;
+  appVersion: string;
   platform: string;
-  arch: string;
-  error: {
-    name: string;
-    message: string;
-    stack?: string;
-  };
-  context: {
-    memoryUsage: NodeJS.MemoryUsage;
-    cpuUsage: NodeJS.CpuUsage;
-    uptime: number;
-  };
-  userData: {
-    sessionId: string;
-    userId?: string;
-    lastAction?: string;
-  };
+}
+
+export interface CrashReportOptions {
+  limit?: number;
+  startDate?: Date;
+  endDate?: Date;
+  type?: 'main' | 'renderer' | 'gpu';
 }
 
 export class CrashReporterManager {
   private static instance: CrashReporterManager;
-  private logger: SecureLogger;
   private crashReportsPath: string;
-  private isInitialized: boolean = false;
+  private sessionId: string;
+  private initialized = false;
 
   private constructor() {
-    this.logger = SecureLogger.getInstance();
+    this.sessionId = this.generateSessionId();
     this.crashReportsPath = this.getCrashReportsPath();
+    this.ensureCrashReportsDir();
   }
 
   public static getInstance(): CrashReporterManager {
@@ -45,275 +41,169 @@ export class CrashReporterManager {
     return CrashReporterManager.instance;
   }
 
+  private generateSessionId(): string {
+    return createHash('sha256')
+      .update(`${Date.now()}-${Math.random()}`)
+      .digest('hex')
+      .substring(0, 16);
+  }
+
   private getCrashReportsPath(): string {
     const userDataPath = app.getPath('userData');
-    const crashDir = path.join(userDataPath, 'crash-reports');
-    
-    if (!fs.existsSync(crashDir)) {
-      fs.mkdirSync(crashDir, { recursive: true });
-    }
-    
-    return crashDir;
+    return path.join(userDataPath, 'crash-reports');
   }
 
-  public initialize(): void {
-    if (this.isInitialized) return;
-
+  private ensureCrashReportsDir(): void {
     try {
-      // Configurar crash reporter do Electron
-      electronCrashReporter.start({
-        productName: 'Krigzis',
-        companyName: 'Krigzis Team',
-        submitURL: '', // Não enviar automaticamente - manter privacidade
-        uploadToServer: false,
-        ignoreSystemCrashHandler: false,
-        extra: {
-          version: app.getVersion(),
-          platform: process.platform,
-          arch: process.arch
-        }
-      });
-
-      // Configurar handlers de erro globais
-      this.setupGlobalErrorHandlers();
-      
-      this.isInitialized = true;
-      this.logger.security({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'Crash reporter initialized',
-        category: 'security',
-        event: 'api_call',
-        severity: 'low',
-        source: 'crash-reporter'
-      });
-
+      if (!fs.existsSync(this.crashReportsPath)) {
+        fs.mkdirSync(this.crashReportsPath, { recursive: true });
+      }
     } catch (error) {
-      console.error('Failed to initialize crash reporter:', error);
+      console.error('Error creating crash reports directory:', error);
     }
   }
 
-  private setupGlobalErrorHandlers(): void {
-    // Handler para erros não capturados
-    process.on('uncaughtException', (error) => {
-      this.handleCrash('uncaughtException', error);
-    });
+  public initialize(uploadToServer = false): void {
+    if (this.initialized) return;
 
-    // Handler para promises rejeitadas
-    process.on('unhandledRejection', (reason, promise) => {
-      this.handleCrash('unhandledRejection', reason as Error);
-    });
-
-    // Handler para erros de renderer
-    app.on('render-process-gone', (event, webContents, details) => {
-      this.handleRendererCrash(details);
-    });
-
-    // Handler para crashes do processo principal
-    app.on('child-process-gone', (event, details) => {
-      this.handleChildProcessCrash(details);
-    });
-  }
-
-  private handleCrash(type: string, error: Error): void {
     try {
-      const crashReport: CrashReport = {
-        id: this.generateCrashId(),
-        timestamp: new Date().toISOString(),
-        version: app.getVersion(),
-        platform: process.platform,
-        arch: process.arch,
-        error: {
-          name: error.name,
-          message: error.message,
-          stack: error.stack
-        },
-        context: {
-          memoryUsage: process.memoryUsage(),
-          cpuUsage: process.cpuUsage(),
-          uptime: process.uptime()
-        },
-        userData: {
-          sessionId: this.logger.getConfig().enabled ? 'session-id' : 'unknown',
-          lastAction: this.getLastAction()
-        }
-      };
-
-      this.saveCrashReport(crashReport);
-      this.logCrash(crashReport);
-
-    } catch (reportError) {
-      console.error('Failed to handle crash:', reportError);
-    }
-  }
-
-  private handleRendererCrash(details: any): void {
-    const crashReport: CrashReport = {
-      id: this.generateCrashId(),
-      timestamp: new Date().toISOString(),
-      version: app.getVersion(),
-      platform: process.platform,
-      arch: process.arch,
-      error: {
-        name: 'RendererProcessGone',
-        message: `Renderer process gone: ${details.reason}`,
-        stack: details.exitCode?.toString()
-      },
-      context: {
-        memoryUsage: process.memoryUsage(),
-        cpuUsage: process.cpuUsage(),
-        uptime: process.uptime()
-      },
-      userData: {
-        sessionId: this.logger.getConfig().enabled ? 'session-id' : 'unknown'
-      }
-    };
-
-    this.saveCrashReport(crashReport);
-    this.logCrash(crashReport);
-  }
-
-  private handleChildProcessCrash(details: any): void {
-    const crashReport: CrashReport = {
-      id: this.generateCrashId(),
-      timestamp: new Date().toISOString(),
-      version: app.getVersion(),
-      platform: process.platform,
-      arch: process.arch,
-      error: {
-        name: 'ChildProcessGone',
-        message: `Child process gone: ${details.type}`,
-        stack: details.exitCode?.toString()
-      },
-      context: {
-        memoryUsage: process.memoryUsage(),
-        cpuUsage: process.cpuUsage(),
-        uptime: process.uptime()
-      },
-      userData: {
-        sessionId: this.logger.getConfig().enabled ? 'session-id' : 'unknown'
-      }
-    };
-
-    this.saveCrashReport(crashReport);
-    this.logCrash(crashReport);
-  }
-
-  private generateCrashId(): string {
-    return `crash-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  private getLastAction(): string {
-    // Implementar rastreamento da última ação do usuário
-    return 'unknown';
-  }
-
-  private saveCrashReport(crashReport: CrashReport): void {
-    try {
-      const fileName = `crash-${crashReport.id}.json`;
-      const filePath = path.join(this.crashReportsPath, fileName);
-      
-      fs.writeFileSync(filePath, JSON.stringify(crashReport, null, 2));
-      
-      // Manter apenas os últimos 10 relatórios
-      this.cleanupOldCrashReports();
-      
-    } catch (error) {
-      console.error('Failed to save crash report:', error);
-    }
-  }
-
-  private logCrash(crashReport: CrashReport): void {
-    const securityEntry: SecurityLogEntry = {
-      timestamp: crashReport.timestamp,
-      level: 'error',
-      message: `Application crash: ${crashReport.error.name}`,
-      category: 'security',
-      event: 'suspicious_activity',
-      severity: 'critical',
-      source: 'crash-reporter',
-      data: {
-        crashId: crashReport.id,
-        errorName: crashReport.error.name,
-        errorMessage: crashReport.error.message
-      }
-    };
-
-    this.logger.security(securityEntry);
-  }
-
-  private cleanupOldCrashReports(): void {
-    try {
-      const files = fs.readdirSync(this.crashReportsPath);
-      const crashFiles = files.filter(file => file.startsWith('crash-') && file.endsWith('.json'));
-      
-      if (crashFiles.length > 10) {
-        // Ordenar por data de modificação e remover os mais antigos
-        const sortedFiles = crashFiles
-          .map(file => ({
-            name: file,
-            path: path.join(this.crashReportsPath, file),
-            mtime: fs.statSync(path.join(this.crashReportsPath, file)).mtime
-          }))
-          .sort((a, b) => a.mtime.getTime() - b.mtime.getTime());
-        
-        // Remover arquivos antigos
-        const filesToRemove = sortedFiles.slice(0, sortedFiles.length - 10);
-        filesToRemove.forEach(file => {
-          fs.unlinkSync(file.path);
+      if (uploadToServer) {
+        // Configure Electron's built-in crash reporter if needed
+        electronCrashReporter.start({
+          productName: 'Nexus',
+          companyName: 'Nexus',
+          submitURL: '', // Add your crash report server URL here
+          uploadToServer: false, // Set to true when you have a server
+          ignoreSystemCrashHandler: false,
+          compress: true,
         });
       }
+
+      this.initialized = true;
     } catch (error) {
-      console.error('Failed to cleanup old crash reports:', error);
+      console.error('Error initializing crash reporter:', error);
     }
   }
 
-  public getCrashReports(options: {
-    limit?: number;
-    offset?: number;
-  } = {}): CrashReport[] {
+  public reportCrash(
+    type: 'main' | 'renderer' | 'gpu',
+    error: Error | string,
+    context?: Record<string, unknown>
+  ): void {
     try {
-      const files = fs.readdirSync(this.crashReportsPath);
-      const crashFiles = files.filter(file => file.startsWith('crash-') && file.endsWith('.json'));
-      
-      const reports = crashFiles.map(file => {
-        const filePath = path.join(this.crashReportsPath, file);
-        const content = fs.readFileSync(filePath, 'utf8');
-        return JSON.parse(content) as CrashReport;
-      }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      const report: CrashReport = {
+        id: createHash('sha256').update(`${Date.now()}-${Math.random()}`).digest('hex').substring(0, 16),
+        timestamp: new Date().toISOString(),
+        type,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        context,
+        sessionId: this.sessionId,
+        appVersion: app.getVersion(),
+        platform: process.platform,
+      };
 
-      // Aplicar paginação
-      const offset = options.offset || 0;
-      const limit = options.limit || 50;
-      
-      return reports.slice(offset, offset + limit);
-      
+      const reportPath = path.join(
+        this.crashReportsPath,
+        `crash-${report.timestamp.replace(/[:.]/g, '-')}-${report.id}.json`
+      );
+
+      fs.writeFileSync(reportPath, JSON.stringify(report, null, 2), 'utf8');
+      console.error(`Crash report saved: ${reportPath}`);
+    } catch (err) {
+      console.error('Error saving crash report:', err);
+    }
+  }
+
+  public getCrashReports(options: CrashReportOptions = {}): CrashReport[] {
+    try {
+      const files = fs.readdirSync(this.crashReportsPath)
+        .filter(f => f.startsWith('crash-') && f.endsWith('.json'))
+        .sort()
+        .reverse();
+
+      const reports: CrashReport[] = [];
+
+      for (const file of files) {
+        if (options.limit && reports.length >= options.limit) break;
+
+        try {
+          const filePath = path.join(this.crashReportsPath, file);
+          const content = fs.readFileSync(filePath, 'utf8');
+          const report = JSON.parse(content) as CrashReport;
+
+          // Apply filters
+          if (options.type && report.type !== options.type) continue;
+          if (options.startDate && new Date(report.timestamp) < options.startDate) continue;
+          if (options.endDate && new Date(report.timestamp) > options.endDate) continue;
+
+          reports.push(report);
+        } catch (err) {
+          console.error(`Error reading crash report ${file}:`, err);
+        }
+      }
+
+      return reports;
     } catch (error) {
-      console.error('Failed to get crash reports:', error);
+      console.error('Error getting crash reports:', error);
       return [];
     }
   }
 
-  public clearCrashReports(): void {
+  public clearOldReports(olderThanDays = 30): number {
     try {
-      const files = fs.readdirSync(this.crashReportsPath);
-      const crashFiles = files.filter(file => file.startsWith('crash-') && file.endsWith('.json'));
-      
-      crashFiles.forEach(file => {
-        const filePath = path.join(this.crashReportsPath, file);
-        fs.unlinkSync(filePath);
-      });
-      
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+
+      const files = fs.readdirSync(this.crashReportsPath)
+        .filter(f => f.startsWith('crash-') && f.endsWith('.json'));
+
+      let deletedCount = 0;
+
+      for (const file of files) {
+        try {
+          const filePath = path.join(this.crashReportsPath, file);
+          const content = fs.readFileSync(filePath, 'utf8');
+          const report = JSON.parse(content) as CrashReport;
+
+          if (new Date(report.timestamp) < cutoffDate) {
+            fs.unlinkSync(filePath);
+            deletedCount++;
+          }
+        } catch (err) {
+          console.error(`Error processing crash report ${file}:`, err);
+        }
+      }
+
+      return deletedCount;
     } catch (error) {
-      console.error('Failed to clear crash reports:', error);
+      console.error('Error clearing old crash reports:', error);
+      return 0;
     }
   }
 
-  public exportCrashReports(): string {
-    const reports = this.getCrashReports();
-    return JSON.stringify(reports, null, 2);
+  public deleteCrashReport(reportId: string): boolean {
+    try {
+      const files = fs.readdirSync(this.crashReportsPath)
+        .filter(f => f.includes(reportId) && f.endsWith('.json'));
+
+      if (files.length === 0) return false;
+
+      for (const file of files) {
+        fs.unlinkSync(path.join(this.crashReportsPath, file));
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error deleting crash report:', error);
+      return false;
+    }
+  }
+
+  public getReportsPath(): string {
+    return this.crashReportsPath;
   }
 }
 
-// Instância global
-export const crashReporterManager = CrashReporterManager.getInstance(); 
+// Export singleton instance
+export const crashReporterManager = CrashReporterManager.getInstance();

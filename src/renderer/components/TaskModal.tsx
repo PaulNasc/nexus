@@ -1,21 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useDatabase } from '../hooks/useDatabase';
-import { useCategories } from '../hooks/useCategories';
-import { useTheme } from '../hooks/useTheme';
-import useNotes from '../hooks/useNotes';
+import { useTasks } from '../contexts/TasksContext';
+import { useCategories } from '../contexts/CategoriesContext';
+import { useNotes } from '../contexts/NotesContext';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { Badge } from './ui/Badge';
 import { Task } from '../../shared/types/task';
 import { 
-  Calendar, 
   Tag, 
   X, 
   Save, 
   AlertCircle,
-  ChevronDown,
-  Plus,
-  Edit2,
   Palette,
   Hash,
   BookOpen
@@ -34,9 +28,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   onClose,
   onSave
 }) => {
-  const { createTask, updateTask, tasks, linkTaskToNote, unlinkTaskFromNote } = useDatabase();
-  const { categories, reloadCategories } = useCategories(); // Remove tasks dependency for now
-  const { theme } = useTheme();
+  const { createTask, updateTask, linkTaskToNote, unlinkTaskFromNote } = useTasks();
+  const { categories, reloadCategories } = useCategories();
   const { notes } = useNotes();
   
   const [title, setTitle] = useState('');
@@ -51,14 +44,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [customCategoryColor, setCustomCategoryColor] = useState('#00D4AA');
   const [customCategoryIcon, setCustomCategoryIcon] = useState('Folder');
 
-  // Always dark theme
-  const isDark = true;
-
   // Reset form when modal opens/closes or when editing task changes
   useEffect(() => {
     if (isOpen) {
-      // Force reload categories every time modal opens
-      console.log('🔄 TaskModal: Reloading categories...');
       reloadCategories();
       
       if (editingTask) {
@@ -89,31 +77,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     }
   }, [isOpen, editingTask, reloadCategories]);
 
-  // Additional effect to monitor categories changes
-  useEffect(() => {
-    console.log('📋 TaskModal: Categories updated:', categories.length, categories.map(c => c.name));
-    console.log('📋 TaskModal: Full categories object:', categories);
-    console.log('📋 TaskModal: Categories are system?', categories.map(c => ({ name: c.name, isSystem: c.isSystem })));
-  }, [categories]);
-
-  // Debug effect for when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      console.log('🔓 TaskModal: Modal opened, checking categories state...');
-      console.log('📋 TaskModal: Current categories in state:', categories);
-      
-      // Check localStorage directly
-      const storedCategories = localStorage.getItem('krigzis_categories');
-      console.log('💾 TaskModal: Categories in localStorage:', storedCategories);
-      
-      // Force a manual reload after a small delay
-      setTimeout(() => {
-        console.log('⏰ TaskModal: Forcing categories reload after 100ms...');
-        reloadCategories();
-      }, 100);
-    }
-  }, [isOpen, categories, reloadCategories]);
-
   const validateForm = () => {
     const newErrors: {[key: string]: string} = {};
 
@@ -138,39 +101,31 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       
       // Create custom category if needed
       if (showCustomCategory && customCategoryName.trim()) {
-        console.log('🔍 TaskModal: Categoria customizada selecionada:', categoryId);
-        const newCategory = {
-          name: customCategoryName.trim(),
-          color: customCategoryColor,
-          icon: customCategoryIcon
-        };
-        // Here you would create the category and get its ID
-        // finalCategoryId = await createCategory(newCategory);
-    }
+        // Custom category creation placeholder
+        // finalCategoryId = await createCategory({ name: customCategoryName.trim(), color: customCategoryColor, icon: customCategoryIcon });
+      }
 
-    // Map categoryId to status for system categories
-    const categoryToStatusMap: { [key: number]: string } = {
-      1: 'backlog',
-      2: 'esta_semana',
-      3: 'hoje', 
-      4: 'concluido'
-    };
-    
-    const taskStatus = categoryToStatusMap[finalCategoryId] || 'backlog';
+      // Map categoryId to status for system categories
+      const categoryToStatusMap: { [key: number]: string } = {
+        1: 'backlog',
+        2: 'esta_semana',
+        3: 'hoje', 
+        4: 'concluido'
+      };
+      
+      const taskStatus = categoryToStatusMap[finalCategoryId] || 'backlog';
 
-    const taskData = {
+      const taskData = {
         id: editingTask?.id || Date.now(),
-      title: title.trim(),
+        title: title.trim(),
         description: description.trim(),
         priority,
-      status: taskStatus,
+        status: taskStatus,
         category_id: finalCategoryId,
         created_at: editingTask?.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
         completed_at: taskStatus === 'concluido' ? new Date().toISOString() : null
       };
-
-      console.log('🔍 TaskModal: Dados da tarefa a ser criada:', taskData);
 
       let savedTask: Task;
       
@@ -208,7 +163,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         onSave(savedTask);
       }
 
-    onClose();
+      onClose();
     } catch (error) {
       console.error('Erro ao salvar tarefa:', error);
       setErrors({ general: 'Erro ao salvar tarefa' });
@@ -222,8 +177,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     { value: 'medium', label: 'Média', color: '#FF9800' },
     { value: 'low', label: 'Baixa', color: '#4CAF50' }
   ];
-
-
 
   if (!isOpen) return null;
 
@@ -307,7 +260,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               {notes.map(note => (
                 <option key={note.id} value={note.id}>
                   {note.title}
-                      </option>
+                </option>
               ))}
             </select>
           </div>
@@ -374,13 +327,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                       {category.name}
                     </option>
                   ))}
-                  
-                {/* Debug info */}
-                {(() => {
-                  console.log('🔍 TaskModal Render: Categories count:', categories?.length || 0);
-                  console.log('🔍 TaskModal Render: Categories data:', categories);
-                  return null;
-                })()}
                 <option value="custom">➕ Criar nova categoria</option>
               </select>
 

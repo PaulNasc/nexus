@@ -2,7 +2,7 @@ export interface LogEntry {
   timestamp: string;
   level: 'info' | 'warn' | 'error' | 'debug';
   message: string;
-  category: 'security' | 'performance' | 'user' | 'system' | 'ai' | 'database' | 'update-download' | 'version';
+  category: 'security' | 'performance' | 'user' | 'system' | 'database' | 'update-download' | 'version';
   userId?: string;
   sessionId?: string;
   data?: Record<string, any>;
@@ -42,7 +42,7 @@ export interface LogConfig {
     performance: boolean;
     user: boolean;
     system: boolean;
-    ai: boolean;
+
     database: boolean;
   };
 }

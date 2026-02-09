@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gerador de Ícones para Krigzis
+Gerador de Ícones para Nexus
 Cria ícones PNG em vários tamanhos baseados no design da aplicação
 """
 
@@ -11,7 +11,7 @@ except ImportError:
     print("❌ PIL (Pillow) não encontrada. Instale com: pip install Pillow")
     exit(1)
 
-# Cores do Krigzis
+# Cores do Nexus
 TEAL = "#00D4AA"
 PURPLE = "#7B3FF2"
 WHITE = "#FFFFFF"
@@ -46,7 +46,7 @@ def create_gradient_circle(size):
     return img
 
 def add_text_to_icon(img, size):
-    """Adiciona a letra K ao ícone"""
+    """Adiciona a letra N ao ícone"""
     draw = ImageDraw.Draw(img)
     
     # Tentar carregar fonte
@@ -68,7 +68,7 @@ def add_text_to_icon(img, size):
                 print(f"⚠️ Usando fonte padrão para {size}x{size}")
     
     # Calcular posição do texto
-    text = "K"
+    text = "N"
     bbox = draw.textbbox((0, 0), text, font=font)
     text_width = bbox[2] - bbox[0]
     text_height = bbox[3] - bbox[1]
@@ -99,7 +99,7 @@ def create_icon(size):
 
 def main():
     """Função principal"""
-    print("🚀 Gerador de Ícones Krigzis")
+    print("🚀 Gerador de Ícones Nexus")
     print("=" * 40)
     
     # Criar diretório assets se não existir

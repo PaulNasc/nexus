@@ -11,7 +11,7 @@ export const useAppearance = () => {
     const html = document.documentElement;
     
     // Aplicar tamanho da fonte
-    const fontSize = settings.largeFontMode ? 16 : 14;
+    const fontSize = settings.fontSizePx ?? (settings.largeFontMode ? 16 : 14);
     html.style.fontSize = `${fontSize}px`;
     
     // Aplicar modo alto contraste
@@ -25,7 +25,8 @@ export const useAppearance = () => {
     
     // Aplicar transparência dos cards
     const cardOpacity = settings.cardOpacity || 95;
-    html.style.setProperty('--card-opacity', `${cardOpacity}%`);
+    const cardOpacityFloat = Math.max(0.8, Math.min(1, cardOpacity / 100));
+    html.style.setProperty('--card-opacity', String(cardOpacityFloat));
     
     // Log para debug
     console.log('Configurações de aparência aplicadas:', {
@@ -37,6 +38,7 @@ export const useAppearance = () => {
     });
     
   }, [
+    settings.fontSizePx,
     settings.largeFontMode,
     settings.highContrastMode,
     settings.reduceAnimations,
@@ -50,7 +52,7 @@ export const useAppearance = () => {
     
     // Garantir que as classes CSS necessárias estejam disponíveis
     if (!html.style.getPropertyValue('--card-opacity')) {
-      html.style.setProperty('--card-opacity', '95%');
+      html.style.setProperty('--card-opacity', '0.95');
     }
     
     // Aplicar densidade padrão se não definida
@@ -64,13 +66,14 @@ export const useAppearance = () => {
     applySettings: () => {
       // Força reaplicação das configurações
       const html = document.documentElement;
-      const fontSize = settings.largeFontMode ? 16 : 14;
+      const fontSize = settings.fontSizePx ?? (settings.largeFontMode ? 16 : 14);
       html.style.fontSize = `${fontSize}px`;
       html.classList.toggle('high-contrast', settings.highContrastMode);
       html.classList.toggle('reduce-motion', settings.reduceAnimations || false);
       html.setAttribute('data-density', settings.interfaceDensity || 'normal');
       const cardOpacity = settings.cardOpacity || 95;
-      html.style.setProperty('--card-opacity', `${cardOpacity}%`);
+      const cardOpacityFloat = Math.max(0.8, Math.min(1, cardOpacity / 100));
+      html.style.setProperty('--card-opacity', String(cardOpacityFloat));
     }
   };
 };

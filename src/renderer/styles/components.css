@@ -1,5 +1,5 @@
 /* =================================
-   KRIGZIS COMPONENT STYLES - PADRONIZADOS
+   NEXUS COMPONENT STYLES - PADRONIZADOS
    ================================= */
 
 /* === SISTEMA DE TRANSIÇÕES PADRÃO === */
@@ -27,7 +27,7 @@
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border: none;
-  border-radius: var(--radius-lg);
+  border-radius: 8px;
   font-family: var(--font-primary);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
@@ -53,12 +53,13 @@
 
 /* Button Variants - Padronizados */
 .btn-primary {
-  background: var(--gradient-primary);
-  color: var(--color-text-primary);
+  background-color: var(--color-primary-teal);
+  color: #0A0A0A;
   box-shadow: var(--shadow-sm);
 }
 
 .btn-primary:hover:not(:disabled) {
+  background-color: var(--primary-600);
   transform: var(--transform-hover-lift);
   box-shadow: var(--shadow-md);
 }
@@ -77,6 +78,43 @@
   background-color: var(--color-bg-hover);
   border-color: var(--color-border-hover);
   transform: var(--transform-hover-lift);
+}
+
+.tooltip-wrapper {
+  display: inline-flex;
+  position: relative;
+}
+
+.tooltip-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%) translateY(6px);
+  opacity: 0;
+  pointer-events: none;
+  z-index: var(--z-tooltip);
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: var(--shadow-lg);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.tooltip-bottom .tooltip-bubble {
+  top: calc(100% + 8px);
+  bottom: auto;
+  transform: translateX(-50%) translateY(4px);
+}
+
+.tooltip-wrapper:hover .tooltip-bubble,
+.tooltip-wrapper:focus-within .tooltip-bubble {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .btn-ghost {

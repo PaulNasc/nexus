@@ -43,14 +43,54 @@ export const useNotifications = () => {
     }
   }, [isSupported]);
 
+  const playNotificationSound = useCallback(() => {
+    try {
+      // Simple beep sound using Web Audio API
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 800;
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.2);
+    } catch (error) {
+      console.error('Error playing notification sound:', error);
+    }
+  }, []);
+
   const showNotification = useCallback((options: NotificationOptions): Notification | null => {
+    const electronAPI = (window as any).electronAPI;
+    
+    // Prefer native Electron notifications
+    if (electronAPI?.notifications?.showNative) {
+      electronAPI.notifications.showNative({
+        title: options.title,
+        body: options.body,
+        icon: options.icon
+      }).catch((error: any) => {
+        console.error('Error showing native notification:', error);
+      });
+      
+      // Play sound if enabled (check settings in caller)
+      return null;
+    }
+    
+    // Fallback to browser Notification API
     if (!isSupported || permission !== 'granted') {
       console.warn('Notifications not supported or permission not granted');
       return null;
     }
 
     try {
-      const notification = new Notification(`Krigzis - ${options.title}`, {
+      const notification = new Notification(`Nexus - ${options.title}`, {
         body: options.body,
         icon: options.icon || '/icon.png',
         tag: options.tag,
@@ -138,6 +178,7 @@ export const useNotifications = () => {
     // Actions
     requestPermission,
     showNotification,
+    playNotificationSound,
     
     // Predefined notifications
     showTaskReminder,
@@ -146,4 +187,4 @@ export const useNotifications = () => {
     showDailyGoal,
     showStreakMilestone,
   };
-}; 
+};

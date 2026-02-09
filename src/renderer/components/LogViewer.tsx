@@ -9,7 +9,7 @@ interface LogEntry {
   timestamp: string;
   level: 'info' | 'warn' | 'error' | 'debug';
   message: string;
-  category: 'security' | 'performance' | 'user' | 'system' | 'ai' | 'database';
+  category: 'security' | 'performance' | 'user' | 'system' | 'database';
   data?: Record<string, any>;
 }
 
@@ -19,14 +19,12 @@ interface LogViewerProps {
 }
 
 export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose }) => {
-  const { effectiveMode } = useTheme();
+  useTheme();
   const { logAction } = useLogging();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(false);
-
-  const isDark = effectiveMode === 'dark';
 
   const categories = [
     { id: 'all', name: 'Todos', color: '#6B7280' },
@@ -34,7 +32,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose }) => {
     { id: 'performance', name: 'Performance', color: '#10B981' },
     { id: 'user', name: 'Usuário', color: '#3B82F6' },
     { id: 'system', name: 'Sistema', color: '#8B5CF6' },
-    { id: 'ai', name: 'IA', color: '#F59E0B' },
+
     { id: 'database', name: 'Banco', color: '#EC4899' }
   ];
 
@@ -65,13 +63,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose }) => {
           category: 'system',
           data: { version: '1.0.0' }
         },
-        {
-          timestamp: new Date(Date.now() - 60000).toISOString(),
-          level: 'info',
-          message: 'Tarefa criada via IA',
-          category: 'ai',
-          data: { taskId: 123, provider: 'openai' }
-        },
+
         {
           timestamp: new Date(Date.now() - 120000).toISOString(),
           level: 'warn',
@@ -80,7 +72,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose }) => {
           data: { action: 'settings_change', userId: 'anonymous' }
         }
       ];
-      
+
       setLogs(mockLogs);
     } catch (error) {
       console.error('Erro ao carregar logs:', error);
@@ -96,10 +88,10 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose }) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `krigzis-logs-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `nexus-logs-${new Date().toISOString().split('T')[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      
+
       logAction('logs_exported', 'logging', { count: logs.length });
     } catch (error) {
       console.error('Erro ao exportar logs:', error);
@@ -145,7 +137,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose }) => {
               Visualizador de Logs
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              Sistema de logs estruturados e crash reports
+              Sistema de logs estruturados
             </p>
           </div>
           <Button onClick={onClose} variant="ghost" size="sm">
@@ -172,7 +164,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose }) => {
                 ))}
               </select>
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Nível
@@ -217,13 +209,13 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose }) => {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <Badge 
+                        <Badge
                           style={{ backgroundColor: getLevelColor(log.level) }}
                           className="text-white"
                         >
                           {log.level.toUpperCase()}
                         </Badge>
-                        <Badge 
+                        <Badge
                           style={{ backgroundColor: categories.find(c => c.id === log.category)?.color }}
                           className="text-white"
                         >

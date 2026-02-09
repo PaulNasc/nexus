@@ -1,8 +1,8 @@
 import React from 'react';
 import { Task, TaskStatus, TaskPriority } from '../../shared/types/task';
 import { ChevronLeft, CalendarDays, File, Pencil, Trash, BookOpen } from 'lucide-react';
-import { useCategories } from '../hooks/useCategories';
-import useNotes from '../hooks/useNotes';
+import { useCategories } from '../contexts/CategoriesContext';
+import { useNotes } from '../contexts/NotesContext';
 
 interface TaskListProps {
   tasks: Task[];
@@ -23,7 +23,7 @@ export const TaskList: React.FC<TaskListProps> = ({
   title,
   emptyMessage = "Nenhuma tarefa encontrada"
 }) => {
-  const { categories } = useCategories(tasks);
+  const { categories } = useCategories();
   const { notes } = useNotes();
   const getPriorityColor = (priority?: TaskPriority) => {
     switch (priority) {
@@ -182,7 +182,7 @@ export const TaskList: React.FC<TaskListProps> = ({
             </p>
           </div>
         ) : (
-          <div style={{
+          <div className="task-list" style={{
             display: 'flex',
             flexDirection: 'column',
             gap: '16px',
@@ -280,8 +280,7 @@ export const TaskList: React.FC<TaskListProps> = ({
                         title={`Clique para ver a nota: ${getLinkedNoteTitle(task.linkedNoteId)}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          // TODO: Implementar navegação para a nota
-                          console.log('Navegando para nota:', task.linkedNoteId);
+                          window.dispatchEvent(new CustomEvent('navigateToNote', { detail: { noteId: task.linkedNoteId } }));
                         }}>
                           <BookOpen size={12} strokeWidth={1.7} />
                           {getLinkedNoteTitle(task.linkedNoteId)}

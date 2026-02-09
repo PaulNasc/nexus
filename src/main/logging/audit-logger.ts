@@ -142,18 +142,7 @@ export class AuditLogger {
     });
   }
 
-  public logAIAction(userId: string, action: string, provider: string, success: boolean, details?: Record<string, any>): void {
-    this.logAction({
-      action: `ai_${action}`,
-      resource: 'ai_service',
-      userId,
-      success,
-      details: {
-        provider,
-        ...details
-      }
-    });
-  }
+
 
   public logSettingsChange(userId: string, setting: string, oldValue: any, newValue: any): void {
     this.logAction({

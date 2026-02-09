@@ -11,11 +11,11 @@ async function createWindowsIcons() {
     try {
         const assetsDir = path.join(__dirname, '..', 'assets');
         
-        // Template SVG do ícone Krigzis
+        // Template SVG do ícone Nexus
         const iconSVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="krigzisGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="nexusGradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#00D4AA;stop-opacity:1" />
       <stop offset="100%" style="stop-color:#7B3FF2;stop-opacity:1" />
     </linearGradient>
@@ -25,9 +25,9 @@ async function createWindowsIcons() {
   </defs>
   
   <!-- Background circle with gradient -->
-  <circle cx="128" cy="128" r="120" fill="url(#krigzisGradient)" stroke="none"/>
+  <circle cx="128" cy="128" r="120" fill="url(#nexusGradient)" stroke="none"/>
   
-  <!-- Letter K -->
+  <!-- Letter N -->
   <text x="128" y="128" 
         font-family="Arial, sans-serif" 
         font-size="140" 
@@ -35,7 +35,7 @@ async function createWindowsIcons() {
         text-anchor="middle" 
         dominant-baseline="central" 
         fill="#FFFFFF" 
-        filter="url(#textShadow)">K</text>
+        filter="url(#textShadow)">N</text>
 </svg>`;
 
         // Criar diferentes tamanhos de SVG
@@ -96,7 +96,7 @@ magick convert icon_256x256.svg icon.ico
         const previewHTML = `<!DOCTYPE html>
 <html>
 <head>
-    <title>Krigzis Icon Preview</title>
+    <title>Nexus Icon Preview</title>
     <style>
         body { 
             font-family: Arial, sans-serif; 
@@ -123,8 +123,8 @@ magick convert icon_256x256.svg icon.ico
     </style>
 </head>
 <body>
-    <h1>Krigzis - Prévia do Ícone</h1>
-    <p>Este é o ícone que será usado na distribuição do Krigzis.</p>
+    <h1>Nexus - Prévia do Ícone</h1>
+    <p>Este é o ícone que será usado na distribuição do Nexus.</p>
     
     <div class="icon-grid">
         <div class="icon-item">
@@ -156,8 +156,8 @@ magick convert icon_256x256.svg icon.ico
     <h2>Características do Ícone:</h2>
     <ul>
         <li>✅ Formato vetorial (SVG) para máxima qualidade</li>
-        <li>✅ Gradiente oficial do Krigzis (teal → purple)</li>
-        <li>✅ Letra "K" em fonte bold e limpa</li>
+        <li>✅ Gradiente oficial do Nexus (teal → purple)</li>
+        <li>✅ Letra "N" em fonte bold e limpa</li>
         <li>✅ Sombra sutil para profundidade</li>
         <li>✅ Fundo circular moderno</li>
         <li>✅ Compatível com todos os tamanhos</li>

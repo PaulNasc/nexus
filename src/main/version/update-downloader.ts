@@ -5,7 +5,7 @@ import * as crypto from 'crypto';
 import { app } from 'electron';
 import { SecureLogger } from '../logging/logger';
 import { AuditLogger } from '../logging/audit-logger';
-import { UpdateCheckResult, VersionInfo } from '../../shared/types/version';
+import { UpdateCheckResult } from '../../shared/types/version';
 
 export interface DownloadProgress {
   percent: number;
@@ -133,7 +133,7 @@ export class UpdateDownloader extends EventEmitter {
 
   private async simulateDownload(updateInfo: UpdateCheckResult): Promise<DownloadResult> {
     return new Promise((resolve) => {
-      const fileName = `krigzis-${updateInfo.latestVersion?.versionString}.exe`;
+      const fileName = `nexus-${updateInfo.latestVersion?.versionString}.exe`;
       const filePath = path.join(this.downloadDir, fileName);
       
       let progress = 0;
@@ -160,7 +160,8 @@ export class UpdateDownloader extends EventEmitter {
           
           // Simular criação do arquivo
           try {
-            const dummyContent = `Krigzis Update v${updateInfo.latestVersion?.versionString}\nDownloaded at: ${new Date().toISOString()}`;
+            const dummyContent = `Nexus Update v${updateInfo.latestVersion?.versionString}\nDownloaded at: ${new Date().toISOString()}`;
+            
             fs.writeFileSync(filePath, dummyContent);
             
             // Simular checksum

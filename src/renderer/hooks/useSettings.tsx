@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useContext, createContext } from 'react';
+import React, { useState, useEffect, useContext, createContext, useRef } from 'react';
 import { Language } from './useI18n';
+import { supabase } from '../lib/supabase';
 
 export interface TaskStatusCard {
   id: string;
@@ -22,23 +23,30 @@ export interface UserSettings {
   // Personal
   userName: string;
   language: Language;
-  
+
   // Appearance
   theme: 'dark' | 'light' | 'system';
-  
+
   // System
   startWithOS: boolean;
   minimizeToTray: boolean;
-  
+
   // Notifications
   showNotifications: boolean;
   playSound: boolean;
-  
+  notifyTaskReminders: boolean;
+  notifyTodayTasks: boolean;
+  notifyOverdueTasks: boolean;
+  notifyProductivityInsights: boolean;
+
   // Productivity
   dailyGoal: number;
   autoSave: boolean;
   autoBackup: boolean;
-  backupFrequency: 'daily' | 'weekly' | 'monthly';
+  backupFrequency: 'hourly' | 'daily' | 'weekly' | 'monthly';
+  backupFolder?: string;
+  keepBackups: number;
+  cloudSync: boolean;
 
   // Accessibility  
   showTimer: boolean;
@@ -50,6 +58,7 @@ export interface UserSettings {
   showTaskCounters: boolean;
 
   // Appearance
+  fontSizePx?: number;
   interfaceDensity?: 'compact' | 'normal' | 'comfortable';
   reduceAnimations?: boolean;
   cardOpacity?: number;
@@ -58,18 +67,22 @@ export interface UserSettings {
   dataPath?: string;
   storageType: 'localStorage' | 'database';
   databaseLocation?: string;
+  storageMode: 'cloud' | 'local' | 'hybrid';
 
-  // AI Behavior Settings
+  // Productivity Settings
+  showProductivityTips: boolean;
+  showProgressInsights: boolean;
+  showProactiveSuggestionsWidget: boolean;
+  widgetButtonOpacity: number;
+  widgetButtonSize: number;
+
+  // AI workflow
+  aiResponseMode: 'detailed' | 'balanced' | 'concise';
+  aiProactiveMode: boolean;
   aiCanCreateTasks: boolean;
   aiCanEditTasks: boolean;
   aiCanDeleteTasks: boolean;
   aiCanManageNotes: boolean;
-  aiResponseMode: 'detailed' | 'balanced' | 'concise';
-  aiProactiveMode: boolean;
-  
-  // Productivity Settings
-  showProductivityTips: boolean;
-  showProgressInsights: boolean;
 
   // Task Cards
   taskCards: TaskStatusCard[];
@@ -162,10 +175,17 @@ const DEFAULT_SETTINGS: UserSettings = {
   minimizeToTray: true,
   showNotifications: true,
   playSound: true,
+  notifyTaskReminders: true,
+  notifyTodayTasks: true,
+  notifyOverdueTasks: true,
+  notifyProductivityInsights: true,
   dailyGoal: 5,
   autoSave: true,
   autoBackup: true,
   backupFrequency: 'daily',
+  backupFolder: undefined,
+  keepBackups: 10,
+  cloudSync: false,
   showTimer: true,
   showReports: true,
   showNotes: true,
@@ -173,35 +193,43 @@ const DEFAULT_SETTINGS: UserSettings = {
   highContrastMode: false,
   largeFontMode: false,
   showTaskCounters: true,
-  
+
   // Data Management
   storageType: 'localStorage',
-  
+  storageMode: 'cloud' as const,
+
   // Appearance Settings
+  fontSizePx: 14,
   interfaceDensity: 'normal',
   reduceAnimations: false,
   cardOpacity: 95,
-  
-  // AI Behavior Settings
+
+  // Productivity Settings
+  showProductivityTips: true,
+  showProgressInsights: true,
+  showProactiveSuggestionsWidget: true,
+  widgetButtonOpacity: 100,
+  widgetButtonSize: 56,
+
+  // AI workflow
+  aiResponseMode: 'balanced',
+  aiProactiveMode: true,
   aiCanCreateTasks: true,
   aiCanEditTasks: true,
   aiCanDeleteTasks: false,
   aiCanManageNotes: true,
-  aiResponseMode: 'balanced',
-  aiProactiveMode: false,
-  
-  // Productivity Settings
-  showProductivityTips: true,
-  showProgressInsights: true,
-  
+
   taskCards: DEFAULT_TASK_CARDS,
   quickActions: DEFAULT_QUICK_ACTIONS,
   tabOrder: ['dashboard', 'notes', 'reports'], // Ordem padrão das abas
 };
 
-const SETTINGS_STORAGE_KEY = 'krigzis-user-settings';
-const SYSTEM_INFO_STORAGE_KEY = 'krigzis-system-info';
-const SESSION_INFO_STORAGE_KEY = 'krigzis-session-info';
+const SETTINGS_STORAGE_KEY = 'nexus-user-settings';
+const SYSTEM_INFO_STORAGE_KEY = 'nexus-system-info';
+const SESSION_INFO_STORAGE_KEY = 'nexus-session-info';
+const LEGACY_SETTINGS_STORAGE_KEY = 'krigzis-user-settings';
+const LEGACY_SYSTEM_INFO_STORAGE_KEY = 'krigzis-system-info';
+const LEGACY_SESSION_INFO_STORAGE_KEY = 'krigzis-session-info';
 
 // Generate unique machine ID
 const generateMachineId = (): string => {
@@ -209,9 +237,9 @@ const generateMachineId = (): string => {
   const randomPart = Math.random().toString(36).substring(2, 15);
   const navigatorInfo = navigator.userAgent.replace(/\s+/g, '').substring(0, 10);
   const screenInfo = `${screen.width}x${screen.height}`;
-  
+
   const combined = `${timestamp}-${randomPart}-${navigatorInfo}-${screenInfo}`;
-  
+
   // Create a simple hash
   let hash = 0;
   for (let i = 0; i < combined.length; i++) {
@@ -219,7 +247,7 @@ const generateMachineId = (): string => {
     hash = ((hash << 5) - hash) + char;
     hash = hash & hash; // Convert to 32-bit integer
   }
-  
+
   return `KRG-${Math.abs(hash).toString(36).toUpperCase().padStart(8, '0')}`;
 };
 
@@ -263,32 +291,83 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
   const [isLoading, setIsLoading] = useState(true);
 
+  const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync settings to Supabase (debounced)
+  const syncSettingsToSupabase = (settingsToSync: UserSettings) => {
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    syncTimeoutRef.current = setTimeout(async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return; // not logged in, skip sync
+        await supabase.from('user_settings').upsert({
+          user_id: user.id,
+          settings: settingsToSync,
+          updated_at: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn('Failed to sync settings to Supabase:', err);
+      }
+    }, 1500);
+  };
+
+  // Load settings from Supabase on mount (merge with local)
+  const loadSettingsFromSupabase = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('user_settings')
+        .select('settings')
+        .eq('user_id', user.id)
+        .single();
+      if (data?.settings && typeof data.settings === 'object') {
+        const remoteSettings = data.settings as Partial<UserSettings>;
+        // Merge: remote wins for non-empty values
+        setSettings(prev => {
+          const merged = { ...prev, ...remoteSettings };
+          localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged));
+          return merged;
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to load settings from Supabase:', err);
+    }
+  };
+
   // Load settings and system info on mount
   useEffect(() => {
     loadSettings();
     loadSystemInfo();
     loadSessionInfo();
+    // After local load, try to merge from Supabase
+    loadSettingsFromSupabase();
   }, []);
 
   const loadSettings = () => {
     try {
-      const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      const stored = localStorage.getItem(SETTINGS_STORAGE_KEY) || localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY);
       if (stored) {
         const parsedSettings = JSON.parse(stored);
-        
+
         // Migração: Adicionar novas ações rápidas se não existirem
         const migratedQuickActions = migrateQuickActions(parsedSettings.quickActions || []);
-        
-        const updatedSettings = { 
-          ...DEFAULT_SETTINGS, 
+
+        const updatedSettings = {
+          ...DEFAULT_SETTINGS,
           ...parsedSettings,
           quickActions: migratedQuickActions
         };
-        
+
+        if (updatedSettings.backupFrequency === 'monthly') {
+          updatedSettings.backupFrequency = 'weekly';
+        }
+
         setSettings(updatedSettings);
-        
+
         // Salvar as configurações migradas
         localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updatedSettings));
+        localStorage.removeItem(LEGACY_SETTINGS_STORAGE_KEY);
       }
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -301,25 +380,25 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const migrateQuickActions = (existingActions: QuickAction[]): QuickAction[] => {
     const allNewActions = DEFAULT_QUICK_ACTIONS;
     const existingKeys = existingActions.map(action => action.key);
-    
+
     // Manter ações existentes
     const migratedActions = [...existingActions];
-    
+
     // Adicionar novas ações que não existem
     allNewActions.forEach(newAction => {
       if (!existingKeys.includes(newAction.key)) {
         migratedActions.push(newAction);
       }
     });
-    
+
     // Reordenar para manter consistência
     return migratedActions.sort((a, b) => a.order - b.order);
   };
 
   const loadSystemInfo = () => {
     try {
-      let storedSystemInfo = localStorage.getItem(SYSTEM_INFO_STORAGE_KEY);
-      
+      const storedSystemInfo = localStorage.getItem(SYSTEM_INFO_STORAGE_KEY) || localStorage.getItem(LEGACY_SYSTEM_INFO_STORAGE_KEY);
+
       if (!storedSystemInfo) {
         // First time setup - generate system info
         const newSystemInfo: SystemInfo = {
@@ -328,7 +407,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           version: '1.0.0',
           lastUpdate: new Date().toISOString(),
         };
-        
+
         localStorage.setItem(SYSTEM_INFO_STORAGE_KEY, JSON.stringify(newSystemInfo));
         setSystemInfo(newSystemInfo);
       } else {
@@ -336,6 +415,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // Update last update time
         parsedSystemInfo.lastUpdate = new Date().toISOString();
         localStorage.setItem(SYSTEM_INFO_STORAGE_KEY, JSON.stringify(parsedSystemInfo));
+        localStorage.removeItem(LEGACY_SYSTEM_INFO_STORAGE_KEY);
+
         setSystemInfo(parsedSystemInfo);
       }
     } catch (error) {
@@ -353,10 +434,13 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const loadSessionInfo = () => {
     try {
-      const stored = localStorage.getItem(SESSION_INFO_STORAGE_KEY);
+      const stored = localStorage.getItem(SESSION_INFO_STORAGE_KEY) || localStorage.getItem(LEGACY_SESSION_INFO_STORAGE_KEY);
+
       if (stored) {
         const parsedSessionInfo = JSON.parse(stored);
         setSessionInfo(parsedSessionInfo);
+        localStorage.setItem(SESSION_INFO_STORAGE_KEY, JSON.stringify(parsedSessionInfo));
+        localStorage.removeItem(LEGACY_SESSION_INFO_STORAGE_KEY);
       }
     } catch (error) {
       console.error('Error loading session info:', error);
@@ -372,6 +456,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (error) {
       console.error('Error saving settings:', error);
     }
+    // Sync to Supabase in background
+    syncSettingsToSupabase(updatedSettings);
   };
 
   const resetSettings = () => {
@@ -388,9 +474,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // Clear localStorage data
       const keysToKeep = [SYSTEM_INFO_STORAGE_KEY]; // Keep system info (machine ID)
       const allKeys = Object.keys(localStorage);
-      
+
       allKeys.forEach(key => {
-        if (key.startsWith('krigzis-') && !keysToKeep.includes(key)) {
+        if ((key.startsWith('krigzis-') || key.startsWith('nexus-')) && !keysToKeep.includes(key)) {
           localStorage.removeItem(key);
         }
       });
@@ -399,14 +485,19 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setSettings(DEFAULT_SETTINGS);
       setSessionInfo({ isHost: true, isConnected: false });
 
-      // Clear database via window API if available
-      if ((window as any).electronAPI?.tasks?.clearAll) {
-        await (window as any).electronAPI.tasks.clearAll();
+      // Clear Supabase data for current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('note_task_links').delete().eq('user_id', user.id);
+        await supabase.from('tasks').delete().eq('user_id', user.id);
+        await supabase.from('notes').delete().eq('user_id', user.id);
+        await supabase.from('categories').delete().eq('user_id', user.id).eq('is_system', false);
+        await supabase.from('timer_stats').delete().eq('user_id', user.id);
       }
 
       // Save default settings
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(DEFAULT_SETTINGS));
-      
+
       return true;
     } catch (error) {
       console.error('Error clearing all data:', error);
@@ -418,12 +509,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const prepareForDistribution = (): boolean => {
     try {
       // Lista de chaves que devem ser mantidas na distribuição
-      const systemKeys = ['krigzis-system-info'];
-      
+      const systemKeys = [SYSTEM_INFO_STORAGE_KEY, LEGACY_SYSTEM_INFO_STORAGE_KEY];
+
       // Limpar todos os dados do usuário, mantendo apenas configurações do sistema
       const allKeys = Object.keys(localStorage);
       allKeys.forEach(key => {
-        if (key.startsWith('krigzis-') && !systemKeys.includes(key)) {
+        if ((key.startsWith('krigzis-') || key.startsWith('nexus-')) && !systemKeys.includes(key)) {
           localStorage.removeItem(key);
         }
       });
@@ -450,7 +541,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateSessionInfo = (newSessionInfo: Partial<SessionInfo>) => {
     const updatedSessionInfo = { ...sessionInfo, ...newSessionInfo };
     setSessionInfo(updatedSessionInfo);
-    
+
     try {
       localStorage.setItem(SESSION_INFO_STORAGE_KEY, JSON.stringify(updatedSessionInfo));
     } catch (error) {
@@ -486,19 +577,19 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const getGreeting = (): string => {
     const hour = new Date().getHours();
     let greetingKey = 'greeting.morning';
-    
+
     if (hour >= 12 && hour < 18) {
       greetingKey = 'greeting.afternoon';
     } else if (hour >= 18) {
       greetingKey = 'greeting.evening';
     }
-    
+
     return greetingKey;
   };
 
   // Task Cards Management
   const updateTaskCard = (cardId: string, updates: Partial<TaskStatusCard>) => {
-    const updatedCards = settings.taskCards.map(card => 
+    const updatedCards = settings.taskCards.map(card =>
       card.id === cardId ? { ...card, ...updates } : card
     );
     updateSettings({ taskCards: updatedCards });
@@ -524,7 +615,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const card = settings.taskCards.find(c => c.id === id);
       return card ? { ...card, order: index + 1 } : null;
     }).filter(Boolean) as TaskStatusCard[];
-    
+
     updateSettings({ taskCards: reorderedCards });
   };
 
@@ -550,14 +641,14 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const enableQuickAction = (key: string) => {
-    const updated = settings.quickActions.map(a => 
+    const updated = settings.quickActions.map(a =>
       a.key === key ? { ...a, enabled: true } : a
     );
     updateQuickActions(updated);
   };
 
   const disableQuickAction = (key: string) => {
-    const updated = settings.quickActions.map(a => 
+    const updated = settings.quickActions.map(a =>
       a.key === key ? { ...a, enabled: false } : a
     );
     updateQuickActions(updated);

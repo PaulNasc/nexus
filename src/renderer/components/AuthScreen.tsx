@@ -1,0 +1,542 @@
+import React, { useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle, Loader2, WifiOff } from 'lucide-react';
+
+type AuthTab = 'login' | 'register' | 'forgot';
+
+const AuthScreen: React.FC = () => {
+  const { signIn, signUp, signInWithGoogle, resetPassword, setOfflineMode } = useAuth();
+
+  const [tab, setTab] = useState<AuthTab>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const clearMessages = () => {
+    setError(null);
+    setSuccess(null);
+  };
+
+  const handleGoogleLogin = async () => {
+    clearMessages();
+    setLoading(true);
+    const { error: authError } = await signInWithGoogle();
+    setLoading(false);
+    if (authError) {
+      setError(authError.message);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    clearMessages();
+
+    if (!email.trim() || !password.trim()) {
+      setError('Preencha todos os campos');
+      return;
+    }
+
+    setLoading(true);
+    const { error: authError } = await signIn(email.trim(), password);
+    setLoading(false);
+
+    if (authError) {
+      if (authError.message.includes('Invalid login credentials')) {
+        setError('Email ou senha incorretos');
+      } else if (authError.message.includes('Email not confirmed')) {
+        setError('Confirme seu email antes de fazer login. Verifique sua caixa de entrada.');
+      } else {
+        setError(authError.message);
+      }
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    clearMessages();
+
+    if (!email.trim() || !password.trim() || !displayName.trim()) {
+      setError('Preencha todos os campos');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('A senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+
+    setLoading(true);
+    const { error: authError } = await signUp(email.trim(), password, displayName.trim());
+    setLoading(false);
+
+    if (authError) {
+      if (authError.message.includes('already registered')) {
+        setError('Este email já está cadastrado');
+      } else {
+        setError(authError.message);
+      }
+    } else {
+      setSuccess('Conta criada! Verifique seu email para confirmar o cadastro.');
+      setTab('login');
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    clearMessages();
+
+    if (!email.trim()) {
+      setError('Digite seu email');
+      return;
+    }
+
+    setLoading(true);
+    const { error: authError } = await resetPassword(email.trim());
+    setLoading(false);
+
+    if (authError) {
+      setError(authError.message);
+    } else {
+      setSuccess('Email de recuperação enviado! Verifique sua caixa de entrada.');
+    }
+  };
+
+  const handleOfflineMode = () => {
+    setOfflineMode(true);
+  };
+
+  const switchTab = (newTab: AuthTab) => {
+    setTab(newTab);
+    clearMessages();
+  };
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #0a0a0f 0%, #111827 50%, #0a0a0f 100%)',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      padding: '20px',
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: '420px',
+        background: 'rgba(17, 24, 39, 0.8)',
+        backdropFilter: 'blur(20px)',
+        borderRadius: '16px',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        padding: '40px 32px',
+        boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)',
+      }}>
+        {/* Logo / Title */}
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <h1 style={{
+            fontSize: '28px',
+            fontWeight: 700,
+            color: '#f9fafb',
+            margin: '0 0 8px 0',
+            letterSpacing: '-0.5px',
+          }}>
+            Nexus
+          </h1>
+          <p style={{
+            fontSize: '14px',
+            color: '#9ca3af',
+            margin: 0,
+          }}>
+            {tab === 'login' && 'Entre na sua conta'}
+            {tab === 'register' && 'Crie sua conta'}
+            {tab === 'forgot' && 'Recuperar senha'}
+          </p>
+        </div>
+
+        {/* Tab Switcher (login/register only) */}
+        {tab !== 'forgot' && (
+          <div style={{
+            display: 'flex',
+            gap: '4px',
+            marginBottom: '24px',
+            background: 'rgba(255, 255, 255, 0.05)',
+            borderRadius: '10px',
+            padding: '4px',
+          }}>
+            {(['login', 'register'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => switchTab(t)}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  background: tab === t ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                  color: tab === t ? '#60a5fa' : '#9ca3af',
+                }}
+              >
+                {t === 'login' ? 'Entrar' : 'Criar conta'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Error Message */}
+        {error && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '12px',
+            marginBottom: '16px',
+            background: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.2)',
+            borderRadius: '10px',
+            color: '#fca5a5',
+            fontSize: '13px',
+          }}>
+            <AlertCircle size={16} style={{ flexShrink: 0 }} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* Success Message */}
+        {success && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '12px',
+            marginBottom: '16px',
+            background: 'rgba(34, 197, 94, 0.1)',
+            border: '1px solid rgba(34, 197, 94, 0.2)',
+            borderRadius: '10px',
+            color: '#86efac',
+            fontSize: '13px',
+          }}>
+            <CheckCircle size={16} style={{ flexShrink: 0 }} />
+            <span>{success}</span>
+          </div>
+        )}
+
+        {/* Login Form */}
+        {tab === 'login' && (
+          <form onSubmit={handleLogin}>
+            <InputField
+              icon={<Mail size={18} />}
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={setEmail}
+              autoFocus
+            />
+            <InputField
+              icon={<Lock size={18} />}
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Senha"
+              value={password}
+              onChange={setPassword}
+              suffix={
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#6b7280',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    display: 'flex',
+                  }}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              }
+            />
+
+            <button
+              type="button"
+              onClick={() => switchTab('forgot')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#60a5fa',
+                fontSize: '12px',
+                cursor: 'pointer',
+                padding: '0',
+                marginBottom: '20px',
+                display: 'block',
+              }}
+            >
+              Esqueci minha senha
+            </button>
+
+            <SubmitButton loading={loading} text="Entrar" />
+          </form>
+        )}
+
+        {/* Register Form */}
+        {tab === 'register' && (
+          <form onSubmit={handleRegister}>
+            <InputField
+              icon={<User size={18} />}
+              type="text"
+              placeholder="Nome"
+              value={displayName}
+              onChange={setDisplayName}
+              autoFocus
+            />
+            <InputField
+              icon={<Mail size={18} />}
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={setEmail}
+            />
+            <InputField
+              icon={<Lock size={18} />}
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Senha (mín. 6 caracteres)"
+              value={password}
+              onChange={setPassword}
+              suffix={
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#6b7280',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    display: 'flex',
+                  }}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              }
+            />
+
+            <SubmitButton loading={loading} text="Criar conta" />
+          </form>
+        )}
+
+        {/* Forgot Password Form */}
+        {tab === 'forgot' && (
+          <form onSubmit={handleForgotPassword}>
+            <InputField
+              icon={<Mail size={18} />}
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={setEmail}
+              autoFocus
+            />
+
+            <SubmitButton loading={loading} text="Enviar email de recuperação" />
+
+            <button
+              type="button"
+              onClick={() => switchTab('login')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#60a5fa',
+                fontSize: '13px',
+                cursor: 'pointer',
+                padding: '8px 0 0 0',
+                display: 'block',
+                width: '100%',
+                textAlign: 'center',
+              }}
+            >
+              Voltar ao login
+            </button>
+          </form>
+        )}
+
+        {/* Divider */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          margin: '24px 0',
+        }}>
+          <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.08)' }} />
+          <span style={{ fontSize: '12px', color: '#6b7280' }}>ou</span>
+          <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.08)' }} />
+        </div>
+
+        {/* Google OAuth Button */}
+        <button
+          type="button"
+          onClick={handleGoogleLogin}
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '12px',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '10px',
+            background: 'rgba(255, 255, 255, 0.05)',
+            color: '#e5e7eb',
+            fontSize: '13px',
+            fontWeight: 500,
+            cursor: loading ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '10px',
+            transition: 'all 0.2s',
+            marginBottom: '10px',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.18)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 48 48">
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+          </svg>
+          Entrar com Google
+        </button>
+
+        {/* Offline Mode Button */}
+        <button
+          type="button"
+          onClick={handleOfflineMode}
+          style={{
+            width: '100%',
+            padding: '12px',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '10px',
+            background: 'rgba(255, 255, 255, 0.03)',
+            color: '#9ca3af',
+            fontSize: '13px',
+            fontWeight: 500,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            transition: 'all 0.2s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+          }}
+        >
+          <WifiOff size={16} />
+          Usar modo offline
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Reusable Input Field Component
+interface InputFieldProps {
+  icon: React.ReactNode;
+  type: string;
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+  suffix?: React.ReactNode;
+  autoFocus?: boolean;
+}
+
+const InputField: React.FC<InputFieldProps> = ({
+  icon,
+  type,
+  placeholder,
+  value,
+  onChange,
+  suffix,
+  autoFocus,
+}) => (
+  <div style={{
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '0 14px',
+    marginBottom: '12px',
+    background: 'rgba(255, 255, 255, 0.05)',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    borderRadius: '10px',
+    transition: 'border-color 0.2s',
+  }}>
+    <span style={{ color: '#6b7280', display: 'flex', flexShrink: 0 }}>{icon}</span>
+    <input
+      type={type}
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      autoFocus={autoFocus}
+      style={{
+        flex: 1,
+        padding: '13px 0',
+        border: 'none',
+        background: 'transparent',
+        color: '#f9fafb',
+        fontSize: '14px',
+        outline: 'none',
+      }}
+    />
+    {suffix}
+  </div>
+);
+
+// Reusable Submit Button
+interface SubmitButtonProps {
+  loading: boolean;
+  text: string;
+}
+
+const SubmitButton: React.FC<SubmitButtonProps> = ({ loading, text }) => (
+  <button
+    type="submit"
+    disabled={loading}
+    style={{
+      width: '100%',
+      padding: '13px',
+      border: 'none',
+      borderRadius: '10px',
+      background: loading
+        ? 'rgba(59, 130, 246, 0.3)'
+        : 'linear-gradient(135deg, #3b82f6, #2563eb)',
+      color: '#fff',
+      fontSize: '14px',
+      fontWeight: 600,
+      cursor: loading ? 'not-allowed' : 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '8px',
+      transition: 'all 0.2s',
+      opacity: loading ? 0.7 : 1,
+    }}
+  >
+    {loading && <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />}
+    {text}
+  </button>
+);
+
+export default AuthScreen;

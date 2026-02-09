@@ -27,7 +27,7 @@ export const Toast: React.FC<ToastProps> = ({
   const getToastStyles = () => {
     const baseStyles = {
       position: 'fixed' as const,
-      top: '24px',
+      top: '72px',
       right: '24px',
       padding: '16px 20px',
       borderRadius: '8px',
@@ -35,11 +35,12 @@ export const Toast: React.FC<ToastProps> = ({
       fontSize: '14px',
       fontWeight: 500,
       boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
-      zIndex: 1001,
+      zIndex: 9999,
       maxWidth: '400px',
       minWidth: '200px',
       border: '1px solid',
       backdropFilter: 'blur(10px)',
+      animation: 'toast-slide-in 0.3s ease-out',
     };
 
     switch (type) {

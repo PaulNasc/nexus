@@ -112,7 +112,7 @@ export class UpdateChecker extends EventEmitter {
         });
         
         this.emit('update-available', result);
-        this.handleUpdateAvailable(result);
+        this.handleUpdateAvailable(result, force);
         
       } else {
         logger.debug('No update available', 'system', {
@@ -177,15 +177,15 @@ export class UpdateChecker extends EventEmitter {
   /**
    * Manipula quando uma atualização está disponível
    */
-  private handleUpdateAvailable(result: UpdateCheckResult): void {
+  private handleUpdateAvailable(result: UpdateCheckResult, force: boolean): void {
     const settings = this.versionManager.getUpdateSettings();
     const updateInfo = result.updateAvailable!;
     
     // Enviar para renderer
     this.sendToRenderer('update-available', result);
     
-    // Mostrar notificação do sistema se habilitado
-    if (settings.notifyOnUpdate) {
+    // Mostrar notificação do sistema apenas quando o check for manual/forçado
+    if (settings.notifyOnUpdate && force) {
       this.showUpdateNotification(updateInfo.versionString, updateInfo.changelog);
     }
     
@@ -193,7 +193,7 @@ export class UpdateChecker extends EventEmitter {
     logger.info('Update notification sent', 'system', {
       version: updateInfo.versionString,
       channel: updateInfo.channel,
-      notificationShown: settings.notifyOnUpdate
+      notificationShown: settings.notifyOnUpdate && force
     });
   }
   
@@ -203,7 +203,7 @@ export class UpdateChecker extends EventEmitter {
   private showUpdateNotification(version: string, changelog?: string): void {
     try {
       const notification = new Notification({
-        title: 'Krigzis - Atualização Disponível',
+        title: 'Nexus - Atualização Disponível',
         body: `Nova versão ${version} disponível para download.\n${changelog || 'Veja as novidades!'}`,
         icon: this.getAppIcon(),
         urgency: 'normal',
@@ -332,7 +332,7 @@ export class UpdateChecker extends EventEmitter {
           isSupported,
           isDeprecated,
           message: isDeprecated 
-            ? 'Esta versão foi descontinuada. Atualize para continuar usando o Krigzis.'
+            ? 'Esta versão foi descontinuada. Atualize para continuar usando o Nexus.'
             : 'Esta versão não é mais suportada. Atualize para a versão mais recente.'
         });
       }
