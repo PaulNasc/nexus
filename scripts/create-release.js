@@ -93,8 +93,8 @@ async function createRelease() {
                 '• Build otimizado sem dependências problemáticas'
             ],
             size_mb: 'Aproximadamente 150MB após instalação',
-            github_url: 'https://github.com/PauloHYBEX/nexus',
-            support_url: 'https://github.com/PauloHYBEX/nexus/issues'
+            github_url: 'https://github.com/PaulNasc/nexus',
+            support_url: 'https://github.com/PaulNasc/nexus/issues'
         };
         
         fs.writeJsonSync(

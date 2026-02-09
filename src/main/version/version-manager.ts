@@ -180,7 +180,7 @@ export class VersionManager {
    */
   private async fetchUpdateManifest(): Promise<UpdateManifest> {
     // Repositório GitHub oficial do Nexus (mantendo URL atual)
-    const updateServerUrl = 'https://api.github.com/repos/PauloHYBEX/krigzis/releases/latest';
+    const updateServerUrl = 'https://api.github.com/repos/PaulNasc/nexus/releases/latest';
     
     try {
       // Em ambiente de desenvolvimento, não verificar atualizações

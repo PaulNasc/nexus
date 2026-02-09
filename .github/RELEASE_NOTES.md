@@ -1,4 +1,4 @@
-# Krigzis v1.0.1
+# Nexus v1.0.1
 
 Melhorias principais:
 - Desativado DevTools/atalhos no build de produção

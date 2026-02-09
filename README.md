@@ -42,8 +42,8 @@
 
 ```bash
 # Clonar o repositório
-git clone https://github.com/PauloHYBEX/krigzis.git
-cd krigzis
+git clone https://github.com/PaulNasc/nexus.git
+cd nexus
 
 # Instalar dependências
 npm install
@@ -276,4 +276,4 @@ Este projeto está licenciado sob a [MIT License](LICENSE).
 ## Autor
 
 **Paulo Riccardo Nascimento dos Santos**
-- GitHub: [@PauloHYBEX](https://github.com/PauloHYBEX)
+- GitHub: [@PaulNasc](https://github.com/PaulNasc)

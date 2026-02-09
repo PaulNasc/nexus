@@ -119,8 +119,8 @@
     ],
     "publish": {
       "provider": "github",
-      "repo": "krigzis",
-      "owner": "PauloHYBEX"
+      "repo": "nexus",
+      "owner": "PaulNasc"
     }
   },
   "mac": {

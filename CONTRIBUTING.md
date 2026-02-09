@@ -11,11 +11,11 @@ Obrigado pelo interesse em contribuir! Este documento descreve as diretrizes par
 ```bash
 # Fork o repositório no GitHub
 # Clone seu fork
-git clone https://github.com/SEU_USUARIO/krigzis.git
-cd krigzis
+git clone https://github.com/SEU_USUARIO/nexus.git
+cd nexus
 
 # Adicione o upstream
-git remote add upstream https://github.com/PauloHYBEX/krigzis.git
+git remote add upstream https://github.com/PaulNasc/nexus.git
 ```
 
 ### 2. Configurar o Ambiente
@@ -126,7 +126,7 @@ Abra um PR no GitHub com:
 
 ## Reportar Bugs
 
-Abra uma [Issue](https://github.com/PauloHYBEX/krigzis/issues) com:
+Abra uma [Issue](https://github.com/PaulNasc/nexus/issues) com:
 
 1. **Descrição** clara do problema
 2. **Passos para reproduzir**
@@ -138,7 +138,7 @@ Abra uma [Issue](https://github.com/PauloHYBEX/krigzis/issues) com:
 
 ## Sugerir Funcionalidades
 
-Abra uma [Issue](https://github.com/PauloHYBEX/krigzis/issues) com a tag `enhancement`:
+Abra uma [Issue](https://github.com/PaulNasc/nexus/issues) com a tag `enhancement`:
 
 1. **Descrição** da funcionalidade
 2. **Motivação** — por que seria útil?

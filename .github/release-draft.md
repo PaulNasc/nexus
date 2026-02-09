@@ -1,4 +1,4 @@
-## Krigzis v${{ github.ref_name }}
+## Nexus v${{ github.ref_name }}
 
 Principais mudanças:
 - Desativado DevTools/atalhos em produção
