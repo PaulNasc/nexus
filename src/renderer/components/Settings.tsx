@@ -759,7 +759,11 @@ import {
   Shield,
   Copy,
   Layout,
-  HardDrive
+  HardDrive,
+  Keyboard,
+  MousePointer,
+  Volume2,
+  Type
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -865,7 +869,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `krigzis-settings-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `nexus-settings-${new Date().toISOString().split('T')[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -894,7 +898,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   const handleTestNotification = () => {
     showNotification({
       title: t('settings.notifications.test'),
-      body: 'Esta é uma notificação de teste do Krigzis',
+      body: 'Esta é uma notificação de teste do Nexus',
     });
   };
 
@@ -929,7 +933,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `krigzis-logs-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `nexus-logs-${new Date().toISOString().split('T')[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
       
@@ -1477,7 +1481,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     }}>
                       <input
                         type="checkbox"
-                        checked={!((settings as any).reduceAnimations)}
+                        checked={!(settings.reduceAnimations)}
                         onChange={(e) => updateSettings({ reduceAnimations: !e.target.checked })}
                         style={{
                           accentColor: 'var(--color-primary-teal)',
@@ -1590,272 +1594,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   }}>
                     Personalize sua experiência e otimize seu fluxo de trabalho.
                   </p>
-                </div>
-
-                {/* Configurações de Comportamento da IA */}
-                <div style={{
-                  padding: '20px',
-                  backgroundColor: isDark ? '#141414' : '#F5F5F5',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E0E0E0'}`,
-                  borderRadius: '12px',
-                }}>
-                  <h4 style={{
-                    fontSize: '16px',
-                    fontWeight: 500,
-                    marginBottom: '16px',
-                    margin: '0 0 16px 0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}>
-                    <Brain size={16} />
-                    Comportamento da IA
-                  </h4>
-                  
-                  <div style={{ display: 'grid', gap: '16px' }}>
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      padding: '12px',
-                      backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
-                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={settings.aiCanCreateTasks}
-                        onChange={(e) => updateSettings({ aiCanCreateTasks: e.target.checked })}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          accentColor: 'var(--color-primary-teal)',
-                        }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontSize: '14px',
-                          fontWeight: 500,
-                          color: isDark ? '#FFFFFF' : '#1F2937',
-                          marginBottom: '4px',
-                        }}>
-                          Permitir criação de tarefas
-                        </div>
-                        <div style={{
-                          fontSize: '12px',
-                          color: isDark ? '#A0A0A0' : '#6B7280',
-                        }}>
-                          A IA pode criar novas tarefas baseadas em suas solicitações
-                        </div>
-                      </div>
-                    </label>
-
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      padding: '12px',
-                      backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
-                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={settings.aiCanEditTasks}
-                        onChange={(e) => updateSettings({ aiCanEditTasks: e.target.checked })}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          accentColor: 'var(--color-primary-teal)',
-                        }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontSize: '14px',
-                          fontWeight: 500,
-                          color: isDark ? '#FFFFFF' : '#1F2937',
-                          marginBottom: '4px',
-                        }}>
-                          Permitir edição de tarefas
-                        </div>
-                        <div style={{
-                          fontSize: '12px',
-                          color: isDark ? '#A0A0A0' : '#6B7280',
-                        }}>
-                          A IA pode modificar tarefas existentes
-                        </div>
-                      </div>
-                    </label>
-
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      padding: '12px',
-                      backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
-                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={settings.aiCanDeleteTasks}
-                        onChange={(e) => updateSettings({ aiCanDeleteTasks: e.target.checked })}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          accentColor: 'var(--color-primary-teal)',
-                        }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontSize: '14px',
-                          fontWeight: 500,
-                          color: isDark ? '#FFFFFF' : '#1F2937',
-                          marginBottom: '4px',
-                        }}>
-                          Permitir exclusão de tarefas
-                        </div>
-                        <div style={{
-                          fontSize: '12px',
-                          color: isDark ? '#A0A0A0' : '#6B7280',
-                        }}>
-                          A IA pode excluir tarefas quando solicitado
-                        </div>
-                      </div>
-                    </label>
-
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      padding: '12px',
-                      backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
-                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={settings.aiCanManageNotes}
-                        onChange={(e) => updateSettings({ aiCanManageNotes: e.target.checked })}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          accentColor: 'var(--color-primary-teal)',
-                        }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontSize: '14px',
-                          fontWeight: 500,
-                          color: isDark ? '#FFFFFF' : '#1F2937',
-                          marginBottom: '4px',
-                        }}>
-                          Permitir gerenciamento de notas
-                        </div>
-                        <div style={{
-                          fontSize: '12px',
-                          color: isDark ? '#A0A0A0' : '#6B7280',
-                        }}>
-                          A IA pode criar, editar e organizar suas notas
-                        </div>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Configurações de Fluxo de Trabalho */}
-                <div style={{
-                  padding: '20px',
-                  backgroundColor: isDark ? '#141414' : '#F5F5F5',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E0E0E0'}`,
-                  borderRadius: '12px',
-                }}>
-                  <h4 style={{
-                    fontSize: '16px',
-                    fontWeight: 500,
-                    marginBottom: '16px',
-                    margin: '0 0 16px 0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}>
-                    <Zap size={16} />
-                    Fluxo de Trabalho
-                  </h4>
-                  
-                  <div style={{ display: 'grid', gap: '16px' }}>
-                    <div>
-                      <label style={{
-                        display: 'block',
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        color: isDark ? '#FFFFFF' : '#374151',
-                        marginBottom: '8px',
-                      }}>
-                        Modo de resposta da IA
-                      </label>
-                      <select
-                        value={settings.aiResponseMode || 'balanced'}
-                        onChange={(e) => updateSettings({ aiResponseMode: e.target.value as 'detailed' | 'balanced' | 'concise' })}
-                        style={{
-                          width: '100%',
-                          padding: '12px',
-                          backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
-                          border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                          borderRadius: '8px',
-                          color: isDark ? '#FFFFFF' : '#1F2937',
-                          fontSize: '14px',
-                          outline: 'none',
-                        }}
-                      >
-                        <option value="detailed">Detalhado - Respostas completas e explicativas</option>
-                        <option value="balanced">Equilibrado - Respostas úteis e diretas</option>
-                        <option value="concise">Conciso - Respostas breves e objetivas</option>
-                      </select>
-                    </div>
-
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      padding: '12px',
-                      backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
-                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={settings.aiProactiveMode}
-                        onChange={(e) => updateSettings({ aiProactiveMode: e.target.checked })}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          accentColor: 'var(--color-primary-teal)',
-                        }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontSize: '14px',
-                          fontWeight: 500,
-                          color: isDark ? '#FFFFFF' : '#1F2937',
-                          marginBottom: '4px',
-                        }}>
-                          Modo proativo
-                        </div>
-                        <div style={{
-                          fontSize: '12px',
-                          color: isDark ? '#A0A0A0' : '#6B7280',
-                        }}>
-                          A IA oferece sugestões e insights automaticamente
-                        </div>
-                      </div>
-                    </label>
-                  </div>
                 </div>
 
                 {/* Configurações de Interface */}
@@ -2316,7 +2054,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           const url = URL.createObjectURL(blob);
                           const a = document.createElement('a');
                           a.href = url;
-                          a.download = `krigzis-backup-${new Date().toISOString().split('T')[0]}.json`;
+                          a.download = `nexus-backup-${new Date().toISOString().split('T')[0]}.json`;
                           a.click();
                           URL.revokeObjectURL(url);
                           showToast('Backup exportado com sucesso', 'success');
@@ -2369,7 +2107,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           const url = URL.createObjectURL(blob);
                           const a = document.createElement('a');
                           a.href = url;
-                          a.download = `krigzis-tasks-${new Date().toISOString().split('T')[0]}.json`;
+                          a.download = `nexus-tasks-${new Date().toISOString().split('T')[0]}.json`;
                           a.click();
                           URL.revokeObjectURL(url);
                           showToast('Tarefas exportadas com sucesso', 'success');
@@ -2422,7 +2160,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           const url = URL.createObjectURL(blob);
                           const a = document.createElement('a');
                           a.href = url;
-                          a.download = `krigzis-notes-${new Date().toISOString().split('T')[0]}.json`;
+                          a.download = `nexus-notes-${new Date().toISOString().split('T')[0]}.json`;
                           a.click();
                           URL.revokeObjectURL(url);
                           showToast('Notas exportadas com sucesso', 'success');
@@ -2709,166 +2447,370 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
             {activeTab === 'acessibilidade' && (
               <div style={{ display: 'grid', gap: '24px' }}>
+                {/* Visão e Leitura */}
                 <div style={{
-                  padding: '24px',
-                  backgroundColor: '#0A0A0A',
-                  border: '1px solid #2A2A2A',
+                  padding: '20px',
+                  backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
+                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
                   borderRadius: '12px',
-                  textAlign: 'center'
                 }}>
-                  <Eye size={48} style={{ color: 'var(--color-primary-teal)', marginBottom: '16px' }} />
-                  <h3 style={{
-                    margin: '0 0 8px 0',
-                    fontSize: '18px',
+                  <h4 style={{
+                    fontSize: '16px',
                     fontWeight: 600,
-                    color: '#FFFFFF'
-                  }}>
-                    Configurações Migradas
-                  </h3>
-                  <p style={{
+                    color: isDark ? '#FFFFFF' : '#1F2937',
                     margin: '0 0 16px 0',
-                    fontSize: '14px',
-                    color: '#A0A0A0',
-                    lineHeight: '1.5'
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
                   }}>
-                    As configurações de acessibilidade foram movidas para a aba <strong style={{ color: '#FFFFFF' }}>Aparência</strong> para melhor organização.
-                  </p>
-                  <button
-                    onClick={() => setActiveTab('aparencia')}
-                    style={{
-                      padding: '12px 24px',
-                      backgroundColor: 'var(--color-primary-teal)',
-                      color: '#FFFFFF',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
+                    <Eye size={16} />
+                    Visão e Leitura
+                  </h4>
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    <label style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '8px',
-                      margin: '0 auto'
-                    }}
-                  >
-                    <Palette size={16} />
-                    Ir para Aparência
-                  </button>
+                      gap: '12px',
+                      cursor: 'pointer',
+                      padding: '12px',
+                      backgroundColor: isDark ? '#141414' : '#FFFFFF',
+                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                      borderRadius: '8px',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={settings.highContrastMode}
+                        onChange={(e) => updateSettings({ highContrastMode: e.target.checked })}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
+                          Modo Alto Contraste
+                        </div>
+                        <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                          Aumenta o contraste entre texto e fundo para melhor visibilidade
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      cursor: 'pointer',
+                      padding: '12px',
+                      backgroundColor: isDark ? '#141414' : '#FFFFFF',
+                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                      borderRadius: '8px',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={settings.largeFontMode}
+                        onChange={(e) => updateSettings({ largeFontMode: e.target.checked })}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
+                          <Type size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
+                          Fonte Ampliada
+                        </div>
+                        <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                          Aumenta o tamanho da fonte em toda a interface para facilitar a leitura
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      cursor: 'pointer',
+                      padding: '12px',
+                      backgroundColor: isDark ? '#141414' : '#FFFFFF',
+                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                      borderRadius: '8px',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={!(settings.reduceAnimations)}
+                        onChange={(e) => updateSettings({ reduceAnimations: !e.target.checked })}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
+                          Animações e Transições
+                        </div>
+                        <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                          Desabilite para reduzir movimento na tela (recomendado para sensibilidade a movimento)
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Navegação e Interação */}
+                <div style={{
+                  padding: '20px',
+                  backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
+                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                  borderRadius: '12px',
+                }}>
+                  <h4 style={{
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    color: isDark ? '#FFFFFF' : '#1F2937',
+                    margin: '0 0 16px 0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}>
+                    <Keyboard size={16} />
+                    Navegação e Interação
+                  </h4>
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      cursor: 'pointer',
+                      padding: '12px',
+                      backgroundColor: isDark ? '#141414' : '#FFFFFF',
+                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                      borderRadius: '8px',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={settings.keyboardNavigation !== false}
+                        onChange={(e) => updateSettings({ keyboardNavigation: e.target.checked })}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
+                          Navegação por Teclado
+                        </div>
+                        <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                          Permite navegar pela interface usando Tab, Enter e teclas de seta
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      cursor: 'pointer',
+                      padding: '12px',
+                      backgroundColor: isDark ? '#141414' : '#FFFFFF',
+                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                      borderRadius: '8px',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={settings.focusIndicators !== false}
+                        onChange={(e) => updateSettings({ focusIndicators: e.target.checked })}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
+                          <MousePointer size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
+                          Indicadores de Foco Visíveis
+                        </div>
+                        <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                          Destaca visualmente o elemento focado ao navegar por teclado
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      cursor: 'pointer',
+                      padding: '12px',
+                      backgroundColor: isDark ? '#141414' : '#FFFFFF',
+                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                      borderRadius: '8px',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={settings.playSound}
+                        onChange={(e) => updateSettings({ playSound: e.target.checked })}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
+                          <Volume2 size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
+                          Feedback Sonoro
+                        </div>
+                        <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                          Reproduz sons ao completar ações (notificações, timer, etc.)
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Atalhos de Teclado */}
+                <div style={{
+                  padding: '20px',
+                  backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
+                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                  borderRadius: '12px',
+                }}>
+                  <h4 style={{
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    color: isDark ? '#FFFFFF' : '#1F2937',
+                    margin: '0 0 16px 0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}>
+                    <Keyboard size={16} />
+                    Atalhos de Teclado
+                  </h4>
+                  <div style={{ display: 'grid', gap: '8px' }}>
+                    {[
+                      { keys: 'Ctrl + N', desc: 'Nova tarefa' },
+                      { keys: 'Ctrl + Shift + N', desc: 'Nova nota' },
+                      { keys: 'Ctrl + ,', desc: 'Abrir configurações' },
+                      { keys: 'Ctrl + F', desc: 'Buscar' },
+                      { keys: 'Ctrl + B', desc: 'Abrir/fechar barra lateral' },
+                      { keys: 'Esc', desc: 'Fechar modal/diálogo' },
+                    ].map((shortcut) => (
+                      <div key={shortcut.keys} style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '10px 12px',
+                        backgroundColor: isDark ? '#141414' : '#FFFFFF',
+                        border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                        borderRadius: '8px',
+                      }}>
+                        <span style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                          {shortcut.desc}
+                        </span>
+                        <code style={{
+                          fontSize: '12px',
+                          fontFamily: 'monospace',
+                          color: isDark ? '#00D4AA' : '#059669',
+                          backgroundColor: isDark ? '#1A1A1A' : '#ECFDF5',
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          border: `1px solid ${isDark ? '#2A2A2A' : '#D1FAE5'}`,
+                        }}>
+                          {shortcut.keys}
+                        </code>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Seção de Limpeza de Dados */}
-                {(
-                  <div style={{
-                    padding: '20px',
-                    backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : 'var(--color-bg-secondary)',
-                    border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
-                    borderRadius: '12px',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                      <AlertCircle size={20} strokeWidth={1.7} color="#F59E0B" />
-                      <h4 style={{
-                        margin: 0,
-                        fontSize: '16px',
-                        fontWeight: 600,
-                        color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)',
-                      }}>
-                        {t('accessibility.clearData')}
-                      </h4>
-                    </div>
-                    <p style={{
-                      color: theme.mode === 'dark' ? '#A0A0A0' : 'var(--color-text-secondary)',
-                      fontSize: '14px',
-                      margin: '0 0 16px 0',
-                      lineHeight: 1.5,
+                <div style={{
+                  padding: '20px',
+                  backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
+                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                  borderRadius: '12px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                    <AlertCircle size={20} strokeWidth={1.7} color="#F59E0B" />
+                    <h4 style={{
+                      margin: 0,
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      color: isDark ? '#FFFFFF' : '#1F2937',
                     }}>
-                      {t('accessibility.clearDataDesc')}
-                    </p>
+                      {t('accessibility.clearData')}
+                    </h4>
+                  </div>
+                  <p style={{
+                    color: isDark ? '#A0A0A0' : '#6B7280',
+                    fontSize: '14px',
+                    margin: '0 0 16px 0',
+                    lineHeight: 1.5,
+                  }}>
+                    {t('accessibility.clearDataDesc')}
+                  </p>
+                  
+                  {showClearDataConfirm && (
+                    <div style={{
+                      padding: '16px',
+                      backgroundColor: isDark ? '#1A1A1A' : '#FEF3C7',
+                      border: `1px solid ${isDark ? '#3A3A3A' : '#F59E0B'}`,
+                      borderRadius: '8px',
+                      marginBottom: '16px',
+                    }}>
+                      <p style={{
+                        margin: '0 0 8px 0',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        color: isDark ? '#F59E0B' : '#92400E',
+                      }}>
+                        {t('accessibility.clearDataConfirm')}
+                      </p>
+                      <p style={{
+                        margin: 0,
+                        fontSize: '12px',
+                        color: isDark ? '#A0A0A0' : '#92400E',
+                      }}>
+                        {t('accessibility.clearDataWarning')}
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button
+                      onClick={handleClearAllData}
+                      disabled={isClearing}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '12px 20px',
+                        backgroundColor: showClearDataConfirm ? '#DC2626' : '#EF4444',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        fontWeight: 500,
+                        cursor: isClearing ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s ease',
+                        opacity: isClearing ? 0.6 : 1,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isClearing) e.currentTarget.style.backgroundColor = showClearDataConfirm ? '#B91C1C' : '#DC2626';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isClearing) e.currentTarget.style.backgroundColor = showClearDataConfirm ? '#DC2626' : '#EF4444';
+                      }}
+                    >
+                      <AlertCircle size={16} strokeWidth={1.7} />
+                      {isClearing ? 'Limpando...' : (showClearDataConfirm ? 'Confirmar Limpeza' : t('accessibility.clearData'))}
+                    </button>
                     
                     {showClearDataConfirm && (
-                      <div style={{
-                        padding: '16px',
-                        backgroundColor: theme.mode === 'dark' ? '#1A1A1A' : '#FEF3C7',
-                        border: `1px solid ${theme.mode === 'dark' ? '#3A3A3A' : '#F59E0B'}`,
-                        borderRadius: '8px',
-                        marginBottom: '16px',
-                      }}>
-                        <p style={{
-                          margin: '0 0 8px 0',
-                          fontSize: '14px',
-                          fontWeight: 600,
-                          color: theme.mode === 'dark' ? '#F59E0B' : '#92400E',
-                        }}>
-                          {t('accessibility.clearDataConfirm')}
-                        </p>
-                        <p style={{
-                          margin: 0,
-                          fontSize: '12px',
-                          color: theme.mode === 'dark' ? '#A0A0A0' : '#92400E',
-                        }}>
-                          {t('accessibility.clearDataWarning')}
-                        </p>
-                      </div>
-                    )}
-                    
-                    <div style={{ display: 'flex', gap: '12px' }}>
                       <button
-                        onClick={handleClearAllData}
-                        disabled={isClearing}
+                        onClick={() => setShowClearDataConfirm(false)}
                         style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
                           padding: '12px 20px',
-                          backgroundColor: showClearDataConfirm ? '#DC2626' : '#EF4444',
-                          color: '#FFFFFF',
-                          border: 'none',
+                          backgroundColor: 'transparent',
+                          color: isDark ? '#FFFFFF' : '#1F2937',
+                          border: `1px solid ${isDark ? '#3A3A3A' : '#E5E7EB'}`,
                           borderRadius: '8px',
                           fontSize: '14px',
                           fontWeight: 500,
-                          cursor: isClearing ? 'not-allowed' : 'pointer',
+                          cursor: 'pointer',
                           transition: 'all 0.2s ease',
-                          opacity: isClearing ? 0.6 : 1,
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isClearing) {
-                            e.currentTarget.style.backgroundColor = showClearDataConfirm ? '#B91C1C' : '#DC2626';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isClearing) {
-                            e.currentTarget.style.backgroundColor = showClearDataConfirm ? '#DC2626' : '#EF4444';
-                          }
                         }}
                       >
-                        <AlertCircle size={16} strokeWidth={1.7} />
-                        {isClearing ? 'Limpando...' : (showClearDataConfirm ? 'Confirmar Limpeza' : t('accessibility.clearData'))}
+                        Cancelar
                       </button>
-                      
-                      {showClearDataConfirm && (
-                        <button
-                          onClick={() => setShowClearDataConfirm(false)}
-                          style={{
-                            padding: '12px 20px',
-                            backgroundColor: 'transparent',
-                            color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)',
-                            border: `1px solid ${theme.mode === 'dark' ? '#3A3A3A' : 'var(--color-border-primary)'}`,
-                            borderRadius: '8px',
-                            fontSize: '14px',
-                            fontWeight: 500,
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease',
-                          }}
-                        >
-                          Cancelar
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </div>
-                )}
-
-
-                  </div>
-                )}
+                </div>
+              </div>
+            )}
 
             {activeTab === 'inteligencia-artificial' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -3090,6 +3032,141 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                   </div>
                   
+                {/* Permissões da IA */}
+                <div style={{
+                  padding: '20px',
+                  backgroundColor: isDark ? '#141414' : '#F5F5F5',
+                  border: `1px solid ${isDark ? '#2A2A2A' : '#E0E0E0'}`,
+                  borderRadius: '12px',
+                }}>
+                  <h4 style={{
+                    fontSize: '16px',
+                    fontWeight: 500,
+                    marginBottom: '16px',
+                    margin: '0 0 16px 0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}>
+                    <Shield size={16} />
+                    Permissões da IA
+                  </h4>
+                  
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    {[
+                      { key: 'aiCanCreateTasks' as const, label: 'Permitir criação de tarefas', desc: 'A IA pode criar novas tarefas baseadas em suas solicitações' },
+                      { key: 'aiCanEditTasks' as const, label: 'Permitir edição de tarefas', desc: 'A IA pode modificar tarefas existentes' },
+                      { key: 'aiCanDeleteTasks' as const, label: 'Permitir exclusão de tarefas', desc: 'A IA pode excluir tarefas quando solicitado' },
+                      { key: 'aiCanManageNotes' as const, label: 'Permitir gerenciamento de notas', desc: 'A IA pode criar, editar e organizar suas notas' },
+                    ].map((perm) => (
+                      <label key={perm.key} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        cursor: 'pointer',
+                        padding: '12px',
+                        backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
+                        border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                        borderRadius: '8px',
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={settings[perm.key]}
+                          onChange={(e) => updateSettings({ [perm.key]: e.target.checked })}
+                          style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
+                            {perm.label}
+                          </div>
+                          <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                            {perm.desc}
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Fluxo de Trabalho da IA */}
+                <div style={{
+                  padding: '20px',
+                  backgroundColor: isDark ? '#141414' : '#F5F5F5',
+                  border: `1px solid ${isDark ? '#2A2A2A' : '#E0E0E0'}`,
+                  borderRadius: '12px',
+                }}>
+                  <h4 style={{
+                    fontSize: '16px',
+                    fontWeight: 500,
+                    marginBottom: '16px',
+                    margin: '0 0 16px 0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}>
+                    <Zap size={16} />
+                    Fluxo de Trabalho
+                  </h4>
+                  
+                  <div style={{ display: 'grid', gap: '16px' }}>
+                    <div>
+                      <label style={{
+                        display: 'block',
+                        fontSize: '14px',
+                        fontWeight: 500,
+                        color: isDark ? '#FFFFFF' : '#374151',
+                        marginBottom: '8px',
+                      }}>
+                        Modo de resposta da IA
+                      </label>
+                      <select
+                        value={settings.aiResponseMode || 'balanced'}
+                        onChange={(e) => updateSettings({ aiResponseMode: e.target.value as 'detailed' | 'balanced' | 'concise' })}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
+                          border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                          borderRadius: '8px',
+                          color: isDark ? '#FFFFFF' : '#1F2937',
+                          fontSize: '14px',
+                          outline: 'none',
+                        }}
+                      >
+                        <option value="detailed">Detalhado - Respostas completas e explicativas</option>
+                        <option value="balanced">Equilibrado - Respostas úteis e diretas</option>
+                        <option value="concise">Conciso - Respostas breves e objetivas</option>
+                      </select>
+                    </div>
+
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      cursor: 'pointer',
+                      padding: '12px',
+                      backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
+                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                      borderRadius: '8px',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={settings.aiProactiveMode}
+                        onChange={(e) => updateSettings({ aiProactiveMode: e.target.checked })}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
+                          Modo proativo
+                        </div>
+                        <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                          A IA oferece sugestões e insights automaticamente
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
                 {/* Advanced Configuration Link */}
                   <div style={{
                   padding: '16px',
@@ -3313,7 +3390,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       fontWeight: 'bold',
                       color: '#FFFFFF',
                     }}>
-                      K
+                      N
                     </div>
                     <div>
                       <h3 style={{
@@ -3430,7 +3507,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         fontSize: '14px',
                         color: theme.mode === 'dark' ? '#A0A0A0' : 'var(--color-text-secondary)',
                       }}>
-                        Paulo Ricardo
+                        Paulo Riccardo Nascimento dos Santos
                       </span>
                     </div>
 

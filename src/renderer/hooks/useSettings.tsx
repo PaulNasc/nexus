@@ -56,6 +56,8 @@ export interface UserSettings {
   highContrastMode: boolean;
   largeFontMode: boolean;
   showTaskCounters: boolean;
+  keyboardNavigation?: boolean;
+  focusIndicators?: boolean;
 
   // Appearance
   fontSizePx?: number;
