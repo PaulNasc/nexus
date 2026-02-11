@@ -438,30 +438,24 @@ button:disabled,
 
 .navigation {
   display: flex;
-  gap: 0;
-  background-color: transparent;
-  padding: 0;
-  border-radius: 0;
+  gap: var(--space-1);
+  background-color: var(--color-bg-tertiary);
+  padding: 3px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-primary);
-  overflow: hidden;
 }
 
 .nav-button {
   background: none;
   border: none;
-  border-right: 1px solid var(--color-border-primary);
   color: var(--color-text-secondary);
   padding: 6px 18px;
-  border-radius: 0;
+  border-radius: var(--radius-md);
   font-size: 13px;
   font-weight: var(--font-weight-medium);
   cursor: pointer;
   transition: all var(--transition-normal);
   position: relative;
-}
-
-.nav-button:last-child {
-  border-right: none;
 }
 
 .nav-button:hover {
@@ -470,9 +464,20 @@ button:disabled,
 }
 
 .nav-button.active {
-  color: #fff;
+  color: var(--color-text-primary);
+  background: none;
+}
+
+.nav-button.active::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 2.5px;
+  border-radius: 2px;
   background: var(--gradient-primary);
-  box-shadow: none;
 }
 
 .header-right {
@@ -486,9 +491,8 @@ button:disabled,
 .header-icon-group {
   display: flex;
   align-items: center;
-  gap: 2px;
-  border: 1px solid var(--color-border-primary);
-  border-radius: 0;
+  gap: var(--space-1);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -499,17 +503,13 @@ button:disabled,
   justify-content: center;
   width: 34px;
   height: 34px;
-  background: none;
-  border: none;
-  border-right: 1px solid var(--color-border-primary);
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
   color: var(--color-text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
   padding: 0;
-}
-
-.header-icon-btn:last-child {
-  border-right: none;
 }
 
 .header-icon-btn:hover {
@@ -521,7 +521,8 @@ button:disabled,
 .header-action-group {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: var(--space-1);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -530,29 +531,28 @@ button:disabled,
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
+  width: 34px;
   height: 34px;
-  border: none;
-  color: #fff;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.2s ease;
   padding: 0;
 }
 
 .header-action-btn--task {
-  background: linear-gradient(135deg, #00D4AA, #00B894);
-  border-radius: 0;
+  color: #00D4AA;
 }
 
 .header-action-btn--note {
-  background: linear-gradient(135deg, #7B3FF2, #9B59B6);
-  border-radius: 0;
+  color: #7B3FF2;
 }
 
 .header-action-btn:hover {
+  background-color: var(--color-bg-hover);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  filter: brightness(1.1);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Tooltip for header buttons */

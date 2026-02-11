@@ -141,10 +141,10 @@ const AppHeader: React.FC<AppHeaderProps> = ({
             <button
               className="header-action-btn header-action-btn--note"
               onClick={handleOpenNoteModal}
-              title="Nova Nota"
+              title="Nota rápida"
             >
               <StickyNote size={16} />
-              <span className="header-tooltip">Nova Nota</span>
+              <span className="header-tooltip">Nota rápida</span>
             </button>
           </div>
         </div>
@@ -551,6 +551,7 @@ const App: React.FC<AppProps> = () => {
         <NoteModal
           isOpen={isNoteModalOpen}
           onClose={() => setIsNoteModalOpen(false)}
+          modalTitle="Nota rápida"
         />
       </main>
 

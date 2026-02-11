@@ -154,7 +154,7 @@
 .card {
   background: var(--gradient-card);
   border: 1px solid var(--color-border-primary);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-lg);
   padding: var(--space-6);
   transition: var(--transition-all);
   position: relative;
@@ -187,7 +187,7 @@
 .action-card {
   background: var(--gradient-card);
   border: 1px solid var(--color-border-primary);
-  border-radius: var(--radius-2xl);
+  border-radius: 12px;
   padding: var(--space-6);
   cursor: pointer;
   position: relative;
@@ -206,7 +206,7 @@
   background: var(--gradient-card-hover);
   opacity: 0;
   transition: var(--transition-opacity);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-lg);
 }
 
 .action-card:hover {
@@ -228,7 +228,7 @@
 .status-card {
   background: var(--gradient-card);
   border: 1px solid var(--color-border-primary);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-lg);
   padding: var(--space-6);
   cursor: pointer;
   position: relative;
@@ -1532,7 +1532,7 @@
 .linked-tasks-modal {
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border-primary);
-  border-radius: var(--radius-xl);
+  border-radius: 12px;
   width: 90%;
   max-width: 800px;
   max-height: 85vh;
@@ -1633,7 +1633,7 @@
 .note-viewer-modal {
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border-primary);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   width: 92%;
   max-width: 900px;
   max-height: 85vh;
@@ -1898,7 +1898,7 @@
 .confirm-delete-modal {
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border-primary);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   width: 92%;
   max-width: 520px;
   display: flex;
