@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { supabase } from '../lib/supabase';
 import { useSettings } from '../hooks/useSettings';
 import { useAuth } from './AuthContext';
+import { useOrganization } from './OrganizationContext';
 import type { Task, CreateTaskData, TaskStatus } from '../../shared/types/task';
 import type { ElectronAPI } from '../../main/preload';
 
@@ -77,6 +78,7 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [error, setError] = useState<string | null>(null);
   const { settings } = useSettings();
   const { user, isOffline } = useAuth();
+  const { activeOrg } = useOrganization();
 
   // Determine effective storage mode
   const storageMode = settings.storageMode || 'cloud';
@@ -124,10 +126,13 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // ── CLOUD (Supabase) helpers ──────────────────────────────────
   const getAllTasksCloud = useCallback(async (): Promise<Task[]> => {
-    const { data, error: fetchError } = await supabase
-      .from('tasks')
-      .select('*')
-      .order('created_at', { ascending: false });
+    let query = supabase.from('tasks').select('*');
+    if (activeOrg) {
+      query = query.eq('organization_id', activeOrg.id);
+    } else {
+      query = query.is('organization_id', null);
+    }
+    const { data, error: fetchError } = await query.order('created_at', { ascending: false });
 
     if (fetchError) throw fetchError;
 
@@ -148,14 +153,14 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     return mapped;
-  }, []);
+  }, [activeOrg]);
 
   const createTaskCloud = useCallback(async (taskData: CreateTaskData): Promise<Task | null> => {
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData?.user?.id;
     if (!userId) throw new Error('Usuário não autenticado');
 
-    const insertData = {
+    const insertData: Record<string, unknown> = {
       user_id: userId,
       title: taskData.title,
       description: taskData.description || null,
@@ -163,6 +168,7 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       priority: priorityToNumber(taskData.priority),
       category_id: taskData.category_id || null,
       due_date: taskData.due_date || null,
+      organization_id: activeOrg?.id || null,
     };
 
     const { data, error: insertError } = await supabase
@@ -184,7 +190,7 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     return newTask;
-  }, []);
+  }, [activeOrg]);
 
   // ── PUBLIC API ────────────────────────────────────────────────
   const getAllTasks = useCallback(async () => {

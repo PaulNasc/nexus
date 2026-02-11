@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useOrganization } from '../contexts/OrganizationContext';
 
 import {
   ClipboardList,
@@ -136,6 +137,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const { categories } = useCategories();
   const { createNote, fetchNotes } = useNotes();
   const { useCloud } = useStorageMode();
+  const { activeOrg } = useOrganization();
 
   const [statusTasks, setStatusTasks] = useState<Task[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
@@ -592,8 +594,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <p style={{
               fontSize: 'var(--font-size-base)',
               color: isDark ? 'var(--color-text-secondary)' : '#666666',
-              margin: 0
+              margin: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              flexWrap: 'wrap',
             }}>
+              {activeOrg && (
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '2px 10px',
+                  borderRadius: '12px',
+                  backgroundColor: isDark ? '#0A1F1A' : '#F0FDF9',
+                  border: '1px solid #00D4AA40',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: '#00D4AA',
+                }}>
+                  <Users size={12} /> {activeOrg.name}
+                </span>
+              )}
               {t('subtitle')} Você tem {getTodayTasks()} {getTodayTasks() === 1 ? t('task') : t('tasks')} para hoje.
             </p>
           </div>

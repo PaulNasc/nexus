@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { supabase } from '../lib/supabase';
 import { useSettings } from '../hooks/useSettings';
 import { useAuth } from './AuthContext';
+import { useOrganization } from './OrganizationContext';
 import type { Note, CreateNoteData, UpdateNoteData, NoteStats } from '../../shared/types/note';
 import type { ElectronAPI } from '../../main/preload';
 
@@ -66,6 +67,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [error, setError] = useState<string | null>(null);
   const { settings } = useSettings();
   const { user, isOffline } = useAuth();
+  const { activeOrg } = useOrganization();
 
   // Determine effective storage mode
   const storageMode = settings.storageMode || 'cloud';
@@ -101,10 +103,13 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // ── CLOUD (Supabase) helpers ──────────────────────────────────
   const fetchNotesCloud = useCallback(async (): Promise<Note[]> => {
-    const { data, error: fetchError } = await supabase
-      .from('notes')
-      .select('*')
-      .order('created_at', { ascending: false });
+    let query = supabase.from('notes').select('*');
+    if (activeOrg) {
+      query = query.eq('organization_id', activeOrg.id);
+    } else {
+      query = query.is('organization_id', null);
+    }
+    const { data, error: fetchError } = await query.order('created_at', { ascending: false });
 
     if (fetchError) throw fetchError;
 
@@ -124,7 +129,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     return rows.map(row => dbRowToNote(row, linkMap.get(row.id)));
-  }, []);
+  }, [activeOrg]);
 
   const createNoteCloud = useCallback(async (noteData: CreateNoteData): Promise<Note | null> => {
     const { data: userData } = await supabase.auth.getUser();
@@ -159,6 +164,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         tags: noteData.tags || [],
         attached_images: noteData.attachedImages || [],
         color: noteData.color || null,
+        organization_id: activeOrg?.id || null,
       })
       .select()
       .single();
@@ -177,7 +183,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     return created;
-  }, []);
+  }, [activeOrg]);
 
   // ── PUBLIC API ────────────────────────────────────────────────
   const fetchNotes = useCallback(async () => {

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { supabase } from '../lib/supabase';
 import { useSettings } from '../hooks/useSettings';
 import { useAuth } from './AuthContext';
+import { useOrganization } from './OrganizationContext';
 import { Category } from '../../shared/types/task';
 import { useTasks } from './TasksContext';
 
@@ -48,6 +49,7 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const { tasks } = useTasks();
   const { settings } = useSettings();
   const { user, isOffline } = useAuth();
+  const { activeOrg } = useOrganization();
 
   // Determine effective storage mode
   const storageMode = settings.storageMode || 'cloud';
@@ -56,14 +58,17 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // ── CLOUD (Supabase) ──────────────────────────────────────────
   const loadCategoriesCloud = useCallback(async (): Promise<Category[]> => {
-    const { data, error: fetchError } = await supabase
-      .from('categories')
-      .select('*')
-      .order('order', { ascending: true });
+    let query = supabase.from('categories').select('*');
+    if (activeOrg) {
+      query = query.eq('organization_id', activeOrg.id);
+    } else {
+      query = query.is('organization_id', null);
+    }
+    const { data, error: fetchError } = await query.order('order', { ascending: true });
 
     if (fetchError) throw fetchError;
     return (data || []).map((row: SupabaseCategoryRow) => dbRowToCategory(row));
-  }, []);
+  }, [activeOrg]);
 
   // ── LOCAL fallback: return default system categories ──────────
   const loadCategoriesLocal = useCallback(async (): Promise<Category[]> => {
@@ -121,6 +126,7 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             icon: data.icon || 'Folder',
             is_system: false,
             order: categories.length + 1,
+            organization_id: activeOrg?.id || null,
           })
           .select()
           .single();
@@ -152,7 +158,7 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setError(err instanceof Error ? err.message : 'Erro ao criar categoria');
       return null;
     }
-  }, [categories, useCloud]);
+  }, [categories, useCloud, activeOrg]);
 
   const updateCategory = useCallback(async (id: number, data: Partial<Category>) => {
     try {

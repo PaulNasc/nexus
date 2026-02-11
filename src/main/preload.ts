@@ -174,6 +174,7 @@ export interface ElectronAPI {
   system: {
     platform: string;
     version: string;
+    getMachineId: () => Promise<string>;
     selectImportSource: (options?: SelectImportSourceOptions) => Promise<ImportSourceSelectionResult>;
     selectImportFile: (options?: SelectImportFileOptions) => Promise<ImportSourceSelectionResult>;
     selectImportFolder: (options?: SelectImportFolderOptions) => Promise<ImportSourceSelectionResult>;
@@ -330,6 +331,7 @@ const electronAPI: ElectronAPI = {
   system: {
     platform: process.platform,
     version: ipcRenderer.sendSync('app:getVersion'),
+    getMachineId: () => ipcRenderer.invoke('system:getMachineId'),
     selectImportSource: (options?: SelectImportSourceOptions) => ipcRenderer.invoke('system:selectImportSource', options),
     selectImportFile: (options?: SelectImportFileOptions) => ipcRenderer.invoke('system:selectImportFile', options),
     selectImportFolder: (options?: SelectImportFolderOptions) => ipcRenderer.invoke('system:selectImportFolder', options),

@@ -6,6 +6,7 @@ import { useNotifications } from '../hooks/useNotifications';
 import { CategoryManager } from './CategoryManager';
 import { Button } from './ui/Button';
 import { ImportExportModal } from './ImportExportModal';
+import { OrganizationsPanel } from './OrganizationsPanel';
 
 // Componente para visualizar logs
 const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
@@ -418,7 +419,8 @@ import {
   MousePointer,
   Volume2,
   Type,
-  Copy
+  Copy,
+  Users
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -426,7 +428,7 @@ interface SettingsProps {
   onClose: () => void;
 }
 
-type TabType = 'geral' | 'aparencia' | 'notificacoes' | 'acessibilidade' | 'dados' | 'logs' | 'atualizacoes' | 'sobre';
+type TabType = 'geral' | 'aparencia' | 'notificacoes' | 'acessibilidade' | 'dados' | 'organizacoes' | 'logs' | 'atualizacoes' | 'sobre';
 
 export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   const { 
@@ -589,6 +591,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     { id: 'notificacoes', label: t('settings.notifications'), icon: <Bell size={16} strokeWidth={1.7} /> },
     { id: 'acessibilidade', label: t('settings.accessibility'), icon: <Eye size={16} strokeWidth={1.7} /> },
     { id: 'dados', label: 'Dados & Armazenamento', icon: <HardDrive size={16} strokeWidth={1.7} /> },
+    { id: 'organizacoes', label: 'Organizações', icon: <Users size={16} strokeWidth={1.7} /> },
     { id: 'logs', label: 'Logs', icon: <Database size={16} strokeWidth={1.7} /> },
     { id: 'atualizacoes', label: 'Atualizações', icon: <RefreshCw size={16} strokeWidth={1.7} /> },
     { id: 'sobre', label: t('settings.about'), icon: <Info size={16} strokeWidth={1.7} /> },
@@ -2004,6 +2007,10 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
               </div>
+            )}
+
+            {activeTab === 'organizacoes' && (
+              <OrganizationsPanel isDark={isDark} />
             )}
 
             {activeTab === 'logs' && (

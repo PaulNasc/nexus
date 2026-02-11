@@ -659,6 +659,28 @@ class MainApplication {
       event.returnValue = app.getVersion();
     });
 
+    // Machine ID handler — deterministic, hardware-based
+    ipcMain.handle('system:getMachineId', async () => {
+      try {
+        const { createHash } = await import('crypto');
+        const os = await import('os');
+        // Combine stable hardware identifiers
+        const hostname = os.hostname();
+        const cpus = os.cpus();
+        const cpuModel = cpus.length > 0 ? cpus[0].model : 'unknown';
+        const cpuCount = cpus.length.toString();
+        const totalMem = os.totalmem().toString();
+        const platform = os.platform();
+        const arch = os.arch();
+        const homedir = os.homedir();
+        const raw = `${hostname}|${cpuModel}|${cpuCount}|${totalMem}|${platform}|${arch}|${homedir}`;
+        const hash = createHash('sha256').update(raw).digest('hex').substring(0, 12).toUpperCase();
+        return `NXS-${hash.substring(0, 4)}-${hash.substring(4, 8)}-${hash.substring(8, 12)}`;
+      } catch {
+        return 'NXS-0000-0000-0000';
+      }
+    });
+
     // File system handlers
     ipcMain.handle('system:selectFolder', async () => {
       try {
