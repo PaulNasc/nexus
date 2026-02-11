@@ -409,6 +409,44 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     getAllTasks();
   }, [getAllTasks]);
 
+  // Realtime subscription for cloud tasks
+  useEffect(() => {
+    if (!useCloud) return;
+
+    const channel = supabase
+      .channel('tasks-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tasks' },
+        (payload) => {
+          const { eventType, new: newRow, old: oldRow } = payload;
+          // Filter: only process rows matching current org scope
+          const rowOrgId = (newRow as Record<string, unknown>)?.organization_id ?? (oldRow as Record<string, unknown>)?.organization_id ?? null;
+          const currentOrgId = activeOrg?.id ?? null;
+          if (rowOrgId !== currentOrgId) return;
+
+          if (eventType === 'INSERT') {
+            const task = dbRowToTask(newRow as Record<string, unknown>);
+            setTasks(prev => {
+              if (prev.some(t => t.id === task.id)) return prev;
+              return [task, ...prev];
+            });
+          } else if (eventType === 'UPDATE') {
+            const task = dbRowToTask(newRow as Record<string, unknown>);
+            setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...task } : t));
+          } else if (eventType === 'DELETE') {
+            const deletedId = (oldRow as Record<string, unknown>)?.id as number;
+            if (deletedId) setTasks(prev => prev.filter(t => t.id !== deletedId));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [useCloud, activeOrg]);
+
   const value = useMemo(() => ({
     tasks,
     stats,

@@ -223,13 +223,49 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, [activeOrg, loadOrgDetails]);
 
+  // Realtime: org_members and org_invites changes
+  useEffect(() => {
+    if (!activeOrg) return;
+
+    const membersChannel = supabase
+      .channel('org-members-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'org_members', filter: `org_id=eq.${activeOrg.id}` },
+        () => {
+          loadOrgDetails(activeOrg.id);
+        }
+      )
+      .subscribe();
+
+    const invitesChannel = supabase
+      .channel('org-invites-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'org_invites', filter: `org_id=eq.${activeOrg.id}` },
+        () => {
+          loadOrgDetails(activeOrg.id);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(membersChannel);
+      supabase.removeChannel(invitesChannel);
+    };
+  }, [activeOrg, loadOrgDetails]);
+
   const setActiveOrg = useCallback((org: Organization | null) => {
-    setActiveOrgState(org);
-    if (org) {
-      localStorage.setItem(ACTIVE_ORG_KEY, org.id);
-    } else {
-      localStorage.removeItem(ACTIVE_ORG_KEY);
-    }
+    // Skip if already the same org (avoid unnecessary re-renders)
+    setActiveOrgState(prev => {
+      if (prev?.id === org?.id) return prev;
+      if (org) {
+        localStorage.setItem(ACTIVE_ORG_KEY, org.id);
+      } else {
+        localStorage.removeItem(ACTIVE_ORG_KEY);
+      }
+      return org;
+    });
   }, []);
 
   const refreshOrganizations = useCallback(async () => {
@@ -246,6 +282,16 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Não autenticado');
+
+      // Limit: max 2 orgs owned per user
+      const { count: ownedCount } = await supabase
+        .from('organizations')
+        .select('id', { count: 'exact', head: true })
+        .eq('owner_id', user.id);
+
+      if ((ownedCount ?? 0) >= 2) {
+        throw new Error('Você já atingiu o limite de 2 organizações criadas.');
+      }
 
       const slug = generateSlug(name);
 
@@ -269,13 +315,37 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         role: 'owner',
       });
 
+      // Seed default categories for the new org
+      const defaultCategories = [
+        { name: 'Backlog', color: '#6B7280', icon: 'ClipboardList', is_system: true, order: 1 },
+        { name: 'Esta Semana', color: '#3B82F6', icon: 'CalendarDays', is_system: true, order: 2 },
+        { name: 'Hoje', color: '#F59E0B', icon: 'Zap', is_system: true, order: 3 },
+        { name: 'Concluído', color: '#10B981', icon: 'CheckCircle', is_system: true, order: 4 },
+      ];
+      await supabase.from('categories').insert(
+        defaultCategories.map(c => ({ ...c, user_id: user.id, organization_id: org.id }))
+      );
+
+      // Seed sample markdown note
+      const sampleNote = {
+        user_id: user.id,
+        organization_id: org.id,
+        title: `Bem-vindo à ${name}`,
+        content: `# Bem-vindo à ${name} 🎉\n\nEsta é a sua nova organização. Aqui estão os recursos de **Markdown** suportados:\n\n## Formatação de Texto\n- **Negrito** com \\*\\*texto\\*\\*\n- *Itálico* com \\*texto\\*\n- ~~Tachado~~ com \\~\\~texto\\~\\~\n- \`Código inline\` com \\\`texto\\\`\n\n## Listas\n1. Lista ordenada\n2. Segundo item\n   - Sub-item\n\n- [ ] Tarefa pendente\n- [x] Tarefa concluída\n\n## Blocos de Código\n\\\`\\\`\\\`javascript\nconst hello = "Olá, mundo!";\nconsole.log(hello);\n\\\`\\\`\\\`\n\n## Citações\n> Esta é uma citação de exemplo.\n\n## Links e Imagens\n[Link de exemplo](https://exemplo.com)\n\n---\n\n*Edite ou exclua esta nota quando quiser. Bom trabalho em equipe!*`,
+        format: 'markdown',
+        tags: ['boas-vindas', 'markdown'],
+        is_pinned: true,
+      };
+      await supabase.from('notes').insert(sampleNote);
+
       const created = org as Organization;
       setOrganizations(prev => [...prev, created]);
       setActiveOrg(created);
       return created;
     } catch (err) {
-      console.error('Failed to create organization:', err);
-      return null;
+      const msg = err instanceof Error ? err.message : 'Erro ao criar organização';
+      console.error('Failed to create organization:', msg);
+      throw new Error(msg);
     }
   }, [setActiveOrg]);
 

@@ -408,6 +408,43 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     fetchNotes();
   }, [fetchNotes]);
 
+  // Realtime subscription for cloud notes
+  useEffect(() => {
+    if (!useCloud) return;
+
+    const channel = supabase
+      .channel('notes-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notes' },
+        (payload) => {
+          const { eventType, new: newRow, old: oldRow } = payload;
+          const rowOrgId = (newRow as Record<string, unknown>)?.organization_id ?? (oldRow as Record<string, unknown>)?.organization_id ?? null;
+          const currentOrgId = activeOrg?.id ?? null;
+          if (rowOrgId !== currentOrgId) return;
+
+          if (eventType === 'INSERT') {
+            const note = dbRowToNote(newRow as unknown as SupabaseNoteRow);
+            setNotes(prev => {
+              if (prev.some(n => n.id === note.id)) return prev;
+              return [note, ...prev];
+            });
+          } else if (eventType === 'UPDATE') {
+            const note = dbRowToNote(newRow as unknown as SupabaseNoteRow);
+            setNotes(prev => prev.map(n => n.id === note.id ? { ...n, ...note } : n));
+          } else if (eventType === 'DELETE') {
+            const deletedId = (oldRow as Record<string, unknown>)?.id as number;
+            if (deletedId) setNotes(prev => prev.filter(n => n.id !== deletedId));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [useCloud, activeOrg]);
+
   const value = useMemo(() => ({
     notes,
     isLoading,

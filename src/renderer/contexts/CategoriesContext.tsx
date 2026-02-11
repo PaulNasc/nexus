@@ -239,6 +239,43 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     loadCategories();
   }, [loadCategories]);
 
+  // Realtime subscription for cloud categories
+  useEffect(() => {
+    if (!useCloud) return;
+
+    const channel = supabase
+      .channel('categories-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'categories' },
+        (payload) => {
+          const { eventType, new: newRow, old: oldRow } = payload;
+          const rowOrgId = (newRow as Record<string, unknown>)?.organization_id ?? (oldRow as Record<string, unknown>)?.organization_id ?? null;
+          const currentOrgId = activeOrg?.id ?? null;
+          if (rowOrgId !== currentOrgId) return;
+
+          if (eventType === 'INSERT') {
+            const cat = dbRowToCategory(newRow as unknown as SupabaseCategoryRow);
+            setCategories(prev => {
+              if (prev.some(c => c.id === cat.id)) return prev;
+              return [...prev, cat];
+            });
+          } else if (eventType === 'UPDATE') {
+            const cat = dbRowToCategory(newRow as unknown as SupabaseCategoryRow);
+            setCategories(prev => prev.map(c => c.id === cat.id ? { ...c, ...cat } : c));
+          } else if (eventType === 'DELETE') {
+            const deletedId = (oldRow as Record<string, unknown>)?.id as number;
+            if (deletedId) setCategories(prev => prev.filter(c => c.id !== deletedId));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [useCloud, activeOrg]);
+
   const value = useMemo(() => ({
     categories: categoriesWithCount,
     loading,

@@ -139,15 +139,18 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
   const handleCreate = async () => {
     if (!newOrgName.trim()) return;
     setActionLoading(true);
-    const org = await createOrganization(newOrgName.trim(), newOrgDesc.trim());
-    setActionLoading(false);
-    if (org) {
-      showFeedback('success', `Organização "${org.name}" criada!`);
-      setNewOrgName('');
-      setNewOrgDesc('');
-      setView('list');
-    } else {
-      showFeedback('error', 'Erro ao criar organização');
+    try {
+      const org = await createOrganization(newOrgName.trim(), newOrgDesc.trim());
+      if (org) {
+        showFeedback('success', `Organização "${org.name}" criada!`);
+        setNewOrgName('');
+        setNewOrgDesc('');
+        setView('list');
+      }
+    } catch (err) {
+      showFeedback('error', err instanceof Error ? err.message : 'Erro ao criar organização');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -265,8 +268,25 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                   <div style={{ fontSize: '16px', fontWeight: 600, color: isDark ? '#FFF' : '#111' }}>
                     {activeOrg.name}
                   </div>
-                  <div style={{ fontSize: '12px', color: isDark ? '#888' : '#6B7280', marginTop: '2px' }}>
-                    ID: {activeOrg.slug}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
+                    <code style={{
+                      fontSize: '12px',
+                      fontFamily: 'monospace',
+                      color: '#00D4AA',
+                      backgroundColor: isDark ? '#0A0A0A' : '#ECFDF5',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      userSelect: 'all' as const,
+                    }}>
+                      {activeOrg.slug}
+                    </code>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); copyToClipboard(activeOrg.slug); }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: isDark ? '#888' : '#6B7280' }}
+                      title="Copiar ID"
+                    >
+                      <Copy size={14} />
+                    </button>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -359,7 +379,7 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                 {organizations.map(org => (
                   <button
                     key={org.id}
-                    onClick={() => setActiveOrg(org)}
+                    onClick={() => { if (activeOrg?.id !== org.id) setActiveOrg(org); }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
