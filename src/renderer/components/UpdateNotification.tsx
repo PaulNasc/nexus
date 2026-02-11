@@ -7,6 +7,7 @@ interface UpdateStatus {
   progress?: { percent: number; bytesPerSecond: number; transferred: number; total: number };
   releaseNotes?: string;
   error?: string;
+  isPortable?: boolean;
 }
 
 interface UpdateNotificationProps {
@@ -141,8 +142,15 @@ const UpdateNotification: React.FC<UpdateNotificationProps> = ({ isDark }) => {
           <span style={{ fontSize: '13px', fontWeight: 600, color: textPrimary }}>
             {status.state === 'available' && `Nexus v${status.version} disponível`}
             {status.state === 'downloading' && 'Baixando atualização...'}
-            {status.state === 'downloaded' && `v${status.version} pronta para instalar`}
+            {status.state === 'downloaded' && `v${status.version} pronta para ${status.isPortable ? 'atualizar' : 'instalar'}`}
           </span>
+          {status.isPortable && (
+            <span style={{
+              fontSize: '9px', fontWeight: 500, color: '#7B3FF2',
+              background: 'rgba(123, 63, 242, 0.1)', border: '1px solid rgba(123, 63, 242, 0.2)',
+              borderRadius: '4px', padding: '1px 5px', marginLeft: '4px',
+            }}>Portátil</span>
+          )}
         </div>
         <button
           onClick={() => setDismissed(true)}
@@ -276,7 +284,7 @@ const UpdateNotification: React.FC<UpdateNotificationProps> = ({ isDark }) => {
               border: 'none', fontWeight: 500, color: '#fff',
               background: 'linear-gradient(135deg, #00D4AA, #7B3FF2)',
             }}>
-              Reiniciar e Instalar
+              {status.isPortable ? 'Reiniciar e Atualizar' : 'Reiniciar e Instalar'}
             </button>
           )}
         </div>

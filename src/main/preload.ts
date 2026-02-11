@@ -117,6 +117,7 @@ export interface ElectronAPI {
     downloadUpdate: () => Promise<unknown>;
     quitAndInstall: () => Promise<void>;
     getVersion: () => Promise<string>;
+    isPortable: () => Promise<boolean>;
     onStatus: (callback: (status: unknown) => void) => () => void;
   };
 
@@ -286,6 +287,7 @@ const electronAPI: ElectronAPI = {
     downloadUpdate: () => ipcRenderer.invoke('updater:downloadUpdate'),
     quitAndInstall: () => ipcRenderer.invoke('updater:quitAndInstall'),
     getVersion: () => ipcRenderer.invoke('updater:getVersion'),
+    isPortable: () => ipcRenderer.invoke('updater:isPortable'),
     onStatus: (callback: (status: unknown) => void) => {
       const handler = (_event: unknown, status: unknown) => callback(status);
       ipcRenderer.on('updater:status', handler);
