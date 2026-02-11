@@ -320,10 +320,11 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       // Seed default categories for the new org
       const defaultCategories = [
-        { name: 'Backlog', color: '#6B7280', icon: 'ClipboardList', is_system: true, order: 1 },
-        { name: 'Esta Semana', color: '#3B82F6', icon: 'CalendarDays', is_system: true, order: 2 },
-        { name: 'Hoje', color: '#F59E0B', icon: 'Zap', is_system: true, order: 3 },
-        { name: 'Concluído', color: '#10B981', icon: 'CheckCircle', is_system: true, order: 4 },
+        { name: name, color: '#7B3FF2', icon: 'Users', is_system: true, is_shared: true, order: 0 },
+        { name: 'Backlog', color: '#6B7280', icon: 'ClipboardList', is_system: true, is_shared: false, order: 1 },
+        { name: 'Esta Semana', color: '#3B82F6', icon: 'CalendarDays', is_system: true, is_shared: false, order: 2 },
+        { name: 'Hoje', color: '#F59E0B', icon: 'Zap', is_system: true, is_shared: false, order: 3 },
+        { name: 'Concluído', color: '#10B981', icon: 'CheckCircle', is_system: true, is_shared: false, order: 4 },
       ];
       await supabase.from('categories').insert(
         defaultCategories.map(c => ({ ...c, user_id: user.id, organization_id: org.id }))

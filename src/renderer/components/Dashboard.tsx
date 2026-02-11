@@ -84,7 +84,8 @@ const iconMap: Record<string, LucideIcon> = {
   Dumbbell,
   Users,
   Star,
-  Flag
+  Flag,
+  Share2
 };
 
 // Função para renderizar ícone
@@ -102,6 +103,7 @@ type DisplayCard = {
   icon: string;
   accentColor: string;
   isSystem: boolean;
+  isShared: boolean;
 };
 
 interface QuickActionCard {
@@ -187,9 +189,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
         title: category.name,
         desc: `${count} ${count === 1 ? 'tarefa' : 'tarefas'}`,
         count,
-        icon: category.icon || 'Folder',
+        icon: category.is_shared ? 'Share2' : (category.icon || 'Folder'),
         accentColor: category.color,
         isSystem,
+        isShared: category.is_shared === true,
       };
     });
 

@@ -45,6 +45,11 @@ const dbRowToTask = (row: Record<string, unknown>): Task => ({
   completed_at: (row.completed_at as string) ?? undefined,
   created_at: row.created_at as string,
   updated_at: row.updated_at as string,
+  assigned_to: (row.assigned_to as string) ?? undefined,
+  assigned_by: (row.assigned_by as string) ?? undefined,
+  is_hidden_from_org: (row.is_hidden_from_org as boolean) ?? false,
+  progress_status: (row.progress_status as string) ?? undefined,
+  progress_updated_by: (row.progress_updated_by as string) ?? undefined,
 });
 
 export interface TaskStats {
@@ -68,6 +73,8 @@ interface TasksContextType {
   clearError: () => void;
   linkTaskToNote: (taskId: number, noteId: number) => Promise<boolean>;
   unlinkTaskFromNote: (taskId: number) => Promise<boolean>;
+  hideTaskFromOrg: (taskId: number) => Promise<boolean>;
+  moveToPersonal: (taskId: number) => Promise<boolean>;
 }
 
 const TasksContext = createContext<TasksContextType | null>(null);
@@ -127,33 +134,91 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // ── CLOUD (Supabase) helpers ──────────────────────────────────
   const getAllTasksCloud = useCallback(async (): Promise<Task[]> => {
-    let query = supabase.from('tasks').select('*');
-    if (activeOrg) {
-      query = query.eq('organization_id', activeOrg.id);
+    const { data: userData } = await supabase.auth.getUser();
+    const currentUserId = userData?.user?.id;
+
+    if (activeOrg && currentUserId) {
+      // Fetch user's own tasks in this org
+      const { data: ownTasks, error: ownErr } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('organization_id', activeOrg.id)
+        .eq('user_id', currentUserId)
+        .order('created_at', { ascending: false });
+      if (ownErr) throw ownErr;
+
+      // Fetch shared category IDs for this org
+      const { data: sharedCats } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('organization_id', activeOrg.id)
+        .eq('is_shared', true);
+      const sharedCatIds = (sharedCats || []).map(c => c.id);
+
+      let sharedTasks: Record<string, unknown>[] = [];
+      if (sharedCatIds.length > 0) {
+        // Fetch tasks in shared categories (from all users, excluding hidden ones from others)
+        const { data: shared, error: sharedErr } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('organization_id', activeOrg.id)
+          .in('category_id', sharedCatIds)
+          .order('created_at', { ascending: false });
+        if (sharedErr) throw sharedErr;
+        // Filter out tasks hidden by other users
+        sharedTasks = (shared || []).filter((t: Record<string, unknown>) =>
+          t.user_id === currentUserId || !t.is_hidden_from_org
+        );
+      }
+
+      // Merge and deduplicate
+      const allRows = [...(ownTasks || []), ...sharedTasks];
+      const seen = new Set<number>();
+      const deduped: Record<string, unknown>[] = [];
+      for (const row of allRows) {
+        const id = row.id as number;
+        if (!seen.has(id)) {
+          seen.add(id);
+          deduped.push(row);
+        }
+      }
+
+      const mapped = deduped.map(dbRowToTask);
+
+      // Resolve note links
+      const { data: links } = await supabase
+        .from('note_task_links')
+        .select('task_id, note_id');
+      if (links) {
+        const linkMap = new Map<number, number>();
+        for (const link of links) linkMap.set(link.task_id, link.note_id);
+        for (const task of mapped) task.linkedNoteId = linkMap.get(task.id);
+      }
+
+      return mapped;
     } else {
+      // No org: fetch personal tasks only
+      let query = supabase.from('tasks').select('*');
+      if (currentUserId) {
+        query = query.eq('user_id', currentUserId);
+      }
       query = query.is('organization_id', null);
-    }
-    const { data, error: fetchError } = await query.order('created_at', { ascending: false });
+      const { data, error: fetchError } = await query.order('created_at', { ascending: false });
+      if (fetchError) throw fetchError;
 
-    if (fetchError) throw fetchError;
+      const mapped = (data || []).map(dbRowToTask);
 
-    const mapped = (data || []).map(dbRowToTask);
-
-    const { data: links } = await supabase
-      .from('note_task_links')
-      .select('task_id, note_id');
-
-    if (links) {
-      const linkMap = new Map<number, number>();
-      for (const link of links) {
-        linkMap.set(link.task_id, link.note_id);
+      const { data: links } = await supabase
+        .from('note_task_links')
+        .select('task_id, note_id');
+      if (links) {
+        const linkMap = new Map<number, number>();
+        for (const link of links) linkMap.set(link.task_id, link.note_id);
+        for (const task of mapped) task.linkedNoteId = linkMap.get(task.id);
       }
-      for (const task of mapped) {
-        task.linkedNoteId = linkMap.get(task.id);
-      }
-    }
 
-    return mapped;
+      return mapped;
+    }
   }, [activeOrg]);
 
   const createTaskCloud = useCallback(async (taskData: CreateTaskData): Promise<Task | null> => {
@@ -171,6 +236,12 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       due_date: taskData.due_date || null,
       organization_id: activeOrg?.id || null,
     };
+
+    // Se atribuída a outro usuário, setar assigned_by e assigned_to
+    if (taskData.assigned_to) {
+      insertData.assigned_to = taskData.assigned_to;
+      insertData.assigned_by = userId;
+    }
 
     const { data, error: insertError } = await supabase
       .from('tasks')
@@ -406,6 +477,79 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [useCloud, useLocal]);
 
+  // Toggle hide task from org (for assigned tasks)
+  const hideTaskFromOrg = useCallback(async (taskId: number): Promise<boolean> => {
+    try {
+      setError(null);
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return false;
+      const newValue = !task.is_hidden_from_org;
+
+      if (useCloud) {
+        const { error: updateError } = await supabase
+          .from('tasks')
+          .update({ is_hidden_from_org: newValue, updated_at: new Date().toISOString() })
+          .eq('id', taskId);
+        if (updateError) throw updateError;
+      }
+
+      setTasks(prev => prev.map(t =>
+        t.id === taskId ? { ...t, is_hidden_from_org: newValue } : t
+      ));
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao ocultar tarefa');
+      return false;
+    }
+  }, [useCloud, tasks]);
+
+  // Move task from shared category to personal (Backlog)
+  const moveToPersonal = useCallback(async (taskId: number): Promise<boolean> => {
+    try {
+      setError(null);
+      const { data: userData } = await supabase.auth.getUser();
+      const currentUserId = userData?.user?.id;
+      if (!currentUserId) return false;
+
+      // Find the user's Backlog category
+      let backlogCatId: number | null = null;
+      if (useCloud && activeOrg) {
+        const { data: cats } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('organization_id', activeOrg.id)
+          .eq('name', 'Backlog')
+          .eq('is_system', true)
+          .eq('is_shared', false)
+          .limit(1);
+        backlogCatId = cats?.[0]?.id ?? null;
+      }
+
+      const updateData: Record<string, unknown> = {
+        category_id: backlogCatId,
+        status: 'backlog',
+        user_id: currentUserId,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (useCloud) {
+        const { error: updateError } = await supabase
+          .from('tasks')
+          .update(updateData)
+          .eq('id', taskId);
+        if (updateError) throw updateError;
+      }
+
+      setTasks(prev => prev.map(t =>
+        t.id === taskId ? { ...t, category_id: backlogCatId ?? undefined, status: 'backlog' as const } : t
+      ));
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao mover tarefa');
+      return false;
+    }
+  }, [useCloud, activeOrg]);
+
   // Load initial data once and when storage mode changes
   useEffect(() => {
     getAllTasks();
@@ -462,7 +606,9 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     clearError,
     linkTaskToNote,
     unlinkTaskFromNote,
-  }), [tasks, stats, loading, error, getAllTasks, getTasksByStatus, createTask, updateTask, deleteTask, clearError, linkTaskToNote, unlinkTaskFromNote]);
+    hideTaskFromOrg,
+    moveToPersonal,
+  }), [tasks, stats, loading, error, getAllTasks, getTasksByStatus, createTask, updateTask, deleteTask, clearError, linkTaskToNote, unlinkTaskFromNote, hideTaskFromOrg, moveToPersonal]);
 
   return (
     <TasksContext.Provider value={value}>

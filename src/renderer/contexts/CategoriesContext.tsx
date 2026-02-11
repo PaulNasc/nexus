@@ -13,6 +13,7 @@ interface SupabaseCategoryRow {
   color: string;
   icon: string;
   is_system: boolean;
+  is_shared: boolean;
   order: number;
   created_at: string;
   updated_at: string;
@@ -24,6 +25,7 @@ const dbRowToCategory = (row: SupabaseCategoryRow): Category => ({
   color: row.color,
   icon: row.icon,
   isSystem: row.is_system,
+  is_shared: row.is_shared,
   order: row.order,
   workspace_id: 1, // kept for backward compatibility with existing UI
   created_at: row.created_at,
@@ -127,6 +129,7 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             color: data.color || '#7B3FF2',
             icon: data.icon || 'Folder',
             is_system: false,
+            is_shared: data.is_shared || false,
             order: categories.length + 1,
             organization_id: activeOrg?.id || null,
           })
@@ -192,6 +195,13 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const deleteCategory = useCallback(async (id: number): Promise<boolean> => {
     try {
+      // Bloquear deleção de categorias compartilhadas do sistema
+      const cat = categories.find(c => c.id === id);
+      if (cat?.is_shared && cat?.isSystem) {
+        setError('Não é possível deletar a categoria principal da organização');
+        return false;
+      }
+
       if (useCloud) {
         const { error: deleteError } = await supabase
           .from('categories')
@@ -208,7 +218,7 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setError(err instanceof Error ? err.message : 'Erro ao deletar categoria');
       return false;
     }
-  }, [useCloud]);
+  }, [useCloud, categories]);
 
   // Count tasks per category using centralized task data
   const getTaskCountByCategory = useCallback((category: Category): number => {

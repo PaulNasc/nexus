@@ -14,6 +14,8 @@ export interface Note {
   is_pinned?: boolean;
   is_archived?: boolean;
   color?: string;
+  sequential_id?: number; // ID sequencial por organização
+  creator_display_name?: string; // Nome do criador (via JOIN profiles)
 }
 
 export interface NoteAttachment {
@@ -62,4 +64,5 @@ export interface NoteFilter {
   isLinked?: boolean;
   isPinned?: boolean;
   isArchived?: boolean;
-} 
+  color?: string; // Filtro por cor
+}
