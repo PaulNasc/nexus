@@ -20,6 +20,28 @@ import { spawn } from 'child_process';
 const GH_OWNER = 'PaulNasc';
 const GH_REPO = 'nexus';
 
+/** Strip HTML tags and convert to clean plain-text lines */
+function stripHtmlToPlainText(html: string): string {
+  if (!html) return '';
+  let text = html;
+  // Convert <li> to bullet points
+  text = text.replace(/<li[^>]*>/gi, '- ');
+  // Convert headings to lines
+  text = text.replace(/<h[1-6][^>]*>/gi, '\n## ');
+  text = text.replace(/<\/h[1-6]>/gi, '\n');
+  // Convert <br> and <p> to newlines
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<\/p>/gi, '\n');
+  text = text.replace(/<p[^>]*>/gi, '');
+  // Remove all remaining tags
+  text = text.replace(/<[^>]+>/g, '');
+  // Decode common HTML entities
+  text = text.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
+  // Clean up extra whitespace/newlines
+  text = text.split('\n').map(l => l.trim()).filter(l => l).join('\n');
+  return text;
+}
+
 export interface UpdateStatus {
   state: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
   version?: string;
@@ -437,11 +459,12 @@ exit
         version: info.version,
         releaseDate: info.releaseDate,
       });
-      const notes = typeof info.releaseNotes === 'string'
+      const rawNotes = typeof info.releaseNotes === 'string'
         ? info.releaseNotes
         : Array.isArray(info.releaseNotes)
           ? info.releaseNotes.map((n) => (typeof n === 'string' ? n : n.note)).join('\n')
           : undefined;
+      const notes = rawNotes ? stripHtmlToPlainText(rawNotes) : undefined;
       this.setStatus({ state: 'available', version: info.version, releaseNotes: notes });
     });
 
@@ -466,11 +489,12 @@ exit
 
     autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
       logger.info('Update downloaded', 'updater', { version: info.version });
-      const notes = typeof info.releaseNotes === 'string'
+      const rawNotes = typeof info.releaseNotes === 'string'
         ? info.releaseNotes
         : Array.isArray(info.releaseNotes)
           ? info.releaseNotes.map((n) => (typeof n === 'string' ? n : n.note)).join('\n')
           : undefined;
+      const notes = rawNotes ? stripHtmlToPlainText(rawNotes) : undefined;
       this.setStatus({ state: 'downloaded', version: info.version, releaseNotes: notes });
     });
 

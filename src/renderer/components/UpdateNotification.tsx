@@ -16,6 +16,22 @@ interface UpdateNotificationProps {
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // Re-check every 1 hour
 
+/** Fallback: strip HTML tags if releaseNotes arrive as raw HTML */
+function stripHtml(text: string): string {
+  if (!text || !text.includes('<')) return text;
+  let clean = text;
+  clean = clean.replace(/<li[^>]*>/gi, '- ');
+  clean = clean.replace(/<h[1-6][^>]*>/gi, '\n## ');
+  clean = clean.replace(/<\/h[1-6]>/gi, '\n');
+  clean = clean.replace(/<br\s*\/?>/gi, '\n');
+  clean = clean.replace(/<\/p>/gi, '\n');
+  clean = clean.replace(/<p[^>]*>/gi, '');
+  clean = clean.replace(/<[^>]+>/g, '');
+  clean = clean.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
+  clean = clean.split('\n').map(l => l.trim()).filter(l => l).join('\n');
+  return clean;
+}
+
 const UpdateNotification: React.FC<UpdateNotificationProps> = ({ isDark }) => {
   const [status, setStatus] = useState<UpdateStatus>({ state: 'idle' });
   const [dismissed, setDismissed] = useState(false);
@@ -94,8 +110,9 @@ const UpdateNotification: React.FC<UpdateNotificationProps> = ({ isDark }) => {
     electron?.updater?.quitAndInstall?.();
   };
 
-  // Parse release notes for display
-  const changelogLines = (status.releaseNotes || '').split('\n').filter(l => l.trim());
+  // Parse release notes for display (strip HTML as fallback)
+  const cleanNotes = stripHtml(status.releaseNotes || '');
+  const changelogLines = cleanNotes.split('\n').filter(l => l.trim());
 
   // Only show for actionable states
   const showable = status.state === 'available' || status.state === 'downloading' || status.state === 'downloaded';
