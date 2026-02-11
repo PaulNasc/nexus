@@ -277,6 +277,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
       if (intent?.kind === 'pdf-file') {
         return await electron.invoke('import:pdf-preview', { filePath: intent.filePath }) as RestorePreview;
       }
+      if (intent?.kind === 'txt-file') {
+        return await electron.invoke('import:txt-preview', { filePath: intent.filePath }) as RestorePreview;
+      }
+      if (intent?.kind === 'md-file') {
+        return await electron.invoke('import:md-preview', { filePath: intent.filePath }) as RestorePreview;
+      }
       if (intent?.kind === 'folder') {
         return await electron.invoke('import:folder-preview', { folderPath: intent.folderPath }) as RestorePreview;
       }
@@ -305,6 +311,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
         result = await electron.invoke('import:html-apply', { filePath: intent.filePath }) as ImportResult;
       } else if (intent?.kind === 'pdf-file') {
         result = await electron.invoke('import:pdf-apply', { filePath: intent.filePath }) as ImportResult;
+      } else if (intent?.kind === 'txt-file') {
+        result = await electron.invoke('import:txt-apply', { filePath: intent.filePath }) as ImportResult;
+      } else if (intent?.kind === 'md-file') {
+        result = await electron.invoke('import:md-apply', { filePath: intent.filePath }) as ImportResult;
       } else if (intent?.kind === 'folder') {
         result = await electron.invoke('import:folder-apply', { folderPath: intent.folderPath }) as ImportResult;
       }

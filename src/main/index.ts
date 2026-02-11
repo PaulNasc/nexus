@@ -853,6 +853,87 @@ class MainApplication {
       };
     });
 
+    // === VIDEO IPC HANDLERS ===
+    const videosDir = path.join(app.getPath('userData'), 'nexus-videos');
+
+    ipcMain.handle('video:getVideosDir', async () => {
+      if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
+      return videosDir;
+    });
+
+    ipcMain.handle('video:copyToLocal', async (_event, sourcePath: string, fileName: string) => {
+      try {
+        if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
+        const destPath = path.join(videosDir, fileName);
+        await fs.promises.copyFile(sourcePath, destPath);
+        return { success: true, localPath: destPath };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    ipcMain.handle('video:checkLocal', async (_event, fileName: string) => {
+      const localPath = path.join(videosDir, fileName);
+      const exists = fs.existsSync(localPath);
+      return { exists, localPath: exists ? localPath : undefined };
+    });
+
+    ipcMain.handle('video:getLocalPath', async (_event, fileName: string) => {
+      return path.join(videosDir, fileName);
+    });
+
+    ipcMain.handle('video:openExternal', async (_event, fileName: string) => {
+      try {
+        const localPath = path.join(videosDir, fileName);
+        if (!fs.existsSync(localPath)) return { success: false, error: 'Arquivo não encontrado' };
+        await shell.openPath(localPath);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    ipcMain.handle('video:saveAs', async (_event, fileName: string) => {
+      try {
+        const localPath = path.join(videosDir, fileName);
+        if (!fs.existsSync(localPath)) return { success: false, error: 'Arquivo não encontrado' };
+        const ext = path.extname(fileName).replace('.', '');
+        const save = await dialog.showSaveDialog(this.mainWindow!, {
+          title: 'Salvar vídeo',
+          buttonLabel: 'Salvar',
+          defaultPath: fileName.replace(/^\d+-/, ''),
+          filters: [{ name: 'Vídeo', extensions: [ext || 'mp4'] }],
+        });
+        if (save.canceled || !save.filePath) return { success: false, canceled: true };
+        await fs.promises.copyFile(localPath, save.filePath);
+        return { success: true, savedPath: save.filePath };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    ipcMain.handle('video:selectVideoFile', async () => {
+      const result = await dialog.showOpenDialog(this.mainWindow!, {
+        title: 'Selecionar vídeo',
+        buttonLabel: 'Selecionar',
+        properties: ['openFile'],
+        filters: [
+          { name: 'Vídeos', extensions: ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv'] },
+        ],
+      });
+      if (result.canceled || result.filePaths.length === 0) {
+        return { canceled: true };
+      }
+      const filePath = result.filePaths[0]!;
+      const stats = await fs.promises.stat(filePath);
+      return {
+        canceled: false,
+        filePath,
+        fileName: path.basename(filePath),
+        size: stats.size,
+      };
+    });
+
     ipcMain.handle('settings:get', async (event, key: string) => {
       const settingsPath = path.join(app.getPath('userData'), 'settings.json');
       try {
@@ -1042,8 +1123,66 @@ class MainApplication {
       const title = await deriveHtmlTitle(html, filePath);
       const content = await htmlToTextPreserveLines(html);
       const attachedImages = extractHtmlImagesAsDataUrls(html, filePath);
-      await this.database.createNote({ title, content, format: 'text', attachedImages });
-      return { success: true, imported: { tasks: 0, notes: 1, categories: 0 }, warnings: [], errors: [] };
+      const note: Note = {
+        id: Date.now(),
+        title,
+        content,
+        format: 'text',
+        attachedImages: attachedImages.length > 0 ? attachedImages : undefined,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      const db = MemoryDatabase.getInstance();
+      const result = await db.mergeData({ tasks: [], notes: [note] });
+      return { ...result, importedNotes: [note] };
+    });
+
+    ipcMain.handle('import:txt-preview', async (event, input: { filePath: string }): Promise<RestorePreview> => {
+      if (!input?.filePath) throw new Error('filePath inválido');
+      readUtf8(input.filePath); // validate readable
+      return { tasks: 0, notes: 1, categories: 0, settings: false, conflicts: [], warnings: [] };
+    });
+
+    ipcMain.handle('import:txt-apply', async (event, input: { filePath: string }): Promise<ImportResult> => {
+      if (!input?.filePath) throw new Error('filePath inválido');
+      const content = readUtf8(input.filePath);
+      const fileName = path.basename(input.filePath, path.extname(input.filePath));
+      const db = MemoryDatabase.getInstance();
+      const note: Note = {
+        id: Date.now(),
+        title: fileName,
+        content,
+        format: 'text',
+        tags: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      const result = await db.mergeData({ tasks: [], notes: [note] });
+      return { ...result, importedNotes: [note] };
+    });
+
+    ipcMain.handle('import:md-preview', async (event, input: { filePath: string }): Promise<RestorePreview> => {
+      if (!input?.filePath) throw new Error('filePath inválido');
+      readUtf8(input.filePath); // validate readable
+      return { tasks: 0, notes: 1, categories: 0, settings: false, conflicts: [], warnings: [] };
+    });
+
+    ipcMain.handle('import:md-apply', async (event, input: { filePath: string }): Promise<ImportResult> => {
+      if (!input?.filePath) throw new Error('filePath inválido');
+      const content = readUtf8(input.filePath);
+      const fileName = path.basename(input.filePath, path.extname(input.filePath));
+      const db = MemoryDatabase.getInstance();
+      const note: Note = {
+        id: Date.now(),
+        title: fileName,
+        content,
+        format: 'markdown',
+        tags: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      const result = await db.mergeData({ tasks: [], notes: [note] });
+      return { ...result, importedNotes: [note] };
     });
 
     ipcMain.handle('import:pdf-preview', async (): Promise<RestorePreview> => {

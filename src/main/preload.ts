@@ -165,6 +165,17 @@ export interface ElectronAPI {
     cloudTestConnection: (input: { url: string; username: string; password: string }) => Promise<{ success: boolean; error?: string }>;
   };
 
+  // Video operations
+  video: {
+    copyToLocal: (sourcePath: string, fileName: string) => Promise<{ success: boolean; localPath?: string; error?: string }>;
+    checkLocal: (fileName: string) => Promise<{ exists: boolean; localPath?: string }>;
+    getLocalPath: (fileName: string) => Promise<string>;
+    selectVideoFile: () => Promise<{ canceled: boolean; filePath?: string; fileName?: string; size?: number }>;
+    getVideosDir: () => Promise<string>;
+    openExternal: (fileName: string) => Promise<{ success: boolean; error?: string }>;
+    saveAs: (fileName: string) => Promise<{ success: boolean; savedPath?: string; canceled?: boolean; error?: string }>;
+  };
+
   // Auth operations (OAuth)
   auth: {
     openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
@@ -322,6 +333,17 @@ const electronAPI: ElectronAPI = {
     cloudTestConnection: (input: { url: string; username: string; password: string }) => ipcRenderer.invoke('cloud:test-connection', input),
   },
 
+  // Video operations
+  video: {
+    copyToLocal: (sourcePath: string, fileName: string) => ipcRenderer.invoke('video:copyToLocal', sourcePath, fileName),
+    checkLocal: (fileName: string) => ipcRenderer.invoke('video:checkLocal', fileName),
+    getLocalPath: (fileName: string) => ipcRenderer.invoke('video:getLocalPath', fileName),
+    selectVideoFile: () => ipcRenderer.invoke('video:selectVideoFile'),
+    getVideosDir: () => ipcRenderer.invoke('video:getVideosDir'),
+    openExternal: (fileName: string) => ipcRenderer.invoke('video:openExternal', fileName),
+    saveAs: (fileName: string) => ipcRenderer.invoke('video:saveAs', fileName),
+  },
+
   // Auth operations (OAuth)
   auth: {
     openExternal: (url: string) => ipcRenderer.invoke('auth:openExternal', url),
@@ -342,6 +364,7 @@ const electronAPI: ElectronAPI = {
   // Generic invoke method
   invoke: (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args),
 
+  // Event listeners
   on: (channel: string, callback: (...args: unknown[]) => void) => {
     // Whitelist channels for security
     const validChannels = [

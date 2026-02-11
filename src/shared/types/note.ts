@@ -7,6 +7,7 @@ export interface Note {
   linkedTaskIds?: number[]; // Mudança: array de IDs de tarefas
   attachments?: NoteAttachment[];
   attachedImages?: string[]; // Array de imagens em base64
+  attachedVideos?: string[]; // Array de nomes de arquivo de vídeo (armazenados no Supabase Storage)
   created_at: string;
   updated_at: string;
   workspace_id?: number;
@@ -34,6 +35,7 @@ export interface CreateNoteData {
   linkedTaskIds?: number[]; // Mudança: array de IDs de tarefas
   color?: string;
   attachedImages?: string[]; // Array de imagens em base64
+  attachedVideos?: string[]; // Array de nomes de arquivo de vídeo
 }
 
 export interface UpdateNoteData extends Partial<CreateNoteData> {

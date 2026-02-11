@@ -537,6 +537,8 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       if (intent?.kind === 'enex') return await electron.backup.importEnexPreview({ filePath: intent.filePath });
       if (intent?.kind === 'html-file') return await electron.invoke('import:html-preview', { filePath: intent.filePath }) as import('../../shared/types/backup').RestorePreview;
       if (intent?.kind === 'pdf-file') return await electron.invoke('import:pdf-preview', { filePath: intent.filePath }) as import('../../shared/types/backup').RestorePreview;
+      if (intent?.kind === 'txt-file') return await electron.invoke('import:txt-preview', { filePath: intent.filePath }) as import('../../shared/types/backup').RestorePreview;
+      if (intent?.kind === 'md-file') return await electron.invoke('import:md-preview', { filePath: intent.filePath }) as import('../../shared/types/backup').RestorePreview;
       if (intent?.kind === 'folder') return await electron.invoke('import:folder-preview', { folderPath: intent.folderPath }) as import('../../shared/types/backup').RestorePreview;
       return null;
     } catch (err) {
@@ -556,6 +558,8 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       else if (intent?.kind === 'enex') result = await electron.backup.importEnexApply({ filePath: intent.filePath });
       else if (intent?.kind === 'html-file') result = await electron.invoke('import:html-apply', { filePath: intent.filePath }) as import('../../shared/types/backup').ImportResult;
       else if (intent?.kind === 'pdf-file') result = await electron.invoke('import:pdf-apply', { filePath: intent.filePath }) as import('../../shared/types/backup').ImportResult;
+      else if (intent?.kind === 'txt-file') result = await electron.invoke('import:txt-apply', { filePath: intent.filePath }) as import('../../shared/types/backup').ImportResult;
+      else if (intent?.kind === 'md-file') result = await electron.invoke('import:md-apply', { filePath: intent.filePath }) as import('../../shared/types/backup').ImportResult;
       else if (intent?.kind === 'folder') result = await electron.invoke('import:folder-apply', { folderPath: intent.folderPath }) as import('../../shared/types/backup').ImportResult;
       if (result?.success) {
         window.dispatchEvent(new Event('tasksUpdated'));

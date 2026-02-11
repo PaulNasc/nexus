@@ -24,6 +24,7 @@ interface SupabaseNoteRow {
   format: 'text' | 'markdown';
   tags: string[] | null;
   attached_images: string[] | null;
+  attached_videos: string[] | null;
   color: string | null;
   is_pinned: boolean;
   is_archived: boolean;
@@ -38,6 +39,7 @@ const dbRowToNote = (row: SupabaseNoteRow, linkedTaskIds?: number[]): Note => ({
   format: row.format,
   tags: row.tags ?? undefined,
   attachedImages: row.attached_images ?? undefined,
+  attachedVideos: row.attached_videos ?? undefined,
   color: row.color ?? undefined,
   is_pinned: row.is_pinned,
   is_archived: row.is_archived,
@@ -164,6 +166,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         format: noteData.format || 'text',
         tags: noteData.tags || [],
         attached_images: noteData.attachedImages || [],
+        attached_videos: noteData.attachedVideos || [],
         color: noteData.color || null,
         organization_id: activeOrg?.id || null,
       })
@@ -257,6 +260,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (updates.format !== undefined) updateData.format = updates.format;
         if (updates.tags !== undefined) updateData.tags = updates.tags;
         if (updates.attachedImages !== undefined) updateData.attached_images = updates.attachedImages;
+        if (updates.attachedVideos !== undefined) updateData.attached_videos = updates.attachedVideos;
         if (updates.color !== undefined) updateData.color = updates.color;
         if (updates.is_pinned !== undefined) updateData.is_pinned = updates.is_pinned;
         if (updates.is_archived !== undefined) updateData.is_archived = updates.is_archived;
