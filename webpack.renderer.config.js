@@ -2,7 +2,9 @@ const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const webpack = require('webpack');
 
-const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+// Detect production: --mode production sets argv, NODE_ENV may not be set yet
+const args = process.argv || [];
+const isDev = !args.includes('production') && (process.env.NODE_ENV || 'development') !== 'production';
 
 module.exports = {
   entry: './src/renderer/index.tsx',
