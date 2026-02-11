@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useSettings } from '../hooks/useSettings';
 import { useAuth } from './AuthContext';
@@ -46,6 +46,7 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const initialLoadDone = useRef(false);
   const { tasks } = useTasks();
   const { settings } = useSettings();
   const { user, isOffline } = useAuth();
@@ -83,7 +84,7 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const loadCategories = useCallback(async () => {
     try {
-      setLoading(true);
+      if (!initialLoadDone.current) setLoading(true);
       setError(null);
 
       let result: Category[] = [];
@@ -105,6 +106,7 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     } finally {
       setLoading(false);
+      initialLoadDone.current = true;
     }
   }, [useCloud, loadCategoriesCloud, loadCategoriesLocal]);
 

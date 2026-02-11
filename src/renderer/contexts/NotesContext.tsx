@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useSettings } from '../hooks/useSettings';
 import { useAuth } from './AuthContext';
@@ -65,6 +65,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [notes, setNotes] = useState<Note[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const initialLoadDone = useRef(false);
   const { settings } = useSettings();
   const { user, isOffline } = useAuth();
   const { activeOrg } = useOrganization();
@@ -187,7 +188,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // ── PUBLIC API ────────────────────────────────────────────────
   const fetchNotes = useCallback(async () => {
-    setIsLoading(true);
+    if (!initialLoadDone.current) setIsLoading(true);
     setError(null);
     try {
       let result: Note[] = [];
@@ -213,6 +214,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     } finally {
       setIsLoading(false);
+      initialLoadDone.current = true;
     }
   }, [useCloud, useLocal, fetchNotesCloud, fetchNotesLocal]);
 

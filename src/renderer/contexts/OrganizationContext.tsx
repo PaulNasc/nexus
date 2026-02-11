@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Organization, OrgMember, OrgInvite, OrgJoinRequest, OrgRole } from '../../shared/types/organization';
 
@@ -93,12 +93,15 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       setOrganizations((orgs || []) as Organization[]);
 
-      // Restore active org from localStorage
+      // Restore active org from localStorage (only on first load)
       const savedOrgId = localStorage.getItem(ACTIVE_ORG_KEY);
       if (savedOrgId && orgs) {
         const saved = orgs.find((o: Organization) => o.id === savedOrgId);
         if (saved) {
-          setActiveOrgState(saved as Organization);
+          setActiveOrgState(prev => {
+            if (prev?.id === saved.id) return prev;
+            return saved as Organization;
+          });
         }
       }
     } catch (err) {
@@ -630,35 +633,41 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, []);
 
+  const contextValue = useMemo(() => ({
+    organizations,
+    activeOrg,
+    members,
+    invites,
+    joinRequests,
+    myInvites,
+    myRole,
+    loading,
+    createOrganization,
+    updateOrganization,
+    deleteOrganization,
+    setActiveOrg,
+    removeMember,
+    updateMemberRole,
+    leaveOrganization,
+    inviteMember,
+    cancelInvite,
+    acceptInvite,
+    declineInvite,
+    requestToJoin,
+    approveJoinRequest,
+    rejectJoinRequest,
+    searchOrgBySlug,
+    refreshOrganizations,
+  }), [
+    organizations, activeOrg, members, invites, joinRequests, myInvites, myRole, loading,
+    createOrganization, updateOrganization, deleteOrganization, setActiveOrg,
+    removeMember, updateMemberRole, leaveOrganization,
+    inviteMember, cancelInvite, acceptInvite, declineInvite,
+    requestToJoin, approveJoinRequest, rejectJoinRequest, searchOrgBySlug, refreshOrganizations,
+  ]);
+
   return (
-    <OrganizationContext.Provider
-      value={{
-        organizations,
-        activeOrg,
-        members,
-        invites,
-        joinRequests,
-        myInvites,
-        myRole,
-        loading,
-        createOrganization,
-        updateOrganization,
-        deleteOrganization,
-        setActiveOrg,
-        removeMember,
-        updateMemberRole,
-        leaveOrganization,
-        inviteMember,
-        cancelInvite,
-        acceptInvite,
-        declineInvite,
-        requestToJoin,
-        approveJoinRequest,
-        rejectJoinRequest,
-        searchOrgBySlug,
-        refreshOrganizations,
-      }}
-    >
+    <OrganizationContext.Provider value={contextValue}>
       {children}
     </OrganizationContext.Provider>
   );

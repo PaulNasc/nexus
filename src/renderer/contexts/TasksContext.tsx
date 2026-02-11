@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useSettings } from '../hooks/useSettings';
 import { useAuth } from './AuthContext';
@@ -76,6 +76,7 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const initialLoadDone = useRef(false);
   const { settings } = useSettings();
   const { user, isOffline } = useAuth();
   const { activeOrg } = useOrganization();
@@ -195,7 +196,7 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // ── PUBLIC API ────────────────────────────────────────────────
   const getAllTasks = useCallback(async () => {
     try {
-      setLoading(true);
+      if (!initialLoadDone.current) setLoading(true);
       setError(null);
 
       let result: Task[] = [];
@@ -221,6 +222,7 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     } finally {
       setLoading(false);
+      initialLoadDone.current = true;
     }
   }, [useCloud, useLocal, getAllTasksCloud, getAllTasksLocal]);
 
