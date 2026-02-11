@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useCategories } from '../contexts/CategoriesContext';
 import {
   Building2,
   Plus,
@@ -19,6 +20,9 @@ import {
   Send,
   Clock,
   UserPlus,
+  Share2,
+  Pencil,
+  Folder,
 } from 'lucide-react';
 
 interface OrganizationsPanelProps {
@@ -54,6 +58,9 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
   } = useOrganization();
 
   const { user } = useAuth();
+  const { categories, createCategory, updateCategory, deleteCategory } = useCategories();
+
+  const sharedCategories = categories.filter(c => c.is_shared);
 
   const [view, setView] = useState<PanelView>('list');
   const [newOrgName, setNewOrgName] = useState('');
@@ -65,6 +72,66 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
   const [foundOrg, setFoundOrg] = useState<{ id: string; name: string; slug: string } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+
+  // Shared category editor state
+  const [editingCatId, setEditingCatId] = useState<number | null>(null);
+  const [catName, setCatName] = useState('');
+  const [catColor, setCatColor] = useState('#7B3FF2');
+  const [catIcon, setCatIcon] = useState('Folder');
+  const [showNewCat, setShowNewCat] = useState(false);
+
+  const catColorOptions = [
+    { value: '#00D4AA', label: 'Teal' },
+    { value: '#3B82F6', label: 'Azul' },
+    { value: '#10B981', label: 'Verde' },
+    { value: '#F59E0B', label: 'Amarelo' },
+    { value: '#EF4444', label: 'Vermelho' },
+    { value: '#7B3FF2', label: 'Roxo' },
+    { value: '#F97316', label: 'Laranja' },
+    { value: '#EC4899', label: 'Rosa' },
+  ];
+
+  const catIconOptions = ['Folder', 'Star', 'Heart', 'Zap', 'Target', 'Flag', 'Bookmark', 'Tag'];
+
+  const handleSaveSharedCat = async () => {
+    if (!catName.trim()) return;
+    setActionLoading(true);
+    try {
+      if (editingCatId) {
+        await updateCategory(editingCatId, { name: catName.trim(), color: catColor, icon: catIcon });
+        showFeedback('success', 'Categoria atualizada');
+      } else {
+        await createCategory({ name: catName.trim(), color: catColor, icon: catIcon, is_shared: true });
+        showFeedback('success', 'Categoria compartilhada criada');
+      }
+      setCatName('');
+      setCatColor('#7B3FF2');
+      setCatIcon('Folder');
+      setEditingCatId(null);
+      setShowNewCat(false);
+    } catch (err) {
+      showFeedback('error', err instanceof Error ? err.message : 'Erro ao salvar categoria');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleEditCat = (cat: { id: number; name: string; color: string; icon?: string }) => {
+    setEditingCatId(cat.id);
+    setCatName(cat.name);
+    setCatColor(cat.color);
+    setCatIcon(cat.icon || 'Folder');
+    setShowNewCat(true);
+  };
+
+  const handleDeleteSharedCat = async (id: number) => {
+    if (!confirm('Excluir esta categoria compartilhada?')) return;
+    setActionLoading(true);
+    const ok = await deleteCategory(id);
+    setActionLoading(false);
+    if (ok) showFeedback('success', 'Categoria excluída');
+    else showFeedback('error', 'Não é possível excluir esta categoria');
+  };
 
   const showFeedback = (type: 'success' | 'error', msg: string) => {
     setFeedback({ type, msg });
@@ -720,6 +787,136 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Shared Categories (admin/owner only) */}
+          {(myRole === 'owner' || myRole === 'admin') && (
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFF' : '#111', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Share2 size={16} color="#00D4AA" /> Categorias Compartilhadas ({sharedCategories.length})
+                </div>
+                <button
+                  style={{ ...btnPrimary, padding: '6px 12px', fontSize: '12px' }}
+                  onClick={() => { setShowNewCat(true); setEditingCatId(null); setCatName(''); setCatColor('#7B3FF2'); setCatIcon('Folder'); }}
+                >
+                  <Plus size={14} /> Nova
+                </button>
+              </div>
+
+              {/* Existing shared categories list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: showNewCat ? '14px' : '0' }}>
+                {sharedCategories.length === 0 && !showNewCat && (
+                  <div style={{ textAlign: 'center', padding: '16px', color: isDark ? '#666' : '#9CA3AF', fontSize: '13px' }}>
+                    <Folder size={24} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
+                    Nenhuma categoria compartilhada criada.
+                  </div>
+                )}
+                {sharedCategories.map(cat => (
+                  <div key={cat.id} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px', borderRadius: '8px', backgroundColor: isDark ? '#111' : '#FFF',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: cat.color, flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontWeight: 500, fontSize: '13px', color: isDark ? '#FFF' : '#111' }}>
+                          {cat.name}
+                          {cat.isSystem && <span style={{ fontSize: '10px', color: '#F59E0B', marginLeft: '6px' }}>(sistema)</span>}
+                        </div>
+                        <div style={{ fontSize: '11px', color: isDark ? '#666' : '#9CA3AF' }}>
+                          {cat.task_count ?? 0} tarefa{(cat.task_count ?? 0) !== 1 ? 's' : ''}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+                        onClick={() => handleEditCat(cat)}
+                        title="Editar"
+                      >
+                        <Pencil size={14} color={isDark ? '#888' : '#6B7280'} />
+                      </button>
+                      {!cat.isSystem && (
+                        <button
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+                          onClick={() => handleDeleteSharedCat(cat.id)}
+                          title="Excluir"
+                        >
+                          <Trash2 size={14} color="#EF4444" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* New / Edit shared category form */}
+              {showNewCat && (
+                <div style={{
+                  padding: '14px', borderRadius: '8px',
+                  backgroundColor: isDark ? '#111' : '#FFF',
+                  border: `1px solid ${isDark ? '#333' : '#D1D5DB'}`,
+                }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: isDark ? '#FFF' : '#111', marginBottom: '12px' }}>
+                    {editingCatId ? 'Editar Categoria' : 'Nova Categoria Compartilhada'}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <input
+                      style={inputStyle}
+                      placeholder="Nome da categoria"
+                      value={catName}
+                      onChange={e => setCatName(e.target.value)}
+                      autoFocus
+                    />
+                    <div>
+                      <label style={{ fontSize: '12px', color: isDark ? '#AAA' : '#6B7280', marginBottom: '6px', display: 'block' }}>Cor</label>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {catColorOptions.map(opt => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setCatColor(opt.value)}
+                            title={opt.label}
+                            style={{
+                              width: '24px', height: '24px', borderRadius: '50%',
+                              backgroundColor: opt.value, border: catColor === opt.value ? '2px solid #FFF' : '2px solid transparent',
+                              cursor: 'pointer', boxShadow: catColor === opt.value ? `0 0 0 2px ${opt.value}` : 'none',
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', color: isDark ? '#AAA' : '#6B7280', marginBottom: '6px', display: 'block' }}>Ícone</label>
+                      <select
+                        value={catIcon}
+                        onChange={e => setCatIcon(e.target.value)}
+                        style={{ ...inputStyle, cursor: 'pointer' }}
+                      >
+                        {catIconOptions.map(icon => (
+                          <option key={icon} value={icon}>{icon}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                      <button
+                        style={btnSecondary}
+                        onClick={() => { setShowNewCat(false); setEditingCatId(null); setCatName(''); }}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        style={{ ...btnPrimary, padding: '8px 16px', fontSize: '13px', opacity: actionLoading || !catName.trim() ? 0.6 : 1 }}
+                        onClick={handleSaveSharedCat}
+                        disabled={actionLoading || !catName.trim()}
+                      >
+                        <Check size={14} /> {editingCatId ? 'Salvar' : 'Criar'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
