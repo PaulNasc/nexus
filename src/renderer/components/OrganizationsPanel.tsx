@@ -51,7 +51,6 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
     approveJoinRequest,
     rejectJoinRequest,
     searchOrgBySlug,
-    refreshOrganizations,
   } = useOrganization();
 
   const { user } = useAuth();
@@ -279,7 +278,7 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                   </button>
                   <button
                     style={btnSecondary}
-                    onClick={() => { setActiveOrg(null); refreshOrganizations(); }}
+                    onClick={() => setActiveOrg(null)}
                   >
                     Pessoal
                   </button>
@@ -360,7 +359,7 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                 {organizations.map(org => (
                   <button
                     key={org.id}
-                    onClick={() => { setActiveOrg(org); refreshOrganizations(); }}
+                    onClick={() => setActiveOrg(org)}
                     style={{
                       display: 'flex',
                       alignItems: 'center',

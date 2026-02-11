@@ -114,10 +114,10 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Members with profile info
+      // Members with profile info (use explicit FK hint to avoid ambiguity)
       const { data: memberRows } = await supabase
         .from('org_members')
-        .select('*, profiles:user_id(email, display_name, avatar_url)')
+        .select('*, profiles!org_members_user_id_profiles_fkey(email, display_name, avatar_url)')
         .eq('org_id', orgId);
 
       const mappedMembers: OrgMember[] = (memberRows || []).map((m: Record<string, unknown>) => {
@@ -151,7 +151,7 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         // Join requests
         const { data: requestRows } = await supabase
           .from('org_join_requests')
-          .select('*, profiles:user_id(email, display_name)')
+          .select('*, profiles!org_join_requests_user_id_profiles_fkey(email, display_name)')
           .eq('org_id', orgId)
           .eq('status', 'pending');
 
@@ -301,6 +301,15 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const deleteOrganization = useCallback(async (orgId: string): Promise<boolean> => {
     try {
+      // Delete all org data first (tasks, notes, categories, timer_stats, invites, join requests, members)
+      await supabase.from('tasks').delete().eq('organization_id', orgId);
+      await supabase.from('notes').delete().eq('organization_id', orgId);
+      await supabase.from('categories').delete().eq('organization_id', orgId);
+      await supabase.from('timer_stats').delete().eq('organization_id', orgId);
+      await supabase.from('org_invites').delete().eq('org_id', orgId);
+      await supabase.from('org_join_requests').delete().eq('org_id', orgId);
+      await supabase.from('org_members').delete().eq('org_id', orgId);
+
       const { error } = await supabase.from('organizations').delete().eq('id', orgId);
       if (error) throw error;
 
@@ -354,6 +363,8 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       if (error) throw error;
 
+      // The DB trigger (cleanup_empty_org) auto-deletes the org + data
+      // if this was the last member. Client just needs to update local state.
       setOrganizations(prev => prev.filter(o => o.id !== orgId));
       if (activeOrg?.id === orgId) {
         setActiveOrg(null);
