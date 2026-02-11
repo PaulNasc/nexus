@@ -64,6 +64,9 @@ export interface ImportResult {
     format: 'text' | 'markdown';
     tags?: string[];
     attachedImages?: string[];
+    attachedVideos?: string[];
+    linkedTaskIds?: number[];
+    color?: string;
   }>;
   importedTasks?: Array<{
     title: string;

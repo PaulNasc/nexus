@@ -28,11 +28,19 @@ type ImportIntent = {
   kind: 'pdf-file';
   filePath: string;
 } | {
+  kind: 'txt-file';
+  filePath: string;
+} | {
+  kind: 'md-file';
+  filePath: string;
+} | {
   kind: 'folder';
   folderPath: string;
 } | {
   kind: 'unsupported';
+  filePath?: string;
   reason: string;
+  unsupportedFiles?: string[];
 };
 
 export interface ImportExportModalProps {
@@ -62,6 +70,31 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [hasApplied, setHasApplied] = useState(false);
   const applyInFlightRef = useRef(false);
+  const [progress, setProgress] = useState(0);
+  const [progressLabel, setProgressLabel] = useState('');
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startProgress = (label: string) => {
+    setProgress(0);
+    setProgressLabel(label);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    let p = 0;
+    progressTimerRef.current = setInterval(() => {
+      p += Math.random() * 8 + 2;
+      if (p > 90) p = 90;
+      setProgress(p);
+    }, 300);
+  };
+
+  const finishProgress = () => {
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    progressTimerRef.current = null;
+    setProgress(100);
+    setTimeout(() => {
+      setProgress(0);
+      setProgressLabel('');
+    }, 600);
+  };
 
   const title = useMemo(() => {
     return mode === 'import' ? 'Importar' : 'Exportar';
@@ -79,12 +112,16 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       setResult(null);
       setPreview(null);
       setIntent(initialImportIntent);
+      startProgress('Analisando arquivo...');
       try {
         const p = await onImportPreview(initialImportIntent);
         if (cancelled) return;
         setPreview(p);
       } finally {
-        if (!cancelled) setIsBusy(false);
+        if (!cancelled) {
+          finishProgress();
+          setIsBusy(false);
+        }
       }
     };
 
@@ -101,6 +138,10 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     setError(null);
     setHasApplied(false);
     applyInFlightRef.current = false;
+    setProgress(0);
+    setProgressLabel('');
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    progressTimerRef.current = null;
   };
 
   const close = () => {
@@ -129,8 +170,25 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     if (ext === '.enex') return { kind: 'enex', filePath: selection.path };
     if (ext === '.html' || ext === '.htm') return { kind: 'html-file', filePath: selection.path };
     if (ext === '.pdf') return { kind: 'pdf-file', filePath: selection.path };
+    if (ext === '.txt') return { kind: 'txt-file', filePath: selection.path };
+    if (ext === '.md' || ext === '.markdown') return { kind: 'md-file', filePath: selection.path };
 
-    return { kind: 'unsupported', reason: 'Formato ainda não suportado neste MVP' };
+    // Formatos de imagem/vídeo/documento não suportados
+    const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.jfif', '.tiff', '.ico'];
+    const videoExts = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv'];
+    const docExts = ['.doc', '.docx', '.rtf', '.odt', '.xls', '.xlsx', '.ppt', '.pptx'];
+
+    if (imageExts.includes(ext)) {
+      return { kind: 'unsupported', filePath: selection.path, reason: `Arquivo de imagem (${ext}) não pode ser importado como nota. Use o editor de notas para anexar imagens.` };
+    }
+    if (videoExts.includes(ext)) {
+      return { kind: 'unsupported', filePath: selection.path, reason: `Arquivo de vídeo (${ext}) não pode ser importado como nota. Use o editor de notas para anexar vídeos.` };
+    }
+    if (docExts.includes(ext)) {
+      return { kind: 'unsupported', filePath: selection.path, reason: `Formato ${ext} ainda não suportado. Converta para .txt, .html ou .json antes de importar.` };
+    }
+
+    return { kind: 'unsupported', filePath: selection.path, reason: `Formato de arquivo não suportado: ${ext}` };
   };
 
   const handleSelectImportFile = async () => {
@@ -150,6 +208,16 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       const selection = await electron.system.selectImportFile({
         title: 'Selecionar arquivo para importação',
         buttonLabel: 'Selecionar',
+        filters: [
+          { name: 'Todos suportados', extensions: ['zip', 'rar', 'json', 'csv', 'enex', 'html', 'htm', 'txt', 'md', 'pdf'] },
+          { name: 'Arquivos compactados', extensions: ['zip', 'rar'] },
+          { name: 'JSON', extensions: ['json'] },
+          { name: 'CSV', extensions: ['csv'] },
+          { name: 'Evernote (ENEX)', extensions: ['enex'] },
+          { name: 'HTML', extensions: ['html', 'htm'] },
+          { name: 'Texto', extensions: ['txt', 'md'] },
+          { name: 'Todos os arquivos', extensions: ['*'] },
+        ],
       });
 
       if (selection.canceled || !selection.path) {
@@ -157,12 +225,14 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       }
 
       setIsBusy(true);
+      startProgress('Analisando arquivo...');
       try {
         const nextIntent = detectIntentFromSelection(selection);
         setIntent(nextIntent);
 
         if (nextIntent.kind === 'unsupported') {
           setError(nextIntent.reason);
+          finishProgress();
           return;
         }
 
@@ -173,10 +243,12 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
           } else {
             setError('Erro ao gerar preview do import');
           }
+          finishProgress();
           return;
         }
         setPreview(p);
       } finally {
+        finishProgress();
         setIsBusy(false);
       }
     } catch (e) {
@@ -227,17 +299,35 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
         nextIntent = { kind: 'html-file', filePath };
       } else if (ext === '.pdf') {
         nextIntent = { kind: 'pdf-file', filePath };
+      } else if (ext === '.txt') {
+        nextIntent = { kind: 'txt-file', filePath };
+      } else if (ext === '.md' || ext === '.markdown') {
+        nextIntent = { kind: 'md-file', filePath };
       } else {
-        setError(`Formato de arquivo não suportado: ${ext}`);
+        const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.jfif', '.tiff', '.ico'];
+        const videoExts = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv'];
+        const docExts = ['.doc', '.docx', '.rtf', '.odt', '.xls', '.xlsx', '.ppt', '.pptx'];
+
+        if (imageExts.includes(ext)) {
+          setError(`Arquivo de imagem (${ext}) não pode ser importado como nota. Use o editor de notas para anexar imagens.`);
+        } else if (videoExts.includes(ext)) {
+          setError(`Arquivo de vídeo (${ext}) não pode ser importado como nota. Use o editor de notas para anexar vídeos.`);
+        } else if (docExts.includes(ext)) {
+          setError(`Formato ${ext} ainda não suportado. Converta para .txt, .html ou .json antes de importar.`);
+        } else {
+          setError(`Formato de arquivo não suportado: ${ext}`);
+        }
         return;
       }
 
       setIsBusy(true);
       setIntent(nextIntent);
+      startProgress('Analisando arquivo...');
 
       const p = await onImportPreview(nextIntent);
       if (!p) {
         setError('Erro ao gerar preview do import');
+        finishProgress();
         return;
       }
       setPreview(p);
@@ -245,6 +335,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       console.error('Erro ao processar arquivo arrastado:', err);
       setError(err instanceof Error ? err.message : 'Erro ao processar arquivo arrastado');
     } finally {
+      finishProgress();
       setIsBusy(false);
     }
   };
@@ -255,6 +346,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     if (hasApplied) return;
     applyInFlightRef.current = true;
     setIsBusy(true);
+    startProgress('Importando dados...');
     try {
       const r = await onImportApply(intent);
       setResult(r);
@@ -265,6 +357,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       console.error('Erro ao aplicar import:', err);
       setError(err instanceof Error ? err.message : 'Erro ao aplicar importação');
     } finally {
+      finishProgress();
       setIsBusy(false);
       applyInFlightRef.current = false;
     }
@@ -272,12 +365,14 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
 
   const handleExport = async () => {
     setIsBusy(true);
+    startProgress('Exportando dados...');
     try {
       await onExport(exportFormat);
     } catch (err) {
       console.error('Erro ao exportar:', err);
       setError('Erro ao exportar');
     } finally {
+      finishProgress();
       setIsBusy(false);
     }
   };
@@ -291,6 +386,28 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
           <h2 className="modal-title">{title}</h2>
           <button className="modal-close-btn" onClick={close} aria-label="Fechar">×</button>
         </div>
+
+        {/* Barra de progresso */}
+        {isBusy && progress > 0 && (
+          <div style={{ padding: '0 0 8px 0' }}>
+            <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginBottom: '6px' }}>{progressLabel}</div>
+            <div style={{
+              width: '100%',
+              height: '6px',
+              backgroundColor: 'var(--color-bg-secondary)',
+              borderRadius: '3px',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                width: `${progress}%`,
+                height: '100%',
+                backgroundColor: 'var(--color-primary-teal)',
+                borderRadius: '3px',
+                transition: 'width 0.3s ease',
+              }} />
+            </div>
+          </div>
+        )}
 
         {mode === 'export' && (
           <div style={{ display: 'grid', gap: '12px' }}>

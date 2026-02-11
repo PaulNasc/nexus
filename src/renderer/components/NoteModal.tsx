@@ -9,9 +9,10 @@ import { X, Save, Link2 } from 'lucide-react';
 interface NoteModalProps {
   isOpen: boolean;
   onClose: () => void;
+  modalTitle?: string;
 }
 
-export const NoteModal: React.FC<NoteModalProps> = ({ isOpen, onClose }) => {
+export const NoteModal: React.FC<NoteModalProps> = ({ isOpen, onClose, modalTitle = 'Nova Nota' }) => {
   const { theme } = useTheme();
   const { createNote } = useNotes();
   const { tasks } = useTasks();
@@ -72,7 +73,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({ isOpen, onClose }) => {
       <div style={{
         backgroundColor: isDark ? 'var(--color-bg-secondary)' : '#FFFFFF',
         border: `1px solid ${isDark ? 'var(--color-border-primary)' : '#E5E7EB'}`,
-        borderRadius: 16,
+        borderRadius: 12,
         padding: 24,
         width: '90%',
         maxWidth: 500,
@@ -93,7 +94,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({ isOpen, onClose }) => {
             color: isDark ? 'var(--color-text-primary)' : '#1F2937',
             margin: 0
           }}>
-            Nova Nota
+            {modalTitle}
           </h2>
           
           <button

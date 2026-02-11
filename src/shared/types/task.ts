@@ -12,6 +12,7 @@ export interface Category {
   updated_at: string;
   isSystem?: boolean; // Para diferenciar categorias padrão das customizadas
   order?: number; // Para ordenação
+  is_shared?: boolean; // Categoria compartilhada da organização
 }
 
 export interface Task {
@@ -26,6 +27,11 @@ export interface Task {
   due_date?: string;
   completed_at?: string;
   priority?: TaskPriority;
+  assigned_to?: string; // UUID do usuário destino
+  assigned_by?: string; // UUID de quem atribuiu
+  is_hidden_from_org?: boolean; // Ocultar da organização
+  progress_status?: string; // Tag de progresso (ex: "Movida para Hoje por João")
+  progress_updated_by?: string; // UUID de quem atualizou o progresso
 }
 
 export interface CreateTaskData {
@@ -36,4 +42,5 @@ export interface CreateTaskData {
   linkedNoteId?: number;
   priority?: TaskPriority;
   due_date?: string;
-} 
+  assigned_to?: string;
+}

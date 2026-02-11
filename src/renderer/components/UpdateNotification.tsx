@@ -1,375 +1,290 @@
-import React, { useState, useEffect } from 'react';
-import { Download, X, AlertTriangle, RefreshCw, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Download, X, RefreshCw, CheckCircle, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 
-interface UpdateInfo {
-  hasUpdate: boolean;
-  currentVersion: {
-    versionString: string;
-  };
-  latestVersion?: {
-    versionString: string;
-  };
+interface UpdateStatus {
+  state: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
+  version?: string;
+  progress?: { percent: number; bytesPerSecond: number; transferred: number; total: number };
   releaseNotes?: string;
-  isMandatory?: boolean;
-  supported?: boolean;
-  deprecationMessage?: string;
-}
-
-interface DownloadProgress {
-  percent: number;
-  transferred: number;
-  total: number;
-  speed: number;
-  eta: number;
+  error?: string;
+  isPortable?: boolean;
 }
 
 interface UpdateNotificationProps {
   isDark: boolean;
 }
 
+const CHECK_INTERVAL_MS = 60 * 60 * 1000; // Re-check every 1 hour
+
 const UpdateNotification: React.FC<UpdateNotificationProps> = ({ isDark }) => {
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  const [showNotification, setShowNotification] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
-  const [downloadComplete, setDownloadComplete] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<UpdateStatus>({ state: 'idle' });
+  const [dismissed, setDismissed] = useState(false);
+  const [autoDownload, setAutoDownload] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
 
+  const getElectron = useCallback(() => (window as any).electronAPI, []);
+
+  // Load auto-download preference
   useEffect(() => {
-    checkForUpdates();
-    
-    // Verificar atualizações a cada 30 minutos
-    const interval = setInterval(checkForUpdates, 30 * 60 * 1000);
-    
-    return () => clearInterval(interval);
-  }, []);
+    const electron = getElectron();
+    if (!electron?.invoke) return;
+    electron.invoke('settings:get', 'autoDownloadUpdates').then((val: unknown) => {
+      if (typeof val === 'boolean') setAutoDownload(val);
+    }).catch(() => {});
+  }, [getElectron]);
 
-  const checkForUpdates = async () => {
-    try {
-      const electronAPI = (window as any).electronAPI;
-      if (electronAPI?.version?.checkForUpdates) {
-        const update = await electronAPI.version.checkForUpdates(false);
-        
-        if (update.hasUpdate) {
-          setUpdateInfo(update);
-          setShowNotification(true);
-        }
+  // Save auto-download preference
+  const toggleAutoDownload = useCallback(() => {
+    const next = !autoDownload;
+    setAutoDownload(next);
+    const electron = getElectron();
+    electron?.invoke?.('settings:set', 'autoDownloadUpdates', next)?.catch(() => {});
+  }, [autoDownload, getElectron]);
+
+  // Subscribe to updater events + periodic check
+  useEffect(() => {
+    const electron = getElectron();
+    if (!electron?.updater) return;
+
+    // Get initial status
+    electron.updater.getStatus().then((s: UpdateStatus) => {
+      setStatus(s);
+      if (s.state === 'available' || s.state === 'downloaded') {
+        setDismissed(false);
       }
-    } catch (error) {
-      console.error('Erro ao verificar atualizações:', error);
+    }).catch(() => {});
+
+    // Trigger initial check (complements the 30s check in main process)
+    electron.updater.checkForUpdates().catch(() => {});
+
+    // Subscribe to real-time status updates
+    const unsub = electron.updater.onStatus((s: UpdateStatus) => {
+      setStatus(s);
+      if (s.state === 'available' || s.state === 'downloaded') {
+        setDismissed(false);
+      }
+    });
+
+    // Periodic re-check
+    const interval = setInterval(() => {
+      electron.updater.checkForUpdates().catch(() => {});
+    }, CHECK_INTERVAL_MS);
+
+    return () => {
+      unsub?.();
+      clearInterval(interval);
+    };
+  }, [getElectron]);
+
+  // Auto-download when update is available and preference is enabled
+  useEffect(() => {
+    if (autoDownload && status.state === 'available') {
+      const electron = getElectron();
+      electron?.updater?.downloadUpdate?.();
     }
-  };
+  }, [autoDownload, status.state, getElectron]);
 
-  const handleDownload = async () => {
-    if (!updateInfo) return;
-
-    try {
-      setIsDownloading(true);
-      setError(null);
-      
-      const electronAPI = (window as any).electronAPI;
-      
-      // Simular eventos de progresso (em produção, usar IPC events)
-      const progressInterval = setInterval(() => {
-        setDownloadProgress(prev => {
-          if (!prev) {
-            return { percent: 10, transferred: 5242880, total: 52428800, speed: 1048576, eta: 45 };
-          }
-          
-          if (prev.percent >= 100) {
-            clearInterval(progressInterval);
-            setIsDownloading(false);
-            setDownloadComplete(true);
-            return prev;
-          }
-          
-          return {
-            ...prev,
-            percent: Math.min(prev.percent + Math.random() * 15, 100),
-            transferred: Math.min(prev.transferred + Math.random() * 2097152, prev.total),
-            eta: Math.max(prev.eta - 2, 0)
-          };
-        });
-      }, 500);
-
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Erro ao baixar atualização');
-      setIsDownloading(false);
-    }
+  const handleDownload = () => {
+    const electron = getElectron();
+    electron?.updater?.downloadUpdate?.();
   };
 
   const handleInstall = () => {
-    // Em produção, reiniciar aplicação e aplicar update
-    if (confirm('A aplicação será reiniciada para aplicar a atualização. Continuar?')) {
-      const electronAPI = (window as any).electronAPI;
-      if (electronAPI?.system?.restart) {
-        electronAPI.system.restart();
-      }
-    }
+    const electron = getElectron();
+    electron?.updater?.quitAndInstall?.();
   };
 
-  const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
+  // Parse release notes for display
+  const changelogLines = (status.releaseNotes || '').split('\n').filter(l => l.trim());
 
-  const formatSpeed = (bytesPerSecond: number): string => {
-    return formatBytes(bytesPerSecond) + '/s';
-  };
+  // Only show for actionable states
+  const showable = status.state === 'available' || status.state === 'downloading' || status.state === 'downloaded';
+  if (!showable || dismissed) return null;
 
-  const formatTime = (seconds: number): string => {
-    if (seconds < 60) return `${seconds}s`;
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}m ${remainingSeconds}s`;
-  };
-
-  if (!showNotification || !updateInfo) return null;
+  const bg = isDark ? '#131313' : '#FFFFFF';
+  const border = isDark ? '#222' : '#E5E7EB';
+  const textPrimary = isDark ? '#FFFFFF' : '#1F2937';
+  const textSecondary = isDark ? '#888' : '#6B7280';
+  const textMuted = isDark ? '#555' : '#9CA3AF';
 
   return (
     <div style={{
       position: 'fixed',
-      top: '20px',
-      right: '20px',
-      width: '400px',
-      backgroundColor: isDark ? '#2d2d2d' : '#ffffff',
-      border: `1px solid ${isDark ? '#404040' : '#e0e0e0'}`,
-      borderRadius: '12px',
-      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+      bottom: '24px',
+      right: '24px',
+      width: '380px',
+      backgroundColor: bg,
+      border: `1px solid ${border}`,
+      borderRadius: '8px',
+      boxShadow: isDark
+        ? '0 8px 32px rgba(0, 0, 0, 0.6)'
+        : '0 8px 32px rgba(0, 0, 0, 0.12)',
       zIndex: 10000,
-      overflow: 'hidden'
+      overflow: 'hidden',
+      animation: 'slideInRight 0.3s ease-out',
     }}>
       {/* Header */}
       <div style={{
-        padding: '16px',
-        borderBottom: `1px solid ${isDark ? '#404040' : '#e0e0e0'}`,
+        padding: '12px 14px',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between'
+        justifyContent: 'space-between',
+        borderBottom: `1px solid ${border}`,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {updateInfo.isMandatory ? (
-            <AlertTriangle size={20} color="#ff6b35" />
+          {status.state === 'downloaded' ? (
+            <CheckCircle size={16} color="#00D4AA" />
+          ) : status.state === 'downloading' ? (
+            <RefreshCw size={16} color="#7B3FF2" className="spin" />
           ) : (
-            <Download size={20} color={isDark ? '#4fb3d9' : '#2196F3'} />
+            <Download size={16} color="#00D4AA" />
           )}
-          <h3 style={{
-            margin: 0,
-            fontSize: '16px',
-            fontWeight: '600',
-            color: isDark ? '#ffffff' : '#1a1a1a'
-          }}>
-            {updateInfo.isMandatory ? 'Atualização Obrigatória' : 'Nova Atualização Disponível'}
-          </h3>
+          <span style={{ fontSize: '13px', fontWeight: 600, color: textPrimary }}>
+            {status.state === 'available' && `Nexus v${status.version} disponível`}
+            {status.state === 'downloading' && 'Baixando atualização...'}
+            {status.state === 'downloaded' && `v${status.version} pronta para ${status.isPortable ? 'atualizar' : 'instalar'}`}
+          </span>
+          {status.isPortable && (
+            <span style={{
+              fontSize: '9px', fontWeight: 500, color: '#7B3FF2',
+              background: 'rgba(123, 63, 242, 0.1)', border: '1px solid rgba(123, 63, 242, 0.2)',
+              borderRadius: '4px', padding: '1px 5px', marginLeft: '4px',
+            }}>Portátil</span>
+          )}
         </div>
-        
-        {!updateInfo.isMandatory && (
-          <button
-            onClick={() => setShowNotification(false)}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '4px',
-              borderRadius: '4px',
-              color: isDark ? '#888888' : '#666666'
-            }}
-          >
-            <X size={16} />
-          </button>
-        )}
+        <button
+          onClick={() => setDismissed(true)}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
+            color: textMuted, lineHeight: 0,
+          }}
+        >
+          <X size={14} />
+        </button>
       </div>
 
-      {/* Content */}
-      <div style={{ padding: '16px' }}>
-        <div style={{
-          marginBottom: '12px',
-          color: isDark ? '#cccccc' : '#333333',
-          fontSize: '14px'
-        }}>
-          <strong>Versão atual:</strong> {updateInfo.currentVersion.versionString}
-          <br />
-          <strong>Nova versão:</strong> {updateInfo.latestVersion?.versionString}
-        </div>
-
-        {updateInfo.releaseNotes && (
-          <div style={{
-            marginBottom: '16px',
-            padding: '12px',
-            backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5',
-            borderRadius: '8px',
-            fontSize: '13px',
-            color: isDark ? '#cccccc' : '#333333',
-            maxHeight: '120px',
-            overflowY: 'auto'
-          }}>
-            <strong>Novidades:</strong>
-            <div style={{ marginTop: '4px' }}>
-              {updateInfo.releaseNotes}
-            </div>
+      {/* Body */}
+      <div style={{ padding: '12px 14px' }}>
+        {/* Changelog toggle */}
+        {status.state === 'available' && changelogLines.length > 0 && (
+          <div style={{ marginBottom: '10px' }}>
+            <button
+              onClick={() => setShowChangelog(!showChangelog)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: '#7B3FF2', fontSize: '12px', fontWeight: 500, padding: 0,
+              }}
+            >
+              <FileText size={13} />
+              O que há de novo
+              {showChangelog ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </button>
+            {showChangelog && (
+              <div style={{
+                marginTop: '8px',
+                padding: '10px 12px',
+                backgroundColor: isDark ? '#1A1A1A' : '#F9FAFB',
+                border: `1px solid ${border}`,
+                borderRadius: '6px',
+                maxHeight: '180px',
+                overflowY: 'auto',
+                fontSize: '12px',
+                lineHeight: '1.6',
+                color: textSecondary,
+              }}>
+                {changelogLines.map((line, i) => {
+                  const trimmed = line.trim();
+                  if (trimmed.startsWith('##') || trimmed.startsWith('# ')) {
+                    return (
+                      <div key={i} style={{ fontWeight: 600, color: textPrimary, marginTop: i > 0 ? '8px' : 0, marginBottom: '4px' }}>
+                        {trimmed.replace(/^#+\s*/, '')}
+                      </div>
+                    );
+                  }
+                  if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+                    return (
+                      <div key={i} style={{ paddingLeft: '12px', position: 'relative' }}>
+                        <span style={{ position: 'absolute', left: 0, color: '#00D4AA' }}>•</span>
+                        {trimmed.slice(2)}
+                      </div>
+                    );
+                  }
+                  return <div key={i}>{trimmed}</div>;
+                })}
+              </div>
+            )}
           </div>
         )}
 
-        {updateInfo.deprecationMessage && (
-          <div style={{
-            marginBottom: '16px',
-            padding: '12px',
-            backgroundColor: '#fff3cd',
-            border: '1px solid #ffeaa7',
-            borderRadius: '8px',
-            fontSize: '13px',
-            color: '#856404'
-          }}>
-            <strong>Aviso:</strong> {updateInfo.deprecationMessage}
-          </div>
-        )}
-
-        {/* Download Progress */}
-        {isDownloading && downloadProgress && (
-          <div style={{ marginBottom: '16px' }}>
+        {/* Download progress bar */}
+        {status.state === 'downloading' && status.progress && (
+          <div style={{ marginBottom: '10px' }}>
             <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '8px',
-              fontSize: '13px',
-              color: isDark ? '#cccccc' : '#333333'
-            }}>
-              <span>Baixando... {downloadProgress.percent}%</span>
-              <span>{formatSpeed(downloadProgress.speed)}</span>
-            </div>
-            
-            <div style={{
-              width: '100%',
-              height: '8px',
-              backgroundColor: isDark ? '#404040' : '#e0e0e0',
-              borderRadius: '4px',
-              overflow: 'hidden'
+              width: '100%', height: '3px', borderRadius: '2px',
+              backgroundColor: isDark ? '#2A2A2A' : '#E5E7EB',
+              overflow: 'hidden',
             }}>
               <div style={{
-                width: `${downloadProgress.percent}%`,
-                height: '100%',
-                backgroundColor: '#4fb3d9',
-                transition: 'width 0.3s ease'
+                width: `${status.progress.percent}%`, height: '100%',
+                background: 'linear-gradient(90deg, #00D4AA, #7B3FF2)',
+                transition: 'width 0.3s ease',
               }} />
             </div>
-            
             <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginTop: '4px',
-              fontSize: '12px',
-              color: isDark ? '#888888' : '#666666'
+              display: 'flex', justifyContent: 'space-between', marginTop: '4px',
+              fontSize: '10px', color: textMuted,
             }}>
-              <span>{formatBytes(downloadProgress.transferred)} / {formatBytes(downloadProgress.total)}</span>
-              <span>ETA: {formatTime(downloadProgress.eta)}</span>
+              <span>{status.progress.percent}%</span>
+              <span>{(status.progress.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s</span>
             </div>
           </div>
         )}
 
-        {/* Error Message */}
-        {error && (
-          <div style={{
-            marginBottom: '16px',
-            padding: '12px',
-            backgroundColor: '#f8d7da',
-            border: '1px solid #f5c6cb',
-            borderRadius: '8px',
-            fontSize: '13px',
-            color: '#721c24'
+        {/* Auto-download checkbox */}
+        {(status.state === 'available' || status.state === 'downloaded') && (
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            fontSize: '11px', color: textSecondary, cursor: 'pointer',
+            marginBottom: '10px', userSelect: 'none',
           }}>
-            <strong>Erro:</strong> {error}
-          </div>
+            <input
+              type="checkbox"
+              checked={autoDownload}
+              onChange={toggleAutoDownload}
+              style={{ accentColor: '#00D4AA', width: '13px', height: '13px', cursor: 'pointer' }}
+            />
+            Baixar atualizações automaticamente
+          </label>
         )}
 
         {/* Actions */}
-        <div style={{
-          display: 'flex',
-          gap: '8px',
-          justifyContent: 'flex-end'
-        }}>
-          {!isDownloading && !downloadComplete && (
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          {status.state === 'available' && (
             <>
-              {!updateInfo.isMandatory && (
-                <button
-                  onClick={() => setShowNotification(false)}
-                  style={{
-                    padding: '8px 16px',
-                    border: `1px solid ${isDark ? '#404040' : '#e0e0e0'}`,
-                    borderRadius: '6px',
-                    backgroundColor: 'transparent',
-                    color: isDark ? '#cccccc' : '#333333',
-                    cursor: 'pointer',
-                    fontSize: '14px'
-                  }}
-                >
-                  Depois
-                </button>
-              )}
-              
-              <button
-                onClick={handleDownload}
-                style={{
-                  padding: '8px 16px',
-                  border: 'none',
-                  borderRadius: '6px',
-                  backgroundColor: '#4fb3d9',
-                  color: '#ffffff',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-              >
-                <Download size={14} />
-                Baixar Agora
+              <button onClick={() => setDismissed(true)} style={{
+                padding: '5px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer',
+                border: `1px solid ${border}`,
+                backgroundColor: 'transparent',
+                color: textSecondary,
+              }}>
+                Depois
+              </button>
+              <button onClick={handleDownload} style={{
+                padding: '5px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer',
+                border: 'none', backgroundColor: '#00D4AA', color: '#000', fontWeight: 500,
+              }}>
+                Baixar agora
               </button>
             </>
           )}
-
-          {isDownloading && (
-            <button
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                backgroundColor: '#6c757d',
-                color: '#ffffff',
-                cursor: 'not-allowed',
-                fontSize: '14px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-              disabled
-            >
-              <RefreshCw size={14} className="spin" />
-              Baixando...
-            </button>
-          )}
-
-          {downloadComplete && (
-            <button
-              onClick={handleInstall}
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                backgroundColor: '#28a745',
-                color: '#ffffff',
-                cursor: 'pointer',
-                fontSize: '14px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              <CheckCircle size={14} />
-              Instalar e Reiniciar
+          {status.state === 'downloaded' && (
+            <button onClick={handleInstall} style={{
+              padding: '5px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer',
+              border: 'none', fontWeight: 500, color: '#fff',
+              background: 'linear-gradient(135deg, #00D4AA, #7B3FF2)',
+            }}>
+              {status.isPortable ? 'Reiniciar e Atualizar' : 'Reiniciar e Instalar'}
             </button>
           )}
         </div>

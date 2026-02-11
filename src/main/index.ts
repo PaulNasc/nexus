@@ -5,9 +5,7 @@ import DatabaseManager from './database-manager';
 import { SecureLogger, logger, logInfo, logError } from './logging/logger';
 import { crashReporterManager } from './logging/crash-reporter';
 import { auditLogger } from './logging/audit-logger';
-import VersionManager from './version/version-manager';
-import UpdateChecker from './version/update-checker';
-import UpdateDownloader from './version/update-downloader';
+import { AppUpdater } from './updater/auto-updater';
 import { BackupManager } from './backup/backup-manager';
 import * as cheerio from 'cheerio';
 import type { BackupConfig, ImportResult, RestorePreview } from '../shared/types/backup';
@@ -21,18 +19,14 @@ class MainApplication {
   private isDev = !app.isPackaged || process.env.NODE_ENV === 'development';
   private database: DatabaseManager;
   private logger: SecureLogger;
-  private versionManager: VersionManager;
-  private updateChecker: UpdateChecker;
-  private updateDownloader: UpdateDownloader;
+  private appUpdater: AppUpdater;
   private backupManager: BackupManager;
   private cloudSyncManager: CloudSyncManager;
 
   constructor() {
     this.database = DatabaseManager.getInstance();
     this.logger = SecureLogger.getInstance();
-    this.versionManager = VersionManager.getInstance();
-    this.updateChecker = UpdateChecker.getInstance();
-    this.updateDownloader = UpdateDownloader.getInstance();
+    this.appUpdater = AppUpdater.getInstance();
     this.backupManager = BackupManager.getInstance();
     this.cloudSyncManager = CloudSyncManager.getInstance();
 
@@ -162,17 +156,17 @@ class MainApplication {
         const candidates: string[] = [];
         if (process.platform === 'win32') {
           candidates.push(
-            // Priorizar icon.ico (multi-size) e depois krigzis.ico
+            // Priorizar icon.ico (multi-size) e depois nexus.ico
             path.join(__dirname, '../assets/icon.ico'),
             path.join(__dirname, 'assets/icon.ico'),
             path.resolve(process.resourcesPath || '', 'assets/icon.ico'),
             path.resolve(process.cwd(), 'assets/icon.ico'),
             path.resolve(__dirname, '../../assets/icon.ico'),
-            path.join(__dirname, '../assets/krigzis.ico'),
-            path.join(__dirname, 'assets/krigzis.ico'),
-            path.resolve(process.resourcesPath || '', 'assets/krigzis.ico'),
-            path.resolve(process.cwd(), 'assets/krigzis.ico'),
-            path.resolve(__dirname, '../../assets/krigzis.ico'),
+            path.join(__dirname, '../assets/nexus.ico'),
+            path.join(__dirname, 'assets/nexus.ico'),
+            path.resolve(process.resourcesPath || '', 'assets/nexus.ico'),
+            path.resolve(process.cwd(), 'assets/nexus.ico'),
+            path.resolve(__dirname, '../../assets/nexus.ico'),
             // PNG fallbacks
             path.join(__dirname, '../assets/icon.png'),
             path.join(__dirname, 'assets/icon.png'),
@@ -278,18 +272,13 @@ class MainApplication {
           this.mainWindow?.webContents.openDevTools();
         }
 
-        // Configurar update checker com a janela principal
-        this.updateChecker.setMainWindow(this.mainWindow!);
+        // Configurar auto-updater com a janela principal
+        this.appUpdater.setMainWindow(this.mainWindow!);
 
-        // Iniciar verificação de atualizações
-        this.updateChecker.start();
-
-        // Verificar suporte da versão atual
-        this.updateChecker.checkVersionSupport().catch(error => {
-          logger.error('Failed to check version support', 'system', {
-            error: error instanceof Error ? error.message : String(error)
-          });
-        });
+        // Verificar atualizações após 30s (apenas em produção)
+        if (!this.isDev) {
+          setTimeout(() => this.appUpdater.checkForUpdates(), 30000);
+        }
 
         logInfo('Main window ready and shown', 'system');
       });
@@ -670,6 +659,28 @@ class MainApplication {
       event.returnValue = app.getVersion();
     });
 
+    // Machine ID handler — deterministic, hardware-based
+    ipcMain.handle('system:getMachineId', async () => {
+      try {
+        const { createHash } = await import('crypto');
+        const os = await import('os');
+        // Combine stable hardware identifiers
+        const hostname = os.hostname();
+        const cpus = os.cpus();
+        const cpuModel = cpus.length > 0 ? cpus[0].model : 'unknown';
+        const cpuCount = cpus.length.toString();
+        const totalMem = os.totalmem().toString();
+        const platform = os.platform();
+        const arch = os.arch();
+        const homedir = os.homedir();
+        const raw = `${hostname}|${cpuModel}|${cpuCount}|${totalMem}|${platform}|${arch}|${homedir}`;
+        const hash = createHash('sha256').update(raw).digest('hex').substring(0, 12).toUpperCase();
+        return `NXS-${hash.substring(0, 4)}-${hash.substring(4, 8)}-${hash.substring(8, 12)}`;
+      } catch {
+        return 'NXS-0000-0000-0000';
+      }
+    });
+
     // File system handlers
     ipcMain.handle('system:selectFolder', async () => {
       try {
@@ -839,6 +850,87 @@ class MainApplication {
         ...mapped,
         kind: 'folder',
         extension: null,
+      };
+    });
+
+    // === VIDEO IPC HANDLERS ===
+    const videosDir = path.join(app.getPath('userData'), 'nexus-videos');
+
+    ipcMain.handle('video:getVideosDir', async () => {
+      if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
+      return videosDir;
+    });
+
+    ipcMain.handle('video:copyToLocal', async (_event, sourcePath: string, fileName: string) => {
+      try {
+        if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
+        const destPath = path.join(videosDir, fileName);
+        await fs.promises.copyFile(sourcePath, destPath);
+        return { success: true, localPath: destPath };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    ipcMain.handle('video:checkLocal', async (_event, fileName: string) => {
+      const localPath = path.join(videosDir, fileName);
+      const exists = fs.existsSync(localPath);
+      return { exists, localPath: exists ? localPath : undefined };
+    });
+
+    ipcMain.handle('video:getLocalPath', async (_event, fileName: string) => {
+      return path.join(videosDir, fileName);
+    });
+
+    ipcMain.handle('video:openExternal', async (_event, fileName: string) => {
+      try {
+        const localPath = path.join(videosDir, fileName);
+        if (!fs.existsSync(localPath)) return { success: false, error: 'Arquivo não encontrado' };
+        await shell.openPath(localPath);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    ipcMain.handle('video:saveAs', async (_event, fileName: string) => {
+      try {
+        const localPath = path.join(videosDir, fileName);
+        if (!fs.existsSync(localPath)) return { success: false, error: 'Arquivo não encontrado' };
+        const ext = path.extname(fileName).replace('.', '');
+        const save = await dialog.showSaveDialog(this.mainWindow!, {
+          title: 'Salvar vídeo',
+          buttonLabel: 'Salvar',
+          defaultPath: fileName.replace(/^\d+-/, ''),
+          filters: [{ name: 'Vídeo', extensions: [ext || 'mp4'] }],
+        });
+        if (save.canceled || !save.filePath) return { success: false, canceled: true };
+        await fs.promises.copyFile(localPath, save.filePath);
+        return { success: true, savedPath: save.filePath };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    ipcMain.handle('video:selectVideoFile', async () => {
+      const result = await dialog.showOpenDialog(this.mainWindow!, {
+        title: 'Selecionar vídeo',
+        buttonLabel: 'Selecionar',
+        properties: ['openFile'],
+        filters: [
+          { name: 'Vídeos', extensions: ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv'] },
+        ],
+      });
+      if (result.canceled || result.filePaths.length === 0) {
+        return { canceled: true };
+      }
+      const filePath = result.filePaths[0]!;
+      const stats = await fs.promises.stat(filePath);
+      return {
+        canceled: false,
+        filePath,
+        fileName: path.basename(filePath),
+        size: stats.size,
       };
     });
 
@@ -1031,8 +1123,66 @@ class MainApplication {
       const title = await deriveHtmlTitle(html, filePath);
       const content = await htmlToTextPreserveLines(html);
       const attachedImages = extractHtmlImagesAsDataUrls(html, filePath);
-      await this.database.createNote({ title, content, format: 'text', attachedImages });
-      return { success: true, imported: { tasks: 0, notes: 1, categories: 0 }, warnings: [], errors: [] };
+      const note: Note = {
+        id: Date.now(),
+        title,
+        content,
+        format: 'text',
+        attachedImages: attachedImages.length > 0 ? attachedImages : undefined,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      const db = MemoryDatabase.getInstance();
+      const result = await db.mergeData({ tasks: [], notes: [note] });
+      return { ...result, importedNotes: [note] };
+    });
+
+    ipcMain.handle('import:txt-preview', async (event, input: { filePath: string }): Promise<RestorePreview> => {
+      if (!input?.filePath) throw new Error('filePath inválido');
+      readUtf8(input.filePath); // validate readable
+      return { tasks: 0, notes: 1, categories: 0, settings: false, conflicts: [], warnings: [] };
+    });
+
+    ipcMain.handle('import:txt-apply', async (event, input: { filePath: string }): Promise<ImportResult> => {
+      if (!input?.filePath) throw new Error('filePath inválido');
+      const content = readUtf8(input.filePath);
+      const fileName = path.basename(input.filePath, path.extname(input.filePath));
+      const db = MemoryDatabase.getInstance();
+      const note: Note = {
+        id: Date.now(),
+        title: fileName,
+        content,
+        format: 'text',
+        tags: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      const result = await db.mergeData({ tasks: [], notes: [note] });
+      return { ...result, importedNotes: [note] };
+    });
+
+    ipcMain.handle('import:md-preview', async (event, input: { filePath: string }): Promise<RestorePreview> => {
+      if (!input?.filePath) throw new Error('filePath inválido');
+      readUtf8(input.filePath); // validate readable
+      return { tasks: 0, notes: 1, categories: 0, settings: false, conflicts: [], warnings: [] };
+    });
+
+    ipcMain.handle('import:md-apply', async (event, input: { filePath: string }): Promise<ImportResult> => {
+      if (!input?.filePath) throw new Error('filePath inválido');
+      const content = readUtf8(input.filePath);
+      const fileName = path.basename(input.filePath, path.extname(input.filePath));
+      const db = MemoryDatabase.getInstance();
+      const note: Note = {
+        id: Date.now(),
+        title: fileName,
+        content,
+        format: 'markdown',
+        tags: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      const result = await db.mergeData({ tasks: [], notes: [note] });
+      return { ...result, importedNotes: [note] };
     });
 
     ipcMain.handle('import:pdf-preview', async (): Promise<RestorePreview> => {
@@ -1384,207 +1534,9 @@ class MainApplication {
   }
 
   private setupVersionHandlers(): void {
-    // Handlers para operações de versionamento e atualização
-    
-    // Obter versão atual
-    ipcMain.handle('version:getCurrentVersion', async () => {
-      try {
-        return this.versionManager.getCurrentVersion();
-      } catch (error) {
-        logger.error('Failed to get current version', 'system', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-        throw error;
-      }
-    });
-    
-    // Obter configurações de atualização
-    ipcMain.handle('version:getUpdateSettings', async () => {
-      try {
-        return this.versionManager.getUpdateSettings();
-      } catch (error) {
-        logger.error('Failed to get update settings', 'system', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-        throw error;
-      }
-    });
-    
-    // Atualizar configurações de atualização
-    ipcMain.handle('version:updateSettings', async (event, settings) => {
-      try {
-        this.versionManager.updateSettings(settings);
-        this.updateChecker.updateSettings(settings);
-        
-        auditLogger.logSettingsChange('system', 'updateSettings', {}, settings);
-        
-        return { success: true };
-      } catch (error) {
-        logger.error('Failed to update version settings', 'system', {
-          error: error instanceof Error ? error.message : String(error),
-          settings
-        });
-        return { success: false, error: error instanceof Error ? error.message : String(error) };
-      }
-    });
-    
-    // Verificar atualizações manualmente
-    ipcMain.handle('version:checkForUpdates', async (event, force = false) => {
-      try {
-        const result = await this.updateChecker.checkForUpdates(force);
-        
-        auditLogger.logAction({
-          action: 'manual_update_check',
-          resource: 'version',
-          userId: 'system',
-          success: true,
-          details: {
-            hasUpdate: result.hasUpdate,
-            currentVersion: result.currentVersion.versionString,
-            latestVersion: result.latestVersion?.versionString,
-            force
-          }
-        });
-        
-        return result;
-      } catch (error) {
-        logger.error('Failed to check for updates', 'system', {
-          error: error instanceof Error ? error.message : String(error),
-          force
-        });
-        
-        auditLogger.logAction({
-          action: 'manual_update_check',
-          resource: 'version',
-          userId: 'system',
-          success: false,
-          details: {
-            error: error instanceof Error ? error.message : String(error),
-            force
-          }
-        });
-        
-        throw error;
-      }
-    });
-    
-    // Obter status do verificador de atualizações
-    ipcMain.handle('version:getUpdateStatus', async () => {
-      try {
-        return {
-          checker: this.updateChecker.getStatus(),
-          version: this.versionManager.getSystemInfo()
-        };
-      } catch (error) {
-        logger.error('Failed to get update status', 'system', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-        throw error;
-      }
-    });
-    
-    // Verificar se está verificando atualizações
-    ipcMain.handle('version:isCheckingForUpdates', async () => {
-      try {
-        return this.updateChecker.isCheckingForUpdates();
-      } catch (error) {
-        logger.error('Failed to check update status', 'system', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-        return false;
-      }
-    });
-    
-    // Forçar verificação de atualizações
-    ipcMain.handle('version:forceCheck', async () => {
-      try {
-        const result = await this.updateChecker.forceCheck();
-        
-        auditLogger.logAction({
-          action: 'force_update_check',
-          resource: 'version',
-          userId: 'system',
-          success: true,
-          details: {
-            hasUpdate: result.hasUpdate,
-            currentVersion: result.currentVersion.versionString,
-            latestVersion: result.latestVersion?.versionString
-          }
-        });
-        
-        return result;
-      } catch (error) {
-        logger.error('Failed to force update check', 'system', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-        
-        auditLogger.logAction({
-          action: 'force_update_check',
-          resource: 'version',
-          userId: 'system',
-          success: false,
-          details: {
-            error: error instanceof Error ? error.message : String(error)
-          }
-        });
-        
-        throw error;
-      }
-    });
-    
-    // Handlers para download de atualizações
-    ipcMain.handle('update:download', async (event, updateInfo) => {
-      try {
-        logger.info('Starting update download', 'update-download', { updateInfo });
-        
-        const result = await this.updateDownloader.downloadUpdate(updateInfo);
-        
-        if (result.success) {
-          logger.info('Update download completed successfully', 'update-download', {
-            filePath: result.filePath,
-            verified: result.verified
-          });
-          // Abrir pasta de download para update manual
-          if (result.filePath) {
-            const folder = path.dirname(result.filePath);
-            shell.showItemInFolder(result.filePath);
-            this.mainWindow?.webContents.send('update:downloaded', { filePath: result.filePath, folder });
-          }
-        }
-        
-        return result;
-      } catch (error) {
-        logger.error('Update download failed', 'update-download', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-        throw error;
-      }
-    });
-
-    ipcMain.handle('update:cancelDownload', async () => {
-      this.updateDownloader.cancelDownload();
-      logger.info('Update download cancelled', 'update-download');
-      return { success: true };
-    });
-
-    ipcMain.handle('update:isDownloading', async () => {
-      return this.updateDownloader.isDownloading();
-    });
-
-    ipcMain.handle('update:cleanupOldDownloads', async (event, keepLast = 3) => {
-      try {
-        this.updateDownloader.cleanupOldDownloads(keepLast);
-        logger.info('Old downloads cleaned up', 'update-download', { keepLast });
-        return { success: true };
-      } catch (error) {
-        logger.error('Failed to cleanup old downloads', 'update-download', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-        return { success: false, error: error instanceof Error ? error.message : String(error) };
-      }
-    });
-    
-    logger.info('Version handlers configured', 'system');
+    // IPC handlers for updater are registered inside AppUpdater.setupIpcHandlers()
+    // This method is kept for backward compatibility with the constructor call
+    logger.info('Version handlers configured (electron-updater)', 'system');
   }
 
   private setupGlobalShortcuts(): void {

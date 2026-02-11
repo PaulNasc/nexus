@@ -277,6 +277,12 @@ export class BackupManager {
     const conflicts: string[] = [];
     const warnings: string[] = [];
 
+    // Propagar warnings da detecção inteligente de arquivos mistos
+    const importWarnings = (data.settings as Record<string, unknown>)?._importWarnings;
+    if (Array.isArray(importWarnings)) {
+      warnings.push(...(importWarnings as string[]));
+    }
+
     const taskIds = new Set(currentTasks.map((t) => t.id));
     const noteIds = new Set(currentNotes.map((n) => n.id));
 
@@ -292,11 +298,14 @@ export class BackupManager {
       warnings.push('Dados existentes serão mantidos (modo mesclar)');
     }
 
+    // Filtrar chaves internas do settings para o count
+    const settingsKeys = Object.keys(data.settings).filter(k => !k.startsWith('_'));
+
     return {
       tasks: data.tasks.length,
       notes: data.notes.length,
       categories: data.categories.length,
-      settings: Object.keys(data.settings).length > 0,
+      settings: settingsKeys.length > 0,
       conflicts,
       warnings,
     };
@@ -312,6 +321,14 @@ export class BackupManager {
 
     const db = MemoryDatabase.getInstance();
     const result = await db.mergeData({ tasks: data.tasks, notes: data.notes });
+
+    // Anexar notas importadas e warnings ao resultado
+    result.importedNotes = data.notes;
+    const importWarnings = (data.settings as Record<string, unknown>)?._importWarnings;
+    if (Array.isArray(importWarnings)) {
+      const mapped = (importWarnings as string[]).map(msg => ({ type: 'note' as const, message: msg }));
+      result.warnings = [...(result.warnings || []), ...mapped];
+    }
 
     await this.saveCurrentData();
     return result;
@@ -331,6 +348,12 @@ export class BackupManager {
     const conflicts: string[] = [];
     const warnings: string[] = [];
 
+    // Propagar warnings da detecção inteligente de arquivos mistos
+    const importWarnings = (data.settings as Record<string, unknown>)?._importWarnings;
+    if (Array.isArray(importWarnings)) {
+      warnings.push(...(importWarnings as string[]));
+    }
+
     const taskIds = new Set(currentTasks.map((t) => t.id));
     const noteIds = new Set(currentNotes.map((n) => n.id));
 
@@ -346,11 +369,13 @@ export class BackupManager {
       warnings.push('Dados existentes serão mantidos (modo mesclar)');
     }
 
+    const settingsKeys = Object.keys(data.settings).filter(k => !k.startsWith('_'));
+
     return {
       tasks: data.tasks.length,
       notes: data.notes.length,
       categories: data.categories.length,
-      settings: Object.keys(data.settings).length > 0,
+      settings: settingsKeys.length > 0,
       conflicts,
       warnings,
     };
@@ -364,6 +389,15 @@ export class BackupManager {
     const data = await this.adapter.readDataFromFolder(folderPath);
     const db = MemoryDatabase.getInstance();
     const result = await db.mergeData({ tasks: data.tasks, notes: data.notes });
+
+    // Anexar notas importadas e warnings ao resultado
+    result.importedNotes = data.notes;
+    const importWarnings = (data.settings as Record<string, unknown>)?._importWarnings;
+    if (Array.isArray(importWarnings)) {
+      const mapped = (importWarnings as string[]).map(msg => ({ type: 'note' as const, message: msg }));
+      result.warnings = [...(result.warnings || []), ...mapped];
+    }
+
     await this.saveCurrentData();
     return result;
   }

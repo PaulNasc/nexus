@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useSettings } from '../hooks/useSettings';
 import { useAuth } from './AuthContext';
+import { useOrganization } from './OrganizationContext';
 import { Category } from '../../shared/types/task';
 import { useTasks } from './TasksContext';
 
@@ -12,6 +13,7 @@ interface SupabaseCategoryRow {
   color: string;
   icon: string;
   is_system: boolean;
+  is_shared: boolean;
   order: number;
   created_at: string;
   updated_at: string;
@@ -23,6 +25,7 @@ const dbRowToCategory = (row: SupabaseCategoryRow): Category => ({
   color: row.color,
   icon: row.icon,
   isSystem: row.is_system,
+  is_shared: row.is_shared,
   order: row.order,
   workspace_id: 1, // kept for backward compatibility with existing UI
   created_at: row.created_at,
@@ -45,9 +48,11 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const initialLoadDone = useRef(false);
   const { tasks } = useTasks();
   const { settings } = useSettings();
   const { user, isOffline } = useAuth();
+  const { activeOrg } = useOrganization();
 
   // Determine effective storage mode
   const storageMode = settings.storageMode || 'cloud';
@@ -56,14 +61,17 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // ── CLOUD (Supabase) ──────────────────────────────────────────
   const loadCategoriesCloud = useCallback(async (): Promise<Category[]> => {
-    const { data, error: fetchError } = await supabase
-      .from('categories')
-      .select('*')
-      .order('order', { ascending: true });
+    let query = supabase.from('categories').select('*');
+    if (activeOrg) {
+      query = query.eq('organization_id', activeOrg.id);
+    } else {
+      query = query.is('organization_id', null);
+    }
+    const { data, error: fetchError } = await query.order('order', { ascending: true });
 
     if (fetchError) throw fetchError;
     return (data || []).map((row: SupabaseCategoryRow) => dbRowToCategory(row));
-  }, []);
+  }, [activeOrg]);
 
   // ── LOCAL fallback: return default system categories ──────────
   const loadCategoriesLocal = useCallback(async (): Promise<Category[]> => {
@@ -78,7 +86,7 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const loadCategories = useCallback(async () => {
     try {
-      setLoading(true);
+      if (!initialLoadDone.current) setLoading(true);
       setError(null);
 
       let result: Category[] = [];
@@ -100,36 +108,54 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     } finally {
       setLoading(false);
+      initialLoadDone.current = true;
     }
   }, [useCloud, loadCategoriesCloud, loadCategoriesLocal]);
 
   const createCategory = useCallback(async (data: Partial<Category>): Promise<Category | null> => {
     try {
-      if (!useCloud) {
-        setError('Criação de categorias requer modo cloud');
-        return null;
+      const now = new Date().toISOString();
+
+      if (useCloud) {
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData?.user?.id;
+        if (!userId) throw new Error('Usuário não autenticado');
+
+        const { data: inserted, error: insertError } = await supabase
+          .from('categories')
+          .insert({
+            user_id: userId,
+            name: data.name || 'Nova Categoria',
+            color: data.color || '#7B3FF2',
+            icon: data.icon || 'Folder',
+            is_system: false,
+            is_shared: data.is_shared || false,
+            order: categories.length + 1,
+            organization_id: activeOrg?.id || null,
+          })
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+
+        const newCategory = dbRowToCategory(inserted as SupabaseCategoryRow);
+        setCategories(prev => [...prev, newCategory]);
+        return newCategory;
       }
 
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
-      if (!userId) throw new Error('Usuário não autenticado');
-
-      const { data: inserted, error: insertError } = await supabase
-        .from('categories')
-        .insert({
-          user_id: userId,
-          name: data.name || 'Nova Categoria',
-          color: data.color || '#7B3FF2',
-          icon: data.icon || 'Folder',
-          is_system: false,
-          order: categories.length + 1,
-        })
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
-
-      const newCategory = dbRowToCategory(inserted as SupabaseCategoryRow);
+      // Local-only: create in-memory category with negative ID
+      const minId = categories.reduce((min, c) => Math.min(min, c.id), 0);
+      const newCategory: Category = {
+        id: minId - 1,
+        name: data.name || 'Nova Categoria',
+        color: data.color || '#7B3FF2',
+        icon: data.icon || 'Folder',
+        isSystem: false,
+        order: categories.length + 1,
+        workspace_id: 1,
+        created_at: now,
+        updated_at: now,
+      };
       setCategories(prev => [...prev, newCategory]);
       return newCategory;
     } catch (err) {
@@ -137,7 +163,7 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setError(err instanceof Error ? err.message : 'Erro ao criar categoria');
       return null;
     }
-  }, [categories, useCloud]);
+  }, [categories, useCloud, activeOrg]);
 
   const updateCategory = useCallback(async (id: number, data: Partial<Category>) => {
     try {
@@ -169,6 +195,13 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const deleteCategory = useCallback(async (id: number): Promise<boolean> => {
     try {
+      // Bloquear deleção de categorias compartilhadas do sistema
+      const cat = categories.find(c => c.id === id);
+      if (cat?.is_shared && cat?.isSystem) {
+        setError('Não é possível deletar a categoria principal da organização');
+        return false;
+      }
+
       if (useCloud) {
         const { error: deleteError } = await supabase
           .from('categories')
@@ -185,7 +218,7 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setError(err instanceof Error ? err.message : 'Erro ao deletar categoria');
       return false;
     }
-  }, [useCloud]);
+  }, [useCloud, categories]);
 
   // Count tasks per category using centralized task data
   const getTaskCountByCategory = useCallback((category: Category): number => {
@@ -217,6 +250,43 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   useEffect(() => {
     loadCategories();
   }, [loadCategories]);
+
+  // Realtime subscription for cloud categories
+  useEffect(() => {
+    if (!useCloud) return;
+
+    const channel = supabase
+      .channel('categories-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'categories' },
+        (payload) => {
+          const { eventType, new: newRow, old: oldRow } = payload;
+          const rowOrgId = (newRow as Record<string, unknown>)?.organization_id ?? (oldRow as Record<string, unknown>)?.organization_id ?? null;
+          const currentOrgId = activeOrg?.id ?? null;
+          if (rowOrgId !== currentOrgId) return;
+
+          if (eventType === 'INSERT') {
+            const cat = dbRowToCategory(newRow as unknown as SupabaseCategoryRow);
+            setCategories(prev => {
+              if (prev.some(c => c.id === cat.id)) return prev;
+              return [...prev, cat];
+            });
+          } else if (eventType === 'UPDATE') {
+            const cat = dbRowToCategory(newRow as unknown as SupabaseCategoryRow);
+            setCategories(prev => prev.map(c => c.id === cat.id ? { ...c, ...cat } : c));
+          } else if (eventType === 'DELETE') {
+            const deletedId = (oldRow as Record<string, unknown>)?.id as number;
+            if (deletedId) setCategories(prev => prev.filter(c => c.id !== deletedId));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [useCloud, activeOrg]);
 
   const value = useMemo(() => ({
     categories: categoriesWithCount,

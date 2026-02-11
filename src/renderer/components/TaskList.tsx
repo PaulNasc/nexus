@@ -1,8 +1,9 @@
 import React from 'react';
 import { Task, TaskStatus, TaskPriority } from '../../shared/types/task';
-import { ChevronLeft, CalendarDays, File, Pencil, Trash, BookOpen } from 'lucide-react';
+import { ChevronLeft, CalendarDays, File, Pencil, Trash, BookOpen, Users, Share2 } from 'lucide-react';
 import { useCategories } from '../contexts/CategoriesContext';
 import { useNotes } from '../contexts/NotesContext';
+import { useOrganization } from '../contexts/OrganizationContext';
 
 interface TaskListProps {
   tasks: Task[];
@@ -25,12 +26,13 @@ export const TaskList: React.FC<TaskListProps> = ({
 }) => {
   const { categories } = useCategories();
   const { notes } = useNotes();
+  const { members } = useOrganization();
   const getPriorityColor = (priority?: TaskPriority) => {
     switch (priority) {
-      case 'high': return '#FF4444';
-      case 'medium': return '#FF9800';
-      case 'low': return '#4CAF50';
-      default: return '#A0A0A0';
+      case 'high': return 'var(--color-accent-rose)';
+      case 'medium': return 'var(--color-accent-orange)';
+      case 'low': return 'var(--color-accent-green)';
+      default: return 'var(--color-text-muted)';
     }
   };
 
@@ -53,6 +55,18 @@ export const TaskList: React.FC<TaskListProps> = ({
     if (!linkedNoteId) return null;
     const linkedNote = notes.find(note => note.id === linkedNoteId);
     return linkedNote ? linkedNote.title : `Nota #${linkedNoteId}`;
+  };
+
+  const getAssigneeName = (userId?: string) => {
+    if (!userId) return null;
+    const member = members.find(m => m.user_id === userId);
+    return member?.display_name || member?.email || userId.slice(0, 8);
+  };
+
+  const isSharedCategory = (categoryId?: number) => {
+    if (!categoryId) return false;
+    const cat = categories.find(c => c.id === categoryId);
+    return cat?.is_shared === true;
   };
 
   const getStatusOptions = (currentStatus: TaskStatus) => {
@@ -286,6 +300,20 @@ export const TaskList: React.FC<TaskListProps> = ({
                           {getLinkedNoteTitle(task.linkedNoteId)}
                         </div>
                       )}
+                      
+                      {task.assigned_to && (
+                        <div style={{ fontSize: '12px', color: 'var(--color-accent-purple)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Users size={12} strokeWidth={1.7} />
+                          {getAssigneeName(task.assigned_to)}
+                        </div>
+                      )}
+                      
+                      {isSharedCategory(task.category_id) && (
+                        <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }} title="Categoria compartilhada">
+                          <Share2 size={11} strokeWidth={1.7} />
+                          Compartilhada
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -303,10 +331,10 @@ export const TaskList: React.FC<TaskListProps> = ({
                       }}
                       style={{
                         padding: '6px 8px',
-                        backgroundColor: '#2A2A2A',
-                        border: '1px solid #3A3A3A',
+                        backgroundColor: 'var(--color-bg-secondary)',
+                        border: '1px solid var(--color-border-primary)',
                         borderRadius: '6px',
-                        color: '#FFFFFF',
+                        color: 'var(--color-text-primary)',
                         fontSize: '12px',
                         cursor: 'pointer',
                       }}
@@ -324,9 +352,9 @@ export const TaskList: React.FC<TaskListProps> = ({
                       style={{
                         padding: '8px',
                         backgroundColor: 'transparent',
-                        border: '1px solid #3A3A3A',
+                        border: '1px solid var(--color-border-primary)',
                         borderRadius: '6px',
-                        color: '#00D4AA',
+                        color: 'var(--color-primary-teal)',
                         cursor: 'pointer',
                         fontSize: '14px',
                         transition: 'all 0.2s ease',
@@ -335,12 +363,12 @@ export const TaskList: React.FC<TaskListProps> = ({
                         justifyContent: 'center',
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = '#00D4AA';
-                        e.currentTarget.style.color = '#0A0A0A';
+                        e.currentTarget.style.backgroundColor = 'var(--color-primary-teal)';
+                        e.currentTarget.style.color = 'var(--color-bg-primary)';
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = '#00D4AA';
+                        e.currentTarget.style.color = 'var(--color-primary-teal)';
                       }}
                     >
                       <Pencil size={14} strokeWidth={1.7} />
@@ -355,9 +383,9 @@ export const TaskList: React.FC<TaskListProps> = ({
                       style={{
                         padding: '8px',
                         backgroundColor: 'transparent',
-                        border: '1px solid #3A3A3A',
+                        border: '1px solid var(--color-border-primary)',
                         borderRadius: '6px',
-                        color: '#FF4444',
+                        color: 'var(--color-accent-rose)',
                         cursor: 'pointer',
                         fontSize: '14px',
                         transition: 'all 0.2s ease',
@@ -366,12 +394,12 @@ export const TaskList: React.FC<TaskListProps> = ({
                         justifyContent: 'center',
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = '#FF4444';
+                        e.currentTarget.style.backgroundColor = 'var(--color-accent-rose)';
                         e.currentTarget.style.color = '#FFFFFF';
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = '#FF4444';
+                        e.currentTarget.style.color = 'var(--color-accent-rose)';
                       }}
                     >
                       <Trash size={14} strokeWidth={1.7} />

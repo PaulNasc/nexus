@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { TasksProvider } from './contexts/TasksContext';
 import { NotesProvider } from './contexts/NotesContext';
 import { CategoriesProvider } from './contexts/CategoriesContext';
+import { OrganizationProvider } from './contexts/OrganizationContext';
 import AuthScreen from './components/AuthScreen';
 
 console.log('index.tsx loaded');
@@ -45,13 +46,15 @@ const RootApp: React.FC = () => {
   if (isOffline || user) {
     return (
       <SettingsProvider>
-        <TasksProvider>
-          <NotesProvider>
-            <CategoriesProvider>
-              <App />
-            </CategoriesProvider>
-          </NotesProvider>
-        </TasksProvider>
+        <OrganizationProvider>
+          <TasksProvider>
+            <NotesProvider>
+              <CategoriesProvider>
+                <App />
+              </CategoriesProvider>
+            </NotesProvider>
+          </TasksProvider>
+        </OrganizationProvider>
       </SettingsProvider>
     );
   }

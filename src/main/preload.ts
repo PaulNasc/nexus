@@ -110,23 +110,15 @@ export interface ElectronAPI {
     logError: (userId: string, error: Error, context: string) => Promise<unknown>;
   };
 
-  // Version and update operations
-  version: {
-    getCurrentVersion: () => Promise<unknown>;
-    getUpdateSettings: () => Promise<unknown>;
-    updateSettings: (settings: unknown) => Promise<unknown>;
-    checkForUpdates: (force?: boolean) => Promise<unknown>;
-    getUpdateStatus: () => Promise<unknown>;
-    isCheckingForUpdates: () => Promise<boolean>;
-    forceCheck: () => Promise<unknown>;
-  };
-
-  // Update download operations
-  update: {
-    download: (updateInfo: unknown) => Promise<unknown>;
-    cancelDownload: () => Promise<unknown>;
-    isDownloading: () => Promise<boolean>;
-    cleanupOldDownloads: (keepLast?: number) => Promise<unknown>;
+  // Updater (electron-updater)
+  updater: {
+    getStatus: () => Promise<unknown>;
+    checkForUpdates: () => Promise<unknown>;
+    downloadUpdate: () => Promise<unknown>;
+    quitAndInstall: () => Promise<void>;
+    getVersion: () => Promise<string>;
+    isPortable: () => Promise<boolean>;
+    onStatus: (callback: (status: unknown) => void) => () => void;
   };
 
   // Backup operations
@@ -174,6 +166,17 @@ export interface ElectronAPI {
     cloudTestConnection: (input: { url: string; username: string; password: string }) => Promise<{ success: boolean; error?: string }>;
   };
 
+  // Video operations
+  video: {
+    copyToLocal: (sourcePath: string, fileName: string) => Promise<{ success: boolean; localPath?: string; error?: string }>;
+    checkLocal: (fileName: string) => Promise<{ exists: boolean; localPath?: string }>;
+    getLocalPath: (fileName: string) => Promise<string>;
+    selectVideoFile: () => Promise<{ canceled: boolean; filePath?: string; fileName?: string; size?: number }>;
+    getVideosDir: () => Promise<string>;
+    openExternal: (fileName: string) => Promise<{ success: boolean; error?: string }>;
+    saveAs: (fileName: string) => Promise<{ success: boolean; savedPath?: string; canceled?: boolean; error?: string }>;
+  };
+
   // Auth operations (OAuth)
   auth: {
     openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
@@ -183,6 +186,7 @@ export interface ElectronAPI {
   system: {
     platform: string;
     version: string;
+    getMachineId: () => Promise<string>;
     selectImportSource: (options?: SelectImportSourceOptions) => Promise<ImportSourceSelectionResult>;
     selectImportFile: (options?: SelectImportFileOptions) => Promise<ImportSourceSelectionResult>;
     selectImportFolder: (options?: SelectImportFolderOptions) => Promise<ImportSourceSelectionResult>;
@@ -276,23 +280,19 @@ const electronAPI: ElectronAPI = {
     logError: (userId: string, error: Error, context: string) => ipcRenderer.invoke('logging:logError', userId, error.message, error.stack, context),
   },
 
-  // Version and update operations
-  version: {
-    getCurrentVersion: () => ipcRenderer.invoke('version:getCurrentVersion'),
-    getUpdateSettings: () => ipcRenderer.invoke('version:getUpdateSettings'),
-    updateSettings: (settings: unknown) => ipcRenderer.invoke('version:updateSettings', settings),
-    checkForUpdates: (force?: boolean) => ipcRenderer.invoke('version:checkForUpdates', force),
-    getUpdateStatus: () => ipcRenderer.invoke('version:getUpdateStatus'),
-    isCheckingForUpdates: () => ipcRenderer.invoke('version:isCheckingForUpdates'),
-    forceCheck: () => ipcRenderer.invoke('version:forceCheck'),
-  },
-
-  // Update download operations
-  update: {
-    download: (updateInfo: unknown) => ipcRenderer.invoke('update:download', updateInfo),
-    cancelDownload: () => ipcRenderer.invoke('update:cancelDownload'),
-    isDownloading: () => ipcRenderer.invoke('update:isDownloading'),
-    cleanupOldDownloads: (keepLast?: number) => ipcRenderer.invoke('update:cleanupOldDownloads', keepLast),
+  // Updater (electron-updater)
+  updater: {
+    getStatus: () => ipcRenderer.invoke('updater:getStatus'),
+    checkForUpdates: () => ipcRenderer.invoke('updater:checkForUpdates'),
+    downloadUpdate: () => ipcRenderer.invoke('updater:downloadUpdate'),
+    quitAndInstall: () => ipcRenderer.invoke('updater:quitAndInstall'),
+    getVersion: () => ipcRenderer.invoke('updater:getVersion'),
+    isPortable: () => ipcRenderer.invoke('updater:isPortable'),
+    onStatus: (callback: (status: unknown) => void) => {
+      const handler = (_event: unknown, status: unknown) => callback(status);
+      ipcRenderer.on('updater:status', handler);
+      return () => { ipcRenderer.removeListener('updater:status', handler); };
+    },
   },
 
   // Backup operations
@@ -335,6 +335,17 @@ const electronAPI: ElectronAPI = {
     cloudTestConnection: (input: { url: string; username: string; password: string }) => ipcRenderer.invoke('cloud:test-connection', input),
   },
 
+  // Video operations
+  video: {
+    copyToLocal: (sourcePath: string, fileName: string) => ipcRenderer.invoke('video:copyToLocal', sourcePath, fileName),
+    checkLocal: (fileName: string) => ipcRenderer.invoke('video:checkLocal', fileName),
+    getLocalPath: (fileName: string) => ipcRenderer.invoke('video:getLocalPath', fileName),
+    selectVideoFile: () => ipcRenderer.invoke('video:selectVideoFile'),
+    getVideosDir: () => ipcRenderer.invoke('video:getVideosDir'),
+    openExternal: (fileName: string) => ipcRenderer.invoke('video:openExternal', fileName),
+    saveAs: (fileName: string) => ipcRenderer.invoke('video:saveAs', fileName),
+  },
+
   // Auth operations (OAuth)
   auth: {
     openExternal: (url: string) => ipcRenderer.invoke('auth:openExternal', url),
@@ -344,6 +355,7 @@ const electronAPI: ElectronAPI = {
   system: {
     platform: process.platform,
     version: ipcRenderer.sendSync('app:getVersion'),
+    getMachineId: () => ipcRenderer.invoke('system:getMachineId'),
     selectImportSource: (options?: SelectImportSourceOptions) => ipcRenderer.invoke('system:selectImportSource', options),
     selectImportFile: (options?: SelectImportFileOptions) => ipcRenderer.invoke('system:selectImportFile', options),
     selectImportFolder: (options?: SelectImportFolderOptions) => ipcRenderer.invoke('system:selectImportFolder', options),
@@ -354,6 +366,7 @@ const electronAPI: ElectronAPI = {
   // Generic invoke method
   invoke: (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args),
 
+  // Event listeners
   on: (channel: string, callback: (...args: unknown[]) => void) => {
     // Whitelist channels for security
     const validChannels = [
@@ -363,13 +376,7 @@ const electronAPI: ElectronAPI = {
       'task-deleted',
       'timer-tick',
       'notification-show',
-      'update-checking',
-      'update-available',
-      'update-not-available',
-      'update-error',
-      'update-required',
-      'open-update-settings',
-      'update:downloaded',
+      'updater:status',
       'auth:oauth-callback'
     ];
 

@@ -20,7 +20,7 @@ import { Task, TaskStatus } from '../shared/types/task';
 import { Screen } from '../shared/types/navigation';
 import { ThemeConfig } from './types/theme';
 import { UserSettings } from './hooks/useSettings';
-import { Settings as SettingsIcon, Plus, LogOut } from 'lucide-react';
+import { Settings as SettingsIcon, LogOut, StickyNote, ListTodo } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import ProactiveSuggestionsWidget from './components/ProactiveSuggestionsWidget';
 import UpdateNotification from './components/UpdateNotification';
@@ -61,6 +61,7 @@ interface AppHeaderProps {
   openNotes: () => void;
   handleOpenSettings: () => void;
   handleOpenTaskModal: () => void;
+  handleOpenNoteModal: () => void;
   onSignOut: () => void;
 }
 
@@ -68,7 +69,6 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   settings,
   settingsVersion,
   navigation,
-  theme,
   systemInfo,
   goToDashboard,
   openTimer,
@@ -76,73 +76,19 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   openNotes,
   handleOpenSettings,
   handleOpenTaskModal,
+  handleOpenNoteModal,
   onSignOut
 }) => {
-  const [draggedTab, setDraggedTab] = useState<string | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [dragOverTab, setDragOverTab] = useState<string | null>(null);
-  const { updateTabOrder } = useSettings();
-
   const safeVersion = typeof systemInfo?.version === 'string'
     ? systemInfo.version
     : (systemInfo?.version ? String(systemInfo.version) : '');
 
-  // Definir abas disponíveis com base nas configurações
-  const availableTabs = [
+  const tabs = [
     { key: 'dashboard', label: 'Dashboard', onClick: goToDashboard },
     ...(settings.showTimer ? [{ key: 'timer', label: 'Timer', onClick: openTimer }] : []),
     ...(settings.showNotes ? [{ key: 'notes', label: 'Notas', onClick: openNotes }] : []),
     ...(settings.showReports ? [{ key: 'reports', label: 'Relatórios', onClick: openReports }] : [])
   ];
-
-  // Ordenar abas baseado na configuração
-  const orderedTabs = settings.tabOrder
-    ? settings.tabOrder
-      .map((key: string) => availableTabs.find((tab: TabItem) => tab.key === key))
-      .filter((tab): tab is TabItem => Boolean(tab))
-      .concat(availableTabs.filter((tab: TabItem) => !settings.tabOrder.includes(tab.key)))
-    : availableTabs;
-
-  const handleDragStart = (e: React.DragEvent, tabKey: string) => {
-    setDraggedTab(tabKey);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragOver = (e: React.DragEvent, tabKey: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDragOverTab(tabKey);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedTab(null);
-    setDragOverTab(null);
-  };
-
-  const handleDrop = (e: React.DragEvent, targetTabKey: string) => {
-    e.preventDefault();
-
-    if (!draggedTab || draggedTab === targetTabKey) {
-      setDraggedTab(null);
-      setDragOverTab(null);
-      return;
-    }
-
-    const currentOrder = orderedTabs.map((tab: TabItem) => tab.key);
-    const draggedIndex = currentOrder.indexOf(draggedTab);
-    const targetIndex = currentOrder.indexOf(targetTabKey);
-
-    if (draggedIndex !== -1 && targetIndex !== -1) {
-      const newOrder = [...currentOrder];
-      newOrder.splice(draggedIndex, 1);
-      newOrder.splice(targetIndex, 0, draggedTab);
-
-      updateTabOrder(newOrder);
-    }
-
-    setDraggedTab(null);
-    setDragOverTab(null);
-  };
 
   return (
     <header className="app-header" key={settingsVersion}>
@@ -153,25 +99,11 @@ const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
         <div className="header-center">
           <nav className="navigation">
-            {orderedTabs.map((tab: TabItem, index: number) => (
+            {tabs.map((tab: TabItem) => (
               <button
                 key={tab.key}
                 className={`nav-button ${navigation.currentScreen === tab.key ? 'active' : ''}`}
                 onClick={tab.onClick}
-                draggable={true}
-                onDragStart={(e) => handleDragStart(e, tab.key)}
-                onDragOver={(e) => handleDragOver(e, tab.key)}
-                onDragEnd={handleDragEnd}
-                onDrop={(e) => handleDrop(e, tab.key)}
-                onDragLeave={(e) => e.preventDefault()}
-                style={{
-                  marginLeft: index > 0 ? 8 : 0,
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'grab',
-                  color: theme.mode === 'dark' ? '#fff' : '#222',
-                  fontSize: 20
-                }}
               >
                 {tab.label}
               </button>
@@ -179,52 +111,42 @@ const AppHeader: React.FC<AppHeaderProps> = ({
           </nav>
         </div>
         <div className="header-right">
-          {/* Theme toggle removed - only dark theme supported */}
-          <button
-            className="hover-button"
-            onClick={handleOpenSettings}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'none',
-              border: theme.mode === 'dark' ? '1px solid #2A2A2A' : '1px solid var(--color-border-primary)',
-              borderRadius: 8,
-              width: 36,
-              height: 36,
-              marginRight: 4,
-              color: theme.mode === 'dark' ? '#FFFFFF' : '#1F2937'
-            }}
-            title="Configurações"
-          >
-            <SettingsIcon size={20} />
-          </button>
-          <button
-            className="hover-button"
-            onClick={onSignOut}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'none',
-              border: theme.mode === 'dark' ? '1px solid #2A2A2A' : '1px solid var(--color-border-primary)',
-              borderRadius: 8,
-              width: 36,
-              height: 36,
-              marginRight: 8,
-              color: theme.mode === 'dark' ? '#FFFFFF' : '#1F2937'
-            }}
-            title="Sair"
-          >
-            <LogOut size={18} />
-          </button>
-          <button
-            className="add-task-button hover-button"
-            onClick={handleOpenTaskModal}
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <Plus size={18} /> Nova Tarefa
-          </button>
+          <div className="header-icon-group">
+            <button
+              className="header-icon-btn"
+              onClick={handleOpenSettings}
+              title="Configurações"
+            >
+              <SettingsIcon size={17} />
+              <span className="header-tooltip">Configurações</span>
+            </button>
+            <button
+              className="header-icon-btn"
+              onClick={onSignOut}
+              title="Sair"
+            >
+              <LogOut size={16} />
+              <span className="header-tooltip">Sair</span>
+            </button>
+          </div>
+          <div className="header-action-group">
+            <button
+              className="header-action-btn header-action-btn--task"
+              onClick={handleOpenTaskModal}
+              title="Nova Tarefa"
+            >
+              <ListTodo size={16} />
+              <span className="header-tooltip">Nova Tarefa</span>
+            </button>
+            <button
+              className="header-action-btn header-action-btn--note"
+              onClick={handleOpenNoteModal}
+              title="Nota rápida"
+            >
+              <StickyNote size={16} />
+              <span className="header-tooltip">Nota rápida</span>
+            </button>
+          </div>
         </div>
       </div>
     </header>
@@ -350,9 +272,10 @@ const App: React.FC<AppProps> = () => {
 
         // Get system information
         if (window.electronAPI) {
+          const ver = await window.electronAPI.updater?.getVersion?.() || window.electronAPI.system.version || '';
           setSystemInfo({
             platform: window.electronAPI.system.platform,
-            version: window.electronAPI.system.version
+            version: typeof ver === 'string' ? ver : String(ver)
           });
         }
 
@@ -545,6 +468,7 @@ const App: React.FC<AppProps> = () => {
           openNotes={openNotes}
           handleOpenSettings={handleOpenSettings}
           handleOpenTaskModal={handleOpenTaskModal}
+          handleOpenNoteModal={() => setIsNoteModalOpen(true)}
           onSignOut={signOut}
         />
 
@@ -594,6 +518,7 @@ const App: React.FC<AppProps> = () => {
         openNotes={openNotes}
         handleOpenSettings={handleOpenSettings}
         handleOpenTaskModal={handleOpenTaskModal}
+        handleOpenNoteModal={() => setIsNoteModalOpen(true)}
         onSignOut={signOut}
       />
 
@@ -626,6 +551,7 @@ const App: React.FC<AppProps> = () => {
         <NoteModal
           isOpen={isNoteModalOpen}
           onClose={() => setIsNoteModalOpen(false)}
+          modalTitle="Nota rápida"
         />
       </main>
 

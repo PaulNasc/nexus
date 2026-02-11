@@ -10,10 +10,14 @@ on:
         description: 'Tag para publicar (ex: v1.0.1)'
         required: false
 
+permissions:
+  contents: write
+
 jobs:
-  build-win:
+  build-and-publish:
     runs-on: windows-latest
     env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       ELECTRON_BUILDER_DISABLE_CODE_SIGNING: 'true'
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       NODE_OPTIONS: '--max_old_space_size=4096'
@@ -32,26 +36,8 @@ jobs:
       - name: Generate icons
         run: npm run icons
 
-      - name: Build
+      - name: Build application
         run: npm run build
 
-      - name: Package Windows (dir)
-        run: npx electron-builder --win --dir
-
-      - name: Zip win-unpacked
-        shell: pwsh
-        run: |
-          Compress-Archive -Path "release/win-unpacked/*" -DestinationPath "release/Nexus-${{ github.ref_name }}-win.zip"
-
-      - name: Upload Release Assets
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: |
-            release/**/*.exe
-            release/**/*.zip
-            release/**/Nexus.exe
-            release/**/*.yml
-            release/**/*.blockmap
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & Publish to GitHub Releases
+        run: npx electron-builder --win --publish always

@@ -63,6 +63,12 @@ const BackupPanel: React.FC = () => {
       if (intent?.kind === 'pdf-file') {
         return await electron.invoke('import:pdf-preview', { filePath: intent.filePath }) as RestorePreview;
       }
+      if (intent?.kind === 'txt-file') {
+        return await electron.invoke('import:txt-preview', { filePath: intent.filePath }) as RestorePreview;
+      }
+      if (intent?.kind === 'md-file') {
+        return await electron.invoke('import:md-preview', { filePath: intent.filePath }) as RestorePreview;
+      }
       if (intent?.kind === 'folder') {
         return await electron.invoke('import:folder-preview', { folderPath: intent.folderPath }) as RestorePreview;
       }
@@ -92,6 +98,10 @@ const BackupPanel: React.FC = () => {
         result = await electron.invoke('import:html-apply', { filePath: intent.filePath }) as ImportResult;
       } else if (intent?.kind === 'pdf-file') {
         result = await electron.invoke('import:pdf-apply', { filePath: intent.filePath }) as ImportResult;
+      } else if (intent?.kind === 'txt-file') {
+        result = await electron.invoke('import:txt-apply', { filePath: intent.filePath }) as ImportResult;
+      } else if (intent?.kind === 'md-file') {
+        result = await electron.invoke('import:md-apply', { filePath: intent.filePath }) as ImportResult;
       } else if (intent?.kind === 'folder') {
         result = await electron.invoke('import:folder-apply', { folderPath: intent.folderPath }) as ImportResult;
       }
@@ -109,6 +119,9 @@ const BackupPanel: React.FC = () => {
                   format: note.format || 'text',
                   tags: note.tags,
                   attachedImages: note.attachedImages,
+                  attachedVideos: note.attachedVideos,
+                  linkedTaskIds: note.linkedTaskIds,
+                  color: note.color,
                 });
               } catch (e) {
                 console.error('Failed to sync imported note to cloud:', e);
@@ -136,6 +149,9 @@ const BackupPanel: React.FC = () => {
         window.dispatchEvent(new Event('tasksUpdated'));
         window.dispatchEvent(new Event('categoriesUpdated'));
         window.dispatchEvent(new Event('notesUpdated'));
+
+        // Always refresh notes from store after import (local or cloud)
+        await fetchNotes();
       }
 
       return result;

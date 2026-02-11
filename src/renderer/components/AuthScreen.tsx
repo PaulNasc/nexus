@@ -120,34 +120,90 @@ const AuthScreen: React.FC = () => {
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0a0a0f 0%, #111827 50%, #0a0a0f 100%)',
+      background: '#0A0A0A',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       padding: '20px',
+      position: 'relative',
+      overflow: 'hidden',
     }}>
+      {/* Subtle gradient orbs in background */}
+      <div style={{
+        position: 'absolute',
+        top: '-20%',
+        left: '-10%',
+        width: '500px',
+        height: '500px',
+        borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(0,212,170,0.06) 0%, transparent 70%)',
+        pointerEvents: 'none',
+      }} />
+      <div style={{
+        position: 'absolute',
+        bottom: '-20%',
+        right: '-10%',
+        width: '500px',
+        height: '500px',
+        borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(123,63,242,0.06) 0%, transparent 70%)',
+        pointerEvents: 'none',
+      }} />
+
       <div style={{
         width: '100%',
         maxWidth: '420px',
-        background: 'rgba(17, 24, 39, 0.8)',
+        background: '#141414',
         backdropFilter: 'blur(20px)',
         borderRadius: '16px',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
+        border: '1px solid #2A2A2A',
         padding: '40px 32px',
-        boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)',
+        boxShadow: '0 25px 60px rgba(0, 0, 0, 0.6)',
+        position: 'relative',
+        zIndex: 1,
       }}>
         {/* Logo / Title */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          {/* Inline Nexus Icon */}
+          <div style={{
+            width: '56px',
+            height: '56px',
+            margin: '0 auto 16px auto',
+            borderRadius: '14px',
+            background: 'linear-gradient(135deg, #0D0D0D, #1A1A2E)',
+            border: '1.5px solid rgba(0,212,170,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 20px rgba(0,212,170,0.1)',
+          }}>
+            <svg width="32" height="32" viewBox="0 0 512 512">
+              <defs>
+                <linearGradient id="authNGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style={{ stopColor: '#00D4AA', stopOpacity: 1 }} />
+                  <stop offset="100%" style={{ stopColor: '#7B3FF2', stopOpacity: 1 }} />
+                </linearGradient>
+              </defs>
+              <g transform="translate(256,256)">
+                <rect x="-110" y="-130" width="38" height="260" rx="6" fill="url(#authNGrad)"/>
+                <rect x="72" y="-130" width="38" height="260" rx="6" fill="url(#authNGrad)"/>
+                <polygon points="-72,-130 110,130 72,130 -110,-130" fill="url(#authNGrad)"/>
+              </g>
+            </svg>
+          </div>
           <h1 style={{
-            fontSize: '28px',
+            fontSize: '26px',
             fontWeight: 700,
-            color: '#f9fafb',
-            margin: '0 0 8px 0',
+            margin: '0 0 6px 0',
             letterSpacing: '-0.5px',
+            background: 'linear-gradient(135deg, #00D4AA 0%, #7B3FF2 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
           }}>
             Nexus
           </h1>
           <p style={{
             fontSize: '14px',
-            color: '#9ca3af',
+            color: '#808080',
             margin: 0,
           }}>
             {tab === 'login' && 'Entre na sua conta'}
@@ -162,9 +218,10 @@ const AuthScreen: React.FC = () => {
             display: 'flex',
             gap: '4px',
             marginBottom: '24px',
-            background: 'rgba(255, 255, 255, 0.05)',
+            background: '#1A1A1A',
             borderRadius: '10px',
             padding: '4px',
+            border: '1px solid #2A2A2A',
           }}>
             {(['login', 'register'] as const).map((t) => (
               <button
@@ -179,8 +236,8 @@ const AuthScreen: React.FC = () => {
                   fontWeight: 600,
                   cursor: 'pointer',
                   transition: 'all 0.2s',
-                  background: tab === t ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
-                  color: tab === t ? '#60a5fa' : '#9ca3af',
+                  background: tab === t ? 'rgba(0, 212, 170, 0.12)' : 'transparent',
+                  color: tab === t ? '#00D4AA' : '#808080',
                 }}
               >
                 {t === 'login' ? 'Entrar' : 'Criar conta'}
@@ -251,7 +308,7 @@ const AuthScreen: React.FC = () => {
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#6b7280',
+                    color: '#606060',
                     cursor: 'pointer',
                     padding: '4px',
                     display: 'flex',
@@ -268,7 +325,7 @@ const AuthScreen: React.FC = () => {
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#60a5fa',
+                color: '#00D4AA',
                 fontSize: '12px',
                 cursor: 'pointer',
                 padding: '0',
@@ -314,7 +371,7 @@ const AuthScreen: React.FC = () => {
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#6b7280',
+                    color: '#606060',
                     cursor: 'pointer',
                     padding: '4px',
                     display: 'flex',
@@ -349,7 +406,7 @@ const AuthScreen: React.FC = () => {
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#60a5fa',
+                color: '#00D4AA',
                 fontSize: '13px',
                 cursor: 'pointer',
                 padding: '8px 0 0 0',
@@ -370,9 +427,9 @@ const AuthScreen: React.FC = () => {
           gap: '12px',
           margin: '24px 0',
         }}>
-          <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.08)' }} />
-          <span style={{ fontSize: '12px', color: '#6b7280' }}>ou</span>
-          <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.08)' }} />
+          <div style={{ flex: 1, height: '1px', background: '#2A2A2A' }} />
+          <span style={{ fontSize: '12px', color: '#606060' }}>ou</span>
+          <div style={{ flex: 1, height: '1px', background: '#2A2A2A' }} />
         </div>
 
         {/* Google OAuth Button */}
@@ -383,10 +440,10 @@ const AuthScreen: React.FC = () => {
           style={{
             width: '100%',
             padding: '12px',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            border: '1px solid #2A2A2A',
             borderRadius: '10px',
-            background: 'rgba(255, 255, 255, 0.05)',
-            color: '#e5e7eb',
+            background: '#1A1A1A',
+            color: '#E0E0E0',
             fontSize: '13px',
             fontWeight: 500,
             cursor: loading ? 'not-allowed' : 'pointer',
@@ -398,12 +455,12 @@ const AuthScreen: React.FC = () => {
             marginBottom: '10px',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.18)';
+            e.currentTarget.style.background = '#222222';
+            e.currentTarget.style.borderColor = '#3A3A3A';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+            e.currentTarget.style.background = '#1A1A1A';
+            e.currentTarget.style.borderColor = '#2A2A2A';
           }}
         >
           <svg width="18" height="18" viewBox="0 0 48 48">
@@ -422,10 +479,10 @@ const AuthScreen: React.FC = () => {
           style={{
             width: '100%',
             padding: '12px',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            border: '1px solid #2A2A2A',
             borderRadius: '10px',
-            background: 'rgba(255, 255, 255, 0.03)',
-            color: '#9ca3af',
+            background: '#111111',
+            color: '#808080',
             fontSize: '13px',
             fontWeight: 500,
             cursor: 'pointer',
@@ -436,12 +493,12 @@ const AuthScreen: React.FC = () => {
             transition: 'all 0.2s',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+            e.currentTarget.style.background = '#1A1A1A';
+            e.currentTarget.style.borderColor = '#3A3A3A';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+            e.currentTarget.style.background = '#111111';
+            e.currentTarget.style.borderColor = '#2A2A2A';
           }}
         >
           <WifiOff size={16} />
@@ -478,12 +535,12 @@ const InputField: React.FC<InputFieldProps> = ({
     gap: '10px',
     padding: '0 14px',
     marginBottom: '12px',
-    background: 'rgba(255, 255, 255, 0.05)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: '#0A0A0A',
+    border: '1px solid #2A2A2A',
     borderRadius: '10px',
     transition: 'border-color 0.2s',
   }}>
-    <span style={{ color: '#6b7280', display: 'flex', flexShrink: 0 }}>{icon}</span>
+    <span style={{ color: '#606060', display: 'flex', flexShrink: 0 }}>{icon}</span>
     <input
       type={type}
       placeholder={placeholder}
@@ -495,7 +552,7 @@ const InputField: React.FC<InputFieldProps> = ({
         padding: '13px 0',
         border: 'none',
         background: 'transparent',
-        color: '#f9fafb',
+        color: '#FFFFFF',
         fontSize: '14px',
         outline: 'none',
       }}
@@ -520,8 +577,8 @@ const SubmitButton: React.FC<SubmitButtonProps> = ({ loading, text }) => (
       border: 'none',
       borderRadius: '10px',
       background: loading
-        ? 'rgba(59, 130, 246, 0.3)'
-        : 'linear-gradient(135deg, #3b82f6, #2563eb)',
+        ? 'rgba(0, 212, 170, 0.2)'
+        : 'linear-gradient(135deg, #00D4AA, #7B3FF2)',
       color: '#fff',
       fontSize: '14px',
       fontWeight: 600,

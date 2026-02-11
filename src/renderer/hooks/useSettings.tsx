@@ -318,6 +318,13 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      // Always sync display_name from Supabase auth profile into userName
+      const profileName = user.user_metadata?.display_name
+        || user.user_metadata?.full_name
+        || user.user_metadata?.name
+        || '';
+
       const { data } = await supabase
         .from('user_settings')
         .select('settings')
@@ -328,8 +335,22 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // Merge: remote wins for non-empty values
         setSettings(prev => {
           const merged = { ...prev, ...remoteSettings };
+          // If userName is empty, use the display_name from auth profile
+          if (!merged.userName && profileName) {
+            merged.userName = profileName;
+          }
           localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged));
           return merged;
+        });
+      } else if (profileName) {
+        // No remote settings yet — at least set userName from auth profile
+        setSettings(prev => {
+          if (!prev.userName) {
+            const updated = { ...prev, userName: profileName };
+            localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updated));
+            return updated;
+          }
+          return prev;
         });
       }
     } catch (err) {
@@ -397,16 +418,28 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return migratedActions.sort((a, b) => a.order - b.order);
   };
 
-  const loadSystemInfo = () => {
+  const loadSystemInfo = async () => {
+    // Fetch real version from electron-updater (app.getVersion())
+    let appVersion = '1.0.0';
+    let hwMachineId = '';
+    try {
+      if (window.electronAPI?.updater?.getVersion) {
+        appVersion = await window.electronAPI.updater.getVersion() || appVersion;
+      }
+      if (window.electronAPI?.system?.getMachineId) {
+        hwMachineId = await window.electronAPI.system.getMachineId();
+      }
+    } catch { /* fallback */ }
+
     try {
       const storedSystemInfo = localStorage.getItem(SYSTEM_INFO_STORAGE_KEY) || localStorage.getItem(LEGACY_SYSTEM_INFO_STORAGE_KEY);
 
       if (!storedSystemInfo) {
         // First time setup - generate system info
         const newSystemInfo: SystemInfo = {
-          machineId: generateMachineId(),
+          machineId: hwMachineId || generateMachineId(),
           installDate: new Date().toISOString(),
-          version: '1.0.0',
+          version: appVersion,
           lastUpdate: new Date().toISOString(),
         };
 
@@ -414,7 +447,11 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setSystemInfo(newSystemInfo);
       } else {
         const parsedSystemInfo = JSON.parse(storedSystemInfo);
-        // Update last update time
+        // Always update version and machineId (upgrade from random to hardware-based)
+        parsedSystemInfo.version = appVersion;
+        if (hwMachineId) {
+          parsedSystemInfo.machineId = hwMachineId;
+        }
         parsedSystemInfo.lastUpdate = new Date().toISOString();
         localStorage.setItem(SYSTEM_INFO_STORAGE_KEY, JSON.stringify(parsedSystemInfo));
         localStorage.removeItem(LEGACY_SYSTEM_INFO_STORAGE_KEY);
@@ -425,9 +462,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       console.error('Error loading system info:', error);
       // Fallback system info
       const fallbackSystemInfo: SystemInfo = {
-        machineId: generateMachineId(),
+        machineId: hwMachineId || generateMachineId(),
         installDate: new Date().toISOString(),
-        version: '1.0.0',
+        version: appVersion,
         lastUpdate: new Date().toISOString(),
       };
       setSystemInfo(fallbackSystemInfo);

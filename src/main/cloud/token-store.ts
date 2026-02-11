@@ -7,7 +7,7 @@ export class EncryptedJsonStore<T = unknown> {
 
   constructor(fileName: string) {
     const userData = app.getPath('userData');
-    const legacyBase = path.join(userData, 'Krigzis', 'cloud');
+    const legacyBase = path.join(userData, 'Nexus', 'cloud');
     const baseDir = path.join(userData, 'Nexus', 'cloud');
     try {
       if (fs.existsSync(legacyBase) && !fs.existsSync(baseDir)) {

@@ -382,8 +382,8 @@ button:disabled,
 .app-header {
   background-color: var(--color-bg-secondary);
   border-bottom: 1px solid var(--color-border-primary);
-  padding: 0 var(--space-6);
-  height: 60px;
+  padding: 0 var(--space-5);
+  height: 52px;
   display: flex;
   align-items: center;
   flex-shrink: 0;
@@ -398,31 +398,34 @@ button:disabled,
   width: 100%;
   max-width: var(--container-xl);
   margin: 0 auto;
+  gap: var(--space-4);
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  flex-shrink: 0;
 }
 
 .app-title {
-  font-size: var(--font-size-xl);
+  font-size: 17px;
   font-weight: var(--font-weight-bold);
   background: var(--gradient-primary);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   margin: 0;
+  letter-spacing: 0.3px;
 }
 
 .app-version {
-  font-size: var(--font-size-xs);
+  font-size: 10px;
   color: var(--color-text-muted);
   font-weight: var(--font-weight-medium);
   background-color: var(--color-bg-tertiary);
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  border-radius: 3px;
   border: 1px solid var(--color-border-primary);
   transition: all var(--transition-theme);
 }
@@ -435,68 +438,146 @@ button:disabled,
 
 .navigation {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--space-1);
   background-color: var(--color-bg-tertiary);
-  padding: var(--space-1);
+  padding: 3px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-primary);
-  transition: all var(--transition-theme);
 }
 
 .nav-button {
   background: none;
   border: none;
   color: var(--color-text-secondary);
-  padding: var(--space-2) var(--space-4);
+  padding: 6px 18px;
   border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
+  font-size: 13px;
   font-weight: var(--font-weight-medium);
   cursor: pointer;
   transition: all var(--transition-normal);
+  position: relative;
 }
 
 .nav-button:hover {
   color: var(--color-text-primary);
-  background-color: var(--color-bg-elevated);
+  background-color: var(--color-bg-hover);
 }
 
 .nav-button.active {
   color: var(--color-text-primary);
-  background-color: var(--color-bg-card);
-  box-shadow: var(--shadow-sm);
+  background: none;
+}
+
+.nav-button.active::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 2.5px;
+  border-radius: 2px;
+  background: var(--gradient-primary);
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  flex-shrink: 0;
 }
 
-.theme-toggle {
-  color: var(--color-text-secondary);
-  transition: all var(--transition-normal);
-}
-
-.theme-toggle:hover {
-  color: var(--color-primary-teal);
-  border-color: var(--color-primary-teal) !important;
-}
-
-.add-task-button {
-  background: var(--gradient-primary);
-  color: white;
-  border: none;
-  padding: var(--space-2) var(--space-4);
+/* Icon buttons group (settings, logout) */
+.header-icon-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
   border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-  transition: all var(--transition-normal);
+  overflow: hidden;
 }
 
-.add-task-button:hover {
+.header-icon-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.header-icon-btn:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-hover);
+}
+
+/* Action buttons group (new task, new note) */
+.header-action-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.header-action-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.header-action-btn--task {
+  color: #00D4AA;
+}
+
+.header-action-btn--note {
+  color: #7B3FF2;
+}
+
+.header-action-btn:hover {
+  background-color: var(--color-bg-hover);
   transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Tooltip for header buttons */
+.header-tooltip {
+  position: absolute;
+  bottom: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-primary);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 100;
+  box-shadow: var(--shadow-sm);
+}
+
+.header-icon-btn:hover .header-tooltip,
+.header-action-btn:hover .header-tooltip {
+  opacity: 1;
 }
 
 /* === MAIN CONTENT === */

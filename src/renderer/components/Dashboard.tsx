@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useOrganization } from '../contexts/OrganizationContext';
 
 import {
   ClipboardList,
@@ -83,7 +84,8 @@ const iconMap: Record<string, LucideIcon> = {
   Dumbbell,
   Users,
   Star,
-  Flag
+  Flag,
+  Share2
 };
 
 // Função para renderizar ícone
@@ -101,6 +103,7 @@ type DisplayCard = {
   icon: string;
   accentColor: string;
   isSystem: boolean;
+  isShared: boolean;
 };
 
 interface QuickActionCard {
@@ -136,6 +139,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const { categories } = useCategories();
   const { createNote, fetchNotes } = useNotes();
   const { useCloud } = useStorageMode();
+  const { activeOrg } = useOrganization();
 
   const [statusTasks, setStatusTasks] = useState<Task[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
@@ -185,9 +189,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
         title: category.name,
         desc: `${count} ${count === 1 ? 'tarefa' : 'tarefas'}`,
         count,
-        icon: category.icon || 'Folder',
+        icon: category.is_shared ? 'Share2' : (category.icon || 'Folder'),
         accentColor: category.color,
         isSystem,
+        isShared: category.is_shared === true,
       };
     });
 
@@ -275,6 +280,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
       if (intent?.kind === 'pdf-file') {
         return await electron.invoke('import:pdf-preview', { filePath: intent.filePath }) as RestorePreview;
       }
+      if (intent?.kind === 'txt-file') {
+        return await electron.invoke('import:txt-preview', { filePath: intent.filePath }) as RestorePreview;
+      }
+      if (intent?.kind === 'md-file') {
+        return await electron.invoke('import:md-preview', { filePath: intent.filePath }) as RestorePreview;
+      }
       if (intent?.kind === 'folder') {
         return await electron.invoke('import:folder-preview', { folderPath: intent.folderPath }) as RestorePreview;
       }
@@ -303,6 +314,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
         result = await electron.invoke('import:html-apply', { filePath: intent.filePath }) as ImportResult;
       } else if (intent?.kind === 'pdf-file') {
         result = await electron.invoke('import:pdf-apply', { filePath: intent.filePath }) as ImportResult;
+      } else if (intent?.kind === 'txt-file') {
+        result = await electron.invoke('import:txt-apply', { filePath: intent.filePath }) as ImportResult;
+      } else if (intent?.kind === 'md-file') {
+        result = await electron.invoke('import:md-apply', { filePath: intent.filePath }) as ImportResult;
       } else if (intent?.kind === 'folder') {
         result = await electron.invoke('import:folder-apply', { folderPath: intent.folderPath }) as ImportResult;
       }
@@ -592,8 +607,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <p style={{
               fontSize: 'var(--font-size-base)',
               color: isDark ? 'var(--color-text-secondary)' : '#666666',
-              margin: 0
+              margin: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              flexWrap: 'wrap',
             }}>
+              {activeOrg && (
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '2px 10px',
+                  borderRadius: '12px',
+                  backgroundColor: isDark ? '#0A1F1A' : '#F0FDF9',
+                  border: '1px solid #00D4AA40',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: '#00D4AA',
+                }}>
+                  <Users size={12} /> {activeOrg.name}
+                </span>
+              )}
               {t('subtitle')} Você tem {getTodayTasks()} {getTodayTasks() === 1 ? t('task') : t('tasks')} para hoje.
             </p>
           </div>

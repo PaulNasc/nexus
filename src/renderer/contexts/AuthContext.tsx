@@ -117,12 +117,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signUp = useCallback(async (email: string, password: string, displayName: string) => {
+    // Enforce max 3 users per machine
+    let machineId = '';
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const api = (window as any).electronAPI;
+      if (api?.system?.getMachineId) {
+        machineId = await api.system.getMachineId();
+      }
+    } catch { /* fallback: no limit if machineId unavailable */ }
+
+    if (machineId) {
+      const { count } = await supabase
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('machine_id', machineId);
+
+      if ((count ?? 0) >= 3) {
+        return {
+          error: {
+            message: 'Limite atingido: máximo de 3 contas por máquina.',
+            name: 'AuthApiError',
+            status: 429,
+          } as unknown as import('@supabase/supabase-js').AuthError,
+        };
+      }
+    }
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           display_name: displayName,
+          machine_id: machineId,
         },
       },
     });
@@ -134,6 +162,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email,
       password,
     });
+
+    // Update machine_id on profile for existing users (backfill)
+    if (!error) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const api = (window as any).electronAPI;
+        if (api?.system?.getMachineId) {
+          const machineId = await api.system.getMachineId();
+          if (machineId) {
+            const { data: { user: currentUser } } = await supabase.auth.getUser();
+            if (currentUser) {
+              await supabase.from('profiles').update({ machine_id: machineId }).eq('id', currentUser.id);
+            }
+          }
+        }
+      } catch { /* non-critical */ }
+    }
+
     return { error };
   }, []);
 

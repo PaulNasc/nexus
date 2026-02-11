@@ -7,12 +7,15 @@ export interface Note {
   linkedTaskIds?: number[]; // Mudança: array de IDs de tarefas
   attachments?: NoteAttachment[];
   attachedImages?: string[]; // Array de imagens em base64
+  attachedVideos?: string[]; // Array de nomes de arquivo de vídeo (armazenados no Supabase Storage)
   created_at: string;
   updated_at: string;
   workspace_id?: number;
   is_pinned?: boolean;
   is_archived?: boolean;
   color?: string;
+  sequential_id?: number; // ID sequencial por organização
+  creator_display_name?: string; // Nome do criador (via JOIN profiles)
 }
 
 export interface NoteAttachment {
@@ -34,6 +37,7 @@ export interface CreateNoteData {
   linkedTaskIds?: number[]; // Mudança: array de IDs de tarefas
   color?: string;
   attachedImages?: string[]; // Array de imagens em base64
+  attachedVideos?: string[]; // Array de nomes de arquivo de vídeo
 }
 
 export interface UpdateNoteData extends Partial<CreateNoteData> {
@@ -60,4 +64,5 @@ export interface NoteFilter {
   isLinked?: boolean;
   isPinned?: boolean;
   isArchived?: boolean;
-} 
+  color?: string; // Filtro por cor
+}

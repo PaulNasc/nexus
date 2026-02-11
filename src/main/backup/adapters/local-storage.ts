@@ -260,6 +260,277 @@ export class LocalStorageAdapter {
   }
 
   /**
+   * Escaneia recursivamente um diretório e classifica todos os arquivos por tipo.
+   */
+  private scanAllFiles(rootDir: string): {
+    textFiles: string[];      // .txt, .sql, .md
+    imageFiles: string[];     // .png, .jpg, .jpeg, .jfif, .gif, .bmp, .webp
+    videoFiles: string[];     // .mp4, .webm, .ogg, .mov, .avi, .mkv
+    docFiles: string[];       // .doc, .docx, .rtf, .odt
+    archiveFiles: string[];   // .rar, .zip (aninhados)
+    htmlFiles: string[];      // .html, .htm
+    otherFiles: string[];
+  } {
+    const textExts = new Set(['.txt', '.sql', '.md', '.markdown', '.log', '.cfg', '.ini', '.csv']);
+    const imageExts = new Set(['.png', '.jpg', '.jpeg', '.jfif', '.gif', '.bmp', '.webp', '.svg', '.tiff', '.ico']);
+    const videoExts = new Set(['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv']);
+    const docExts = new Set(['.doc', '.docx', '.rtf', '.odt', '.xls', '.xlsx', '.ppt', '.pptx']);
+    const archiveExts = new Set(['.rar', '.zip', '.7z', '.tar', '.gz']);
+    const htmlExts = new Set(['.html', '.htm']);
+
+    const result = {
+      textFiles: [] as string[],
+      imageFiles: [] as string[],
+      videoFiles: [] as string[],
+      docFiles: [] as string[],
+      archiveFiles: [] as string[],
+      htmlFiles: [] as string[],
+      otherFiles: [] as string[],
+    };
+
+    const visited = new Set<string>();
+    const queue: Array<{ dir: string; depth: number }> = [{ dir: rootDir, depth: 0 }];
+    const maxDepth = 8;
+
+    while (queue.length > 0) {
+      const item = queue.shift()!;
+      if (visited.has(item.dir)) continue;
+      visited.add(item.dir);
+
+      let entries: fs.Dirent[] = [];
+      try {
+        entries = fs.readdirSync(item.dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+
+      for (const e of entries) {
+        if (e.isDirectory()) {
+          if (item.depth >= maxDepth) continue;
+          if (e.name === 'node_modules' || e.name === '.git' || e.name.startsWith('.')) continue;
+          queue.push({ dir: path.join(item.dir, e.name), depth: item.depth + 1 });
+          continue;
+        }
+        if (!e.isFile()) continue;
+
+        const fullPath = path.join(item.dir, e.name);
+        const ext = path.extname(e.name).toLowerCase();
+
+        if (textExts.has(ext)) result.textFiles.push(fullPath);
+        else if (imageExts.has(ext)) result.imageFiles.push(fullPath);
+        else if (videoExts.has(ext)) result.videoFiles.push(fullPath);
+        else if (docExts.has(ext)) result.docFiles.push(fullPath);
+        else if (archiveExts.has(ext)) result.archiveFiles.push(fullPath);
+        else if (htmlExts.has(ext)) result.htmlFiles.push(fullPath);
+        else result.otherFiles.push(fullPath);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Converte imagem em data URL base64 para anexar a notas.
+   */
+  private imageFileToDataUrl(imagePath: string): string | null {
+    try {
+      const buf = fs.readFileSync(imagePath);
+      const ext = path.extname(imagePath).toLowerCase();
+      let mime = 'image/png';
+      if (ext === '.jpg' || ext === '.jpeg' || ext === '.jfif') mime = 'image/jpeg';
+      else if (ext === '.gif') mime = 'image/gif';
+      else if (ext === '.webp') mime = 'image/webp';
+      else if (ext === '.bmp') mime = 'image/bmp';
+      else if (ext === '.svg') mime = 'image/svg+xml';
+      else if (ext === '.tiff') mime = 'image/tiff';
+      else if (ext === '.ico') mime = 'image/x-icon';
+      return `data:${mime};base64,${buf.toString('base64')}`;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Normaliza nome de arquivo para comparação (remove extensão, lowercase, trim).
+   */
+  private normalizeFileName(filePath: string): string {
+    const base = path.basename(filePath);
+    const ext = path.extname(base);
+    return base.slice(0, base.length - ext.length).toLowerCase().trim();
+  }
+
+  /**
+   * Constrói notas a partir de arquivos mistos (txt, sql, imagens, etc).
+   * Lógica:
+   * 1. Cada arquivo de texto (.txt, .sql, .md) vira uma nota.
+   * 2. Cada imagem tenta ser associada a uma nota com nome similar.
+   * 3. Imagens sem nota correspondente viram notas próprias com a imagem anexada.
+   * 4. Vídeos, .doc/.docx, .rar aninhados são listados como warnings.
+   */
+  buildNotesFromMixedFiles(scan: ReturnType<LocalStorageAdapter['scanAllFiles']>): {
+    notes: Note[];
+    warnings: string[];
+    skippedFiles: string[];
+  } {
+    const now = new Date().toISOString();
+    const baseId = Date.now() * 1000;
+    const notes: Note[] = [];
+    const warnings: string[] = [];
+    const skippedFiles: string[] = [];
+    let noteIdx = 0;
+
+    // Mapa de nome normalizado → nota (para associar imagens)
+    const notesByName = new Map<string, number>(); // nome → índice no array notes
+
+    // 1. Processar HTML primeiro (já tem lógica existente)
+    for (const htmlPath of scan.htmlFiles) {
+      try {
+        const html = this.readTextFileSmart(htmlPath);
+        const title = this.deriveHtmlTitle(html, htmlPath);
+        const content = this.htmlToTextPreserveLines(html);
+        const attachedImages = this.extractHtmlImagesAsDataUrls(html, htmlPath);
+        const note: Note = {
+          id: baseId + noteIdx++,
+          title,
+          content,
+          format: 'text',
+          attachedImages: attachedImages.length > 0 ? attachedImages : undefined,
+          created_at: now,
+          updated_at: now,
+        };
+        const idx = notes.length;
+        notes.push(note);
+        notesByName.set(this.normalizeFileName(htmlPath), idx);
+      } catch {
+        warnings.push(`Erro ao processar HTML: ${path.basename(htmlPath)}`);
+      }
+    }
+
+    // 2. Processar arquivos de texto (.txt, .sql, .md)
+    for (const txtPath of scan.textFiles) {
+      try {
+        const content = this.readTextFileSmart(txtPath);
+        const baseName = path.basename(txtPath);
+        const title = baseName.slice(0, baseName.length - path.extname(baseName).length);
+        const note: Note = {
+          id: baseId + noteIdx++,
+          title,
+          content,
+          format: path.extname(txtPath).toLowerCase() === '.md' ? 'markdown' : 'text',
+          tags: [],
+          created_at: now,
+          updated_at: now,
+        };
+        const idx = notes.length;
+        notes.push(note);
+        notesByName.set(this.normalizeFileName(txtPath), idx);
+      } catch {
+        warnings.push(`Erro ao ler arquivo: ${path.basename(txtPath)}`);
+      }
+    }
+
+    // 3. Processar imagens — tentar associar a nota com nome similar
+    const unmatchedImages: string[] = [];
+    for (const imgPath of scan.imageFiles) {
+      const imgName = this.normalizeFileName(imgPath);
+      let matched = false;
+
+      // Busca exata por nome
+      if (notesByName.has(imgName)) {
+        const noteIndex = notesByName.get(imgName)!;
+        const dataUrl = this.imageFileToDataUrl(imgPath);
+        if (dataUrl) {
+          const note = notes[noteIndex]!;
+          if (!note.attachedImages) note.attachedImages = [];
+          note.attachedImages.push(dataUrl);
+          matched = true;
+        }
+      }
+
+      // Busca parcial: imagem contém nome da nota ou vice-versa
+      if (!matched) {
+        for (const [noteName, noteIndex] of notesByName.entries()) {
+          if (imgName.includes(noteName) || noteName.includes(imgName)) {
+            const dataUrl = this.imageFileToDataUrl(imgPath);
+            if (dataUrl) {
+              const note = notes[noteIndex]!;
+              if (!note.attachedImages) note.attachedImages = [];
+              note.attachedImages.push(dataUrl);
+              matched = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!matched) {
+        unmatchedImages.push(imgPath);
+      }
+    }
+
+    // 4. Imagens sem nota correspondente:
+    //    - Se existem notas (HTML ou texto), anexar à primeira nota existente
+    //      (prioridade para notas HTML, pois geralmente a imagem pertence ao HTML)
+    //    - Somente criar nota separada se não existir nenhuma nota para associar
+    if (unmatchedImages.length > 0 && notes.length > 0) {
+      // Priorizar notas HTML (criadas a partir de scan.htmlFiles)
+      const htmlNoteIndices = scan.htmlFiles
+        .map(hp => notesByName.get(this.normalizeFileName(hp)))
+        .filter((idx): idx is number => idx !== undefined);
+      const targetIdx = htmlNoteIndices.length > 0 ? htmlNoteIndices[0]! : 0;
+      const targetNote = notes[targetIdx]!;
+      if (!targetNote.attachedImages) targetNote.attachedImages = [];
+      for (const imgPath of unmatchedImages) {
+        const dataUrl = this.imageFileToDataUrl(imgPath);
+        if (dataUrl) targetNote.attachedImages.push(dataUrl);
+      }
+    } else {
+      for (const imgPath of unmatchedImages) {
+        const dataUrl = this.imageFileToDataUrl(imgPath);
+        if (!dataUrl) continue;
+        const baseName = path.basename(imgPath);
+        const title = baseName.slice(0, baseName.length - path.extname(baseName).length);
+        const note: Note = {
+          id: baseId + noteIdx++,
+          title,
+          content: `Imagem importada: ${baseName}`,
+          format: 'text',
+          attachedImages: [dataUrl],
+          tags: ['imagem-importada'],
+          created_at: now,
+          updated_at: now,
+        };
+        notes.push(note);
+      }
+    }
+
+    // 5. Listar arquivos não importáveis como warnings
+    for (const vidPath of scan.videoFiles) {
+      skippedFiles.push(path.basename(vidPath));
+      warnings.push(`Vídeo ignorado (use o editor para anexar): ${path.basename(vidPath)}`);
+    }
+    for (const docPath of scan.docFiles) {
+      skippedFiles.push(path.basename(docPath));
+      warnings.push(`Documento Office ignorado (converta para .txt): ${path.basename(docPath)}`);
+    }
+    for (const arcPath of scan.archiveFiles) {
+      skippedFiles.push(path.basename(arcPath));
+      warnings.push(`Arquivo compactado aninhado ignorado: ${path.basename(arcPath)}`);
+    }
+    for (const otherPath of scan.otherFiles) {
+      const ext = path.extname(otherPath).toLowerCase();
+      if (ext === '.json' || ext === '.enex') continue; // já tratados em outro fluxo
+      skippedFiles.push(path.basename(otherPath));
+    }
+
+    if (skippedFiles.length > 0 && notes.length > 0) {
+      warnings.unshift(`${skippedFiles.length} arquivo(s) não puderam ser importados como notas`);
+    }
+
+    return { notes, warnings, skippedFiles };
+  }
+
+  /**
    * Inicializa a estrutura de pastas
    */
   async initialize(): Promise<void> {
@@ -488,12 +759,21 @@ export class LocalStorageAdapter {
       return { tasks, notes, categories, settings, metadata };
     }
 
-    const htmlFiles = this.findHtmlFiles(tempDir);
-    if (htmlFiles.length > 0) {
-      const notes = this.buildNotesFromHtmlFiles(htmlFiles);
+    // Fallback: detecção inteligente de arquivos mistos (txt, sql, imagens, html, etc.)
+    const scan = this.scanAllFiles(tempDir);
+    const totalFiles = scan.textFiles.length + scan.imageFiles.length + scan.htmlFiles.length;
+
+    if (totalFiles > 0 || scan.videoFiles.length > 0 || scan.docFiles.length > 0) {
+      const mixed = this.buildNotesFromMixedFiles(scan);
       const metadata = { version: '1.0.0', lastUpdate: new Date().toISOString(), machineId: '' };
       this.deleteFolderRecursive(tempDir);
-      return { tasks: [], notes, categories: [], settings: {}, metadata };
+      return {
+        tasks: [],
+        notes: mixed.notes,
+        categories: [],
+        settings: { _importWarnings: mixed.warnings, _skippedFiles: mixed.skippedFiles },
+        metadata,
+      };
     }
 
     let top: string[] = [];
@@ -535,11 +815,20 @@ export class LocalStorageAdapter {
       return { tasks, notes, categories, settings, metadata };
     }
 
-    const htmlFiles = this.findHtmlFiles(folderPath);
-    if (htmlFiles.length > 0) {
-      const notes = this.buildNotesFromHtmlFiles(htmlFiles);
+    // Fallback: detecção inteligente de arquivos mistos
+    const scan = this.scanAllFiles(folderPath);
+    const totalFiles = scan.textFiles.length + scan.imageFiles.length + scan.htmlFiles.length;
+
+    if (totalFiles > 0 || scan.videoFiles.length > 0 || scan.docFiles.length > 0) {
+      const mixed = this.buildNotesFromMixedFiles(scan);
       const metadata = { version: '1.0.0', lastUpdate: new Date().toISOString(), machineId: '' };
-      return { tasks: [], notes, categories: [], settings: {}, metadata };
+      return {
+        tasks: [],
+        notes: mixed.notes,
+        categories: [],
+        settings: { _importWarnings: mixed.warnings, _skippedFiles: mixed.skippedFiles },
+        metadata,
+      };
     }
 
     let top: string[] = [];
