@@ -7,7 +7,7 @@ import { Badge } from './ui/Badge';
 import { Input } from './ui/Input';
 import { NoteEditor } from './NoteEditor';
 import { LinkedTasksModal } from './LinkedTasksModal';
-import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, ChevronLeft, Eye, CheckSquare, Square, Filter, X } from 'lucide-react';
+import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, ChevronLeft, Eye, CheckSquare, Square, Filter, X, ArrowUpDown } from 'lucide-react';
 import { NoteViewerModal } from './NoteViewerModal';
 import { ConfirmDeleteNoteModal } from './ConfirmDeleteNoteModal';
 
@@ -56,6 +56,11 @@ export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
   const [filterPinned, setFilterPinned] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
+  // Sort state
+  type SortOption = 'date_desc' | 'date_asc' | 'alpha_asc' | 'alpha_desc' | 'id_asc' | 'id_desc';
+  const [sortBy, setSortBy] = useState<SortOption>('date_desc');
+  const [showSortMenu, setShowSortMenu] = useState(false);
+
   const colorOptions = [
     { value: 'teal', label: 'Teal' },
     { value: 'blue', label: 'Azul' },
@@ -71,13 +76,35 @@ export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
     fetchNotes();
   }, [fetchNotes]);
 
-  // Filtered + sorted notes: pinned first, then by date
+  // Close sort menu on outside click
+  useEffect(() => {
+    if (!showSortMenu) return;
+    const handler = () => setShowSortMenu(false);
+    const timer = setTimeout(() => document.addEventListener('click', handler), 0);
+    return () => { clearTimeout(timer); document.removeEventListener('click', handler); };
+  }, [showSortMenu]);
+
+  // Filtered + sorted notes: pinned first, then by chosen sort
   const filteredNotes = useMemo(() => {
-    let result = notes.filter(note =>
-      note.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      note.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (note.tags && note.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())))
-    );
+    const term = searchTerm.toLowerCase().trim();
+    let result = notes.filter(note => {
+      if (!term) return true;
+      // Match title, content, tags
+      if (note.title.toLowerCase().includes(term)) return true;
+      if (note.content.toLowerCase().includes(term)) return true;
+      if (note.tags && note.tags.some(tag => tag.toLowerCase().includes(term))) return true;
+      // Match sequential ID (e.g. "#77" or "77")
+      if (note.sequential_id != null) {
+        const idStr = String(note.sequential_id);
+        if (idStr === term || `#${idStr}` === term) return true;
+      }
+      // Match creator name
+      if (note.creator_display_name && note.creator_display_name.toLowerCase().includes(term)) return true;
+      // Match date (dd/mm/yyyy format)
+      const dateStr = new Date(note.updated_at).toLocaleDateString('pt-BR');
+      if (dateStr.includes(term)) return true;
+      return false;
+    });
 
     if (filterColor) {
       result = result.filter(n => n.color === filterColor);
@@ -86,15 +113,32 @@ export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
       result = result.filter(n => n.is_pinned);
     }
 
-    // Sort: pinned first, then by updated_at desc
+    // Sort: pinned first, then by chosen sort
     result.sort((a, b) => {
       if (a.is_pinned && !b.is_pinned) return -1;
       if (!a.is_pinned && b.is_pinned) return 1;
-      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      switch (sortBy) {
+        case 'alpha_asc': return a.title.localeCompare(b.title, 'pt-BR');
+        case 'alpha_desc': return b.title.localeCompare(a.title, 'pt-BR');
+        case 'id_asc': return (a.sequential_id ?? 0) - (b.sequential_id ?? 0);
+        case 'id_desc': return (b.sequential_id ?? 0) - (a.sequential_id ?? 0);
+        case 'date_asc': return new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
+        case 'date_desc':
+        default: return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      }
     });
 
     return result;
-  }, [notes, searchTerm, filterColor, filterPinned]);
+  }, [notes, searchTerm, filterColor, filterPinned, sortBy]);
+
+  const sortLabels: Record<SortOption, string> = {
+    date_desc: 'Data ↓ (recente)',
+    date_asc: 'Data ↑ (antigo)',
+    alpha_asc: 'A → Z',
+    alpha_desc: 'Z → A',
+    id_asc: 'ID ↑ (crescente)',
+    id_desc: 'ID ↓ (decrescente)',
+  };
 
   // Batch selection helpers
   const toggleSelect = useCallback((id: number) => {
@@ -240,7 +284,7 @@ export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
         </div>
         <div className="notes-actions">
           <div className="search-container">
-            <Input type="text" placeholder="Buscar notas..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="search-input" />
+            <Input type="text" placeholder="Buscar por #ID, nome, data, autor..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="search-input" />
             <Search size={16} className="search-icon" />
           </div>
           <div className="view-toggle">
@@ -254,6 +298,20 @@ export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
           <button onClick={() => setShowFilters(!showFilters)} title="Filtros" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: showFilters ? 'rgba(0, 212, 170, 0.15)' : 'none', border: '1px solid var(--color-border-primary)', borderRadius: '8px', width: '36px', height: '36px', cursor: 'pointer', color: showFilters ? 'var(--color-primary-teal)' : 'var(--color-text-secondary)' }}>
             <Filter size={16} />
           </button>
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setShowSortMenu(!showSortMenu)} title="Ordenar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: showSortMenu ? 'rgba(0, 212, 170, 0.15)' : 'none', border: '1px solid var(--color-border-primary)', borderRadius: '8px', width: '36px', height: '36px', cursor: 'pointer', color: showSortMenu ? 'var(--color-primary-teal)' : 'var(--color-text-secondary)' }}>
+              <ArrowUpDown size={16} />
+            </button>
+            {showSortMenu && (
+              <div style={{ position: 'absolute', top: '40px', right: 0, background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', padding: '4px', zIndex: 50, minWidth: '170px', boxShadow: '0 8px 24px rgba(0,0,0,0.3)' }}>
+                {(Object.keys(sortLabels) as SortOption[]).map(key => (
+                  <button key={key} onClick={() => { setSortBy(key); setShowSortMenu(false); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 12px', background: sortBy === key ? 'rgba(0, 212, 170, 0.15)' : 'transparent', border: 'none', borderRadius: '6px', color: sortBy === key ? 'var(--color-primary-teal)' : 'var(--color-text-secondary)', cursor: 'pointer', fontSize: '12px', fontWeight: sortBy === key ? 600 : 400, textAlign: 'left' }}>
+                    {sortLabels[key]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {selectionMode ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <button onClick={toggleSelectAll} title="Selecionar todas" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: '1px solid var(--color-border-primary)', borderRadius: '8px', width: '36px', height: '36px', cursor: 'pointer', color: 'var(--color-text-secondary)' }}>
