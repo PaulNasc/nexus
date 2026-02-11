@@ -151,12 +151,14 @@
     },
     "npmRebuild": false,
     "buildDependenciesFromSource": false,
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Nexus"
+      "shortcutName": "Nexus",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "forceCodeSigning": false,
     "win": {
