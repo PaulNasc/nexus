@@ -44,17 +44,21 @@ export class AppUpdater {
   private constructor() {
     this._isPortable = this.detectPortableMode();
 
-    // Configure electron-updater
-    autoUpdater.autoDownload = false;
-    autoUpdater.autoInstallOnAppQuit = true;
-    autoUpdater.allowDowngrade = false;
+    // Only configure electron-updater for NSIS-installed mode
+    // In portable mode, we skip it entirely to prevent installer downloads
+    if (!this._isPortable) {
+      autoUpdater.autoDownload = false;
+      autoUpdater.autoInstallOnAppQuit = true;
+      autoUpdater.allowDowngrade = false;
 
-    // In dev mode, allow update checking against latest.yml even without code signing
-    if (!app.isPackaged) {
-      autoUpdater.forceDevUpdateConfig = true;
+      // In dev mode, allow update checking against latest.yml even without code signing
+      if (!app.isPackaged) {
+        autoUpdater.forceDevUpdateConfig = true;
+      }
+
+      this.setupListeners();
     }
 
-    this.setupListeners();
     this.setupIpcHandlers();
 
     logger.info('AppUpdater initialized', 'updater', {
