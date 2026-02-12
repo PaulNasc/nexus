@@ -120,20 +120,19 @@ export class AppUpdater {
     const exePath = app.getPath('exe');
     const exeDir = path.dirname(exePath);
 
-    // Check 1: NSIS installs have an `app-update.yml` in the resources dir
+    // Definitive check: NSIS installs always have `app-update.yml` in resources.
+    // If it exists → NSIS installed. If it doesn't → portable, regardless of path.
     const resourcesDir = path.join(exeDir, 'resources');
     const appUpdateYml = path.join(resourcesDir, 'app-update.yml');
-    if (fs.existsSync(appUpdateYml)) {
-      return false; // NSIS installed
-    }
+    const isNsis = fs.existsSync(appUpdateYml);
 
-    // Check 2: NSIS installs typically live under AppData\Local\Programs
-    const localAppData = process.env.LOCALAPPDATA || '';
-    if (localAppData && exePath.toLowerCase().startsWith(localAppData.toLowerCase())) {
-      return false; // Likely NSIS installed
-    }
+    logger.info('Portable mode detection', 'updater', {
+      exePath,
+      appUpdateYmlExists: isNsis,
+      result: !isNsis ? 'portable' : 'nsis',
+    });
 
-    return true; // Portable
+    return !isNsis;
   }
 
   // ─── Check for updates (works for both modes) ──────────────────
