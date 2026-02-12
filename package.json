@@ -1,6 +1,6 @@
 {
   "name": "nexus",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Um sistema desktop de gerenciamento de tarefas com IA integrada, desenvolvido com Electron, React e TypeScript.",
   "main": "dist/main/index.js",
   "homepage": "./",
@@ -153,12 +153,14 @@
     "buildDependenciesFromSource": false,
     "artifactName": "${productName}-${version}-${arch}.${ext}",
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Nexus",
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "runAfterFinish": true
     },
     "forceCodeSigning": false,
     "win": {

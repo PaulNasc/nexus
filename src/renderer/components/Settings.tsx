@@ -547,7 +547,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleImportExportApply = async (intent: ImportIntent): Promise<import('../../shared/types/backup').ImportResult | null> => {
+  const handleImportExportApply = async (intent: ImportIntent, _options?: { color?: string }): Promise<import('../../shared/types/backup').ImportResult | null> => {
     try {
       const electron = getElectron();
       let result: import('../../shared/types/backup').ImportResult | null = null;
@@ -560,7 +560,15 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       else if (intent?.kind === 'pdf-file') result = await electron.invoke('import:pdf-apply', { filePath: intent.filePath }) as import('../../shared/types/backup').ImportResult;
       else if (intent?.kind === 'txt-file') result = await electron.invoke('import:txt-apply', { filePath: intent.filePath }) as import('../../shared/types/backup').ImportResult;
       else if (intent?.kind === 'md-file') result = await electron.invoke('import:md-apply', { filePath: intent.filePath }) as import('../../shared/types/backup').ImportResult;
+      else if (intent?.kind === 'mp4-file') result = await electron.invoke('import:mp4-apply', { filePath: intent.filePath }) as import('../../shared/types/backup').ImportResult;
       else if (intent?.kind === 'folder') result = await electron.invoke('import:folder-apply', { folderPath: intent.folderPath }) as import('../../shared/types/backup').ImportResult;
+      // Capitalize first letter of all imported note titles
+      if (result?.importedNotes) {
+        result.importedNotes = result.importedNotes.map(n => ({
+          ...n,
+          title: n.title ? n.title.charAt(0).toUpperCase() + n.title.slice(1) : n.title,
+        }));
+      }
       if (result?.success) {
         window.dispatchEvent(new Event('tasksUpdated'));
         window.dispatchEvent(new Event('categoriesUpdated'));

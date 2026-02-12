@@ -1193,6 +1193,39 @@ class MainApplication {
       return { success: false, imported: { tasks: 0, notes: 0, categories: 0 }, warnings: [], errors: [{ type: 'note', message: 'Importação PDF ainda não implementada' }] };
     });
 
+    ipcMain.handle('import:mp4-preview', async (event, input: { filePath: string }): Promise<RestorePreview> => {
+      if (!input?.filePath) throw new Error('filePath inválido');
+      // Validate file exists
+      if (!fs.existsSync(input.filePath)) throw new Error('Arquivo não encontrado');
+      return { tasks: 0, notes: 1, categories: 0, settings: false, conflicts: [], warnings: [] };
+    });
+
+    ipcMain.handle('import:mp4-apply', async (event, input: { filePath: string }): Promise<ImportResult> => {
+      if (!input?.filePath) throw new Error('filePath inválido');
+      const fileName = path.basename(input.filePath, path.extname(input.filePath));
+      const videoFileName = path.basename(input.filePath);
+
+      // Copy video to local videos directory
+      const videosDir = path.join(app.getPath('userData'), 'nexus-videos');
+      if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
+      const destPath = path.join(videosDir, videoFileName);
+      await fs.promises.copyFile(input.filePath, destPath);
+
+      const db = MemoryDatabase.getInstance();
+      const note: Note = {
+        id: Date.now(),
+        title: fileName,
+        content: `[Vídeo anexado: ${videoFileName}]`,
+        format: 'text',
+        tags: ['video'],
+        attachedVideos: [videoFileName],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      const result = await db.mergeData({ tasks: [], notes: [note] });
+      return { ...result, importedNotes: [{ title: note.title, content: note.content, format: 'text', tags: ['video'], attachedVideos: [videoFileName] }] };
+    });
+
     ipcMain.handle('import:folder-preview', async (event, input: { folderPath: string }): Promise<RestorePreview> => {
       if (!input?.folderPath || typeof input.folderPath !== 'string') {
         throw new Error('folderPath inválido');

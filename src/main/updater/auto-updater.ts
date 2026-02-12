@@ -379,7 +379,7 @@ export class AppUpdater {
     if (this._isPortable) {
       this.quitAndInstallPortable();
     } else {
-      autoUpdater.quitAndInstall(false, true);
+      autoUpdater.quitAndInstall(true, true);
     }
   }
 

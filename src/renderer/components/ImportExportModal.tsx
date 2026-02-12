@@ -34,6 +34,9 @@ type ImportIntent = {
   kind: 'md-file';
   filePath: string;
 } | {
+  kind: 'mp4-file';
+  filePath: string;
+} | {
   kind: 'folder';
   folderPath: string;
 } | {
@@ -49,7 +52,7 @@ export interface ImportExportModalProps {
   onClose: () => void;
   onExport: (format: ExportFormat) => Promise<void>;
   onImportPreview: (intent: ImportIntent) => Promise<RestorePreview | null>;
-  onImportApply: (intent: ImportIntent) => Promise<ImportResult | null>;
+  onImportApply: (intent: ImportIntent, options?: { color?: string }) => Promise<ImportResult | null>;
   initialImportIntent?: ImportIntent | null;
 }
 
@@ -69,6 +72,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   const [intent, setIntent] = useState<ImportIntent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasApplied, setHasApplied] = useState(false);
+  const [importColor, setImportColor] = useState<string>('teal');
   const applyInFlightRef = useRef(false);
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
@@ -172,10 +176,11 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     if (ext === '.pdf') return { kind: 'pdf-file', filePath: selection.path };
     if (ext === '.txt') return { kind: 'txt-file', filePath: selection.path };
     if (ext === '.md' || ext === '.markdown') return { kind: 'md-file', filePath: selection.path };
+    if (ext === '.mp4') return { kind: 'mp4-file', filePath: selection.path };
 
     // Formatos de imagem/vídeo/documento não suportados
     const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.jfif', '.tiff', '.ico'];
-    const videoExts = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv'];
+    const videoExts = ['.webm', '.ogg', '.mov', '.avi', '.mkv'];
     const docExts = ['.doc', '.docx', '.rtf', '.odt', '.xls', '.xlsx', '.ppt', '.pptx'];
 
     if (imageExts.includes(ext)) {
@@ -209,13 +214,14 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
         title: 'Selecionar arquivo para importação',
         buttonLabel: 'Selecionar',
         filters: [
-          { name: 'Todos suportados', extensions: ['zip', 'rar', 'json', 'csv', 'enex', 'html', 'htm', 'txt', 'md', 'pdf'] },
+          { name: 'Todos suportados', extensions: ['zip', 'rar', 'json', 'csv', 'enex', 'html', 'htm', 'txt', 'md', 'pdf', 'mp4'] },
           { name: 'Arquivos compactados', extensions: ['zip', 'rar'] },
           { name: 'JSON', extensions: ['json'] },
           { name: 'CSV', extensions: ['csv'] },
           { name: 'Evernote (ENEX)', extensions: ['enex'] },
           { name: 'HTML', extensions: ['html', 'htm'] },
           { name: 'Texto', extensions: ['txt', 'md'] },
+          { name: 'Vídeo MP4', extensions: ['mp4'] },
           { name: 'Todos os arquivos', extensions: ['*'] },
         ],
       });
@@ -303,9 +309,11 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
         nextIntent = { kind: 'txt-file', filePath };
       } else if (ext === '.md' || ext === '.markdown') {
         nextIntent = { kind: 'md-file', filePath };
+      } else if (ext === '.mp4') {
+        nextIntent = { kind: 'mp4-file', filePath };
       } else {
         const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.jfif', '.tiff', '.ico'];
-        const videoExts = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv'];
+        const videoExts = ['.webm', '.ogg', '.mov', '.avi', '.mkv'];
         const docExts = ['.doc', '.docx', '.rtf', '.odt', '.xls', '.xlsx', '.ppt', '.pptx'];
 
         if (imageExts.includes(ext)) {
@@ -348,7 +356,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     setIsBusy(true);
     startProgress('Importando dados...');
     try {
-      const r = await onImportApply(intent);
+      const r = await onImportApply(intent, { color: importColor });
       setResult(r);
       if (r?.success) {
         setHasApplied(true);
@@ -509,6 +517,38 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {preview && !hasApplied && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>Cor das notas:</span>
+                {[
+                  { value: 'teal', color: 'var(--color-accent-teal)', label: 'Teal' },
+                  { value: 'blue', color: 'var(--color-accent-blue)', label: 'Azul' },
+                  { value: 'green', color: 'var(--color-accent-emerald)', label: 'Verde' },
+                  { value: 'yellow', color: 'var(--color-accent-amber)', label: 'Amarelo' },
+                  { value: 'red', color: 'var(--color-accent-rose)', label: 'Vermelho' },
+                  { value: 'purple', color: 'var(--color-accent-purple)', label: 'Roxo' },
+                  { value: 'orange', color: 'var(--color-accent-orange)', label: 'Laranja' },
+                  { value: 'pink', color: 'var(--color-accent-rose)', label: 'Rosa' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setImportColor(opt.value)}
+                    title={opt.label}
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '50%',
+                      border: importColor === opt.value ? '2px solid #fff' : '2px solid transparent',
+                      background: opt.color,
+                      cursor: 'pointer',
+                      boxShadow: importColor === opt.value ? '0 0 0 2px var(--color-primary-teal)' : 'none',
+                      transition: 'box-shadow 0.2s ease',
+                    }}
+                  />
+                ))}
               </div>
             )}
 

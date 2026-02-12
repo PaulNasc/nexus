@@ -287,6 +287,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
       if (intent?.kind === 'md-file') {
         return await electron.invoke('import:md-preview', { filePath: intent.filePath }) as RestorePreview;
       }
+      if (intent?.kind === 'mp4-file') {
+        return await electron.invoke('import:mp4-preview', { filePath: intent.filePath }) as RestorePreview;
+      }
       if (intent?.kind === 'folder') {
         return await electron.invoke('import:folder-preview', { folderPath: intent.folderPath }) as RestorePreview;
       }
@@ -297,7 +300,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const handleImportExportApply = async (intent: ImportIntent): Promise<ImportResult | null> => {
+  const handleImportExportApply = async (intent: ImportIntent, options?: { color?: string }): Promise<ImportResult | null> => {
     try {
       const electron = getElectron();
       let result: ImportResult | null = null;
@@ -319,8 +322,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
         result = await electron.invoke('import:txt-apply', { filePath: intent.filePath }) as ImportResult;
       } else if (intent?.kind === 'md-file') {
         result = await electron.invoke('import:md-apply', { filePath: intent.filePath }) as ImportResult;
+      } else if (intent?.kind === 'mp4-file') {
+        result = await electron.invoke('import:mp4-apply', { filePath: intent.filePath }) as ImportResult;
       } else if (intent?.kind === 'folder') {
         result = await electron.invoke('import:folder-apply', { folderPath: intent.folderPath }) as ImportResult;
+      }
+
+      // Capitalize first letter of all imported note titles
+      if (result?.importedNotes) {
+        result.importedNotes = result.importedNotes.map(n => ({
+          ...n,
+          title: n.title ? n.title.charAt(0).toUpperCase() + n.title.slice(1) : n.title,
+        }));
       }
 
       if (result?.success) {
@@ -336,6 +349,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   format: note.format || 'text',
                   tags: note.tags,
                   attachedImages: note.attachedImages,
+                  attachedVideos: note.attachedVideos,
+                  color: options?.color || note.color,
                 });
               } catch (e) {
                 console.error('Failed to sync imported note to cloud:', e);
