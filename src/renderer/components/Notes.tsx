@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNotes } from '../contexts/NotesContext';
-import { useTasks } from '../contexts/TasksContext';
 import { Note, CreateNoteData } from '../../shared/types/note';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
@@ -9,7 +8,6 @@ import { NoteEditor } from './NoteEditor';
 import { LinkedTasksModal } from './LinkedTasksModal';
 import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, ChevronLeft, Eye, CheckSquare, Square, Filter, X, ArrowUpDown } from 'lucide-react';
 import { NoteViewerModal } from './NoteViewerModal';
-import { ConfirmDeleteNoteModal } from './ConfirmDeleteNoteModal';
 
 interface NotesProps {
   onBack?: () => void;
@@ -18,7 +16,6 @@ interface NotesProps {
 
 export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
   const { notes, isLoading, error, fetchNotes, deleteNote, createNote, updateNote } = useNotes();
-  const { tasks: allTasks } = useTasks();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -45,7 +42,6 @@ export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
       }
     }
   }, [initialNoteId, notes]);
-  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; note: Note | null; taskTitles: string[] }>({ isOpen: false, note: null, taskTitles: [] });
 
   // Batch selection state
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -194,22 +190,6 @@ export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
       console.error('Error saving note:', error);
     }
   }, [selectedNote, createNote, updateNote, handleCloseEditor]);
-
-  const handleDeleteNote = useCallback(async (note: Note) => {
-    try {
-      const linkedIds = note.linkedTaskIds || [];
-      if (linkedIds.length > 0) {
-        const linkedTitles: string[] = allTasks
-          .filter(t => linkedIds.includes(t.id))
-          .map(t => String(t.title));
-        setConfirmDelete({ isOpen: true, note, taskTitles: linkedTitles });
-        return;
-      }
-      setConfirmDelete({ isOpen: true, note, taskTitles: [] });
-    } catch (error) {
-      console.error('Erro ao preparar exclusão:', error);
-    }
-  }, [allTasks]);
 
   const showLinkedTasks = useCallback((note: Note) => {
     setLinkedTasksModal({
@@ -385,17 +365,21 @@ export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
               <div className="notes-grid">
                 {filteredNotes.map((note) => (
                   <div key={note.id} className="note-card" style={{ borderLeft: `3px solid ${getColorClass(note.color)}` }} onClick={() => selectionMode ? toggleSelect(note.id) : handleNoteClick(note)}>
-                    {selectionMode && (
-                      <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 5 }} onClick={(e) => { e.stopPropagation(); toggleSelect(note.id); }}>
-                        {selectedIds.has(note.id) ? <CheckSquare size={16} style={{ color: 'var(--color-primary-teal)' }} /> : <Square size={16} style={{ color: 'var(--color-text-muted)' }} />}
-                      </div>
-                    )}
-                    {note.is_pinned && (<Pin size={14} className="pin-icon-active" style={{ position: 'absolute', top: 8, right: 8, zIndex: 4 }} />)}
+                    {/* Top-right: pin icon then eye icon */}
+                    <div className="note-actions" style={{ position: 'absolute', top: 8, right: 8, display: 'flex', alignItems: 'center', gap: '2px', zIndex: 5 }}>
+                      {note.is_pinned && (<Pin size={13} className="pin-icon-active" />)}
+                      <button className="note-view-button" title="Visualizar" onClick={(e) => { e.stopPropagation(); setViewer({ isOpen: true, note }); }}><Eye size={14} /></button>
+                    </div>
                     <div className="note-card-content">
                       <div className="note-header">
-                        <h3 className="note-title">
-                          {note.sequential_id != null && <span style={{ color: 'var(--color-primary-teal)', fontSize: '12px', marginRight: '6px' }}>#{note.sequential_id}</span>}
-                          {note.title}
+                        <h3 className="note-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {selectionMode && (
+                            <span style={{ flexShrink: 0, display: 'inline-flex' }} onClick={(e) => { e.stopPropagation(); toggleSelect(note.id); }}>
+                              {selectedIds.has(note.id) ? <CheckSquare size={15} style={{ color: 'var(--color-primary-teal)' }} /> : <Square size={15} style={{ color: 'var(--color-text-muted)' }} />}
+                            </span>
+                          )}
+                          {note.sequential_id != null && <span style={{ color: 'var(--color-primary-teal)', fontSize: '12px', flexShrink: 0 }}>#{note.sequential_id}</span>}
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{note.title}</span>
                         </h3>
                       </div>
                       <p className="note-content">{truncateContent(note.content)}</p>
@@ -415,10 +399,6 @@ export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
                           )}
                           <div className="note-date">{formatDate(note.updated_at)}</div>
                         </div>
-                      </div>
-                      <div className="note-actions" style={{ position: 'absolute', bottom: 8, right: 8, display: 'flex', gap: '4px' }}>
-                        <button className="note-view-button" title="Visualizar" onClick={(e) => { e.stopPropagation(); setViewer({ isOpen: true, note }); }}><Eye size={16} /></button>
-                        <button className="note-view-button" title="Excluir" style={{ color: 'var(--color-accent-rose)' }} onClick={(e) => { e.stopPropagation(); handleDeleteNote(note); }}><Trash2 size={16} /></button>
                       </div>
                     </div>
                   </div>
@@ -459,7 +439,6 @@ export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
                           <div className="note-date">{formatDate(note.updated_at)}</div>
                           <div className="note-list-actions">
                             <button className="note-view-button" title="Visualizar" onClick={(e) => { e.stopPropagation(); setViewer({ isOpen: true, note }); }}><Eye size={18} /></button>
-                            <button className="note-view-button" title="Excluir" style={{ color: 'var(--color-accent-rose)' }} onClick={(e) => { e.stopPropagation(); handleDeleteNote(note); }}><Trash2 size={16} /></button>
                           </div>
                         </div>
                       </div>
@@ -474,7 +453,6 @@ export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
 
       <LinkedTasksModal isOpen={linkedTasksModal.isOpen} onClose={closeLinkedTasksModal} noteId={linkedTasksModal.noteId} noteTitle={linkedTasksModal.noteTitle} linkedTaskIds={linkedTasksModal.linkedTaskIds} />
       <NoteViewerModal isOpen={viewer.isOpen} note={viewer.note} onClose={() => setViewer({ isOpen: false, note: null })} onTogglePin={async (note: Note) => { await updateNote(note.id, { is_pinned: !note.is_pinned }); setViewer(prev => prev.note?.id === note.id ? { ...prev, note: { ...note, is_pinned: !note.is_pinned } } : prev); }} />
-      <ConfirmDeleteNoteModal isOpen={confirmDelete.isOpen} noteTitle={confirmDelete.note?.title || ''} linkedTaskTitles={confirmDelete.taskTitles} onClose={() => setConfirmDelete({ isOpen: false, note: null, taskTitles: [] })} onConfirm={async () => { if (confirmDelete.note) { await deleteNote(confirmDelete.note.id); } setConfirmDelete({ isOpen: false, note: null, taskTitles: [] }); }} />
     </div>
   );
 };

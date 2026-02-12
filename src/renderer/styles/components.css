@@ -1156,8 +1156,7 @@
   border: 1px solid var(--color-border-primary);
   cursor: pointer;
   transition: var(--transition-all);
-  min-height: 120px;
-  max-height: 200px;
+  height: 180px;
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-lg);
@@ -1203,16 +1202,16 @@
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid transparent;
-  color: var(--color-text-secondary);
-  padding: var(--space-1);
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
+  border: none;
+  color: var(--color-text-muted);
+  padding: 2px;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: opacity 0.25s ease, color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
-  opacity: 0;
-  pointer-events: none;
+  transition: opacity 0.25s ease, color 0.2s ease, background 0.2s ease;
+  opacity: 0.4;
+  pointer-events: auto;
 }
 
 .note-actions .note-view-button:hover,
@@ -1268,11 +1267,7 @@
   flex: 1;
   margin: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
+  min-width: 0;
 }
 
 .note-actions {

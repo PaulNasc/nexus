@@ -378,16 +378,21 @@ const App: React.FC<AppProps> = () => {
   const handleMoveTask = async (taskId: number, newStatus: string) => {
     const task = tasks.find(t => t.id === taskId);
 
-    await updateTask(taskId, { status: toTaskStatus(newStatus) });
-
-    const statusNames = {
+    const statusNames: Record<string, string> = {
       backlog: 'Backlog',
       esta_semana: 'Esta Semana',
       hoje: 'Hoje',
       concluido: 'Concluído'
     };
 
-    showToast(`Tarefa movida para ${statusNames[newStatus as keyof typeof statusNames]}!`, 'info');
+    const targetLabel = statusNames[newStatus] || newStatus;
+
+    await updateTask(taskId, {
+      status: toTaskStatus(newStatus),
+      progress_status: targetLabel,
+    });
+
+    showToast(`Tarefa movida para ${targetLabel}!`, 'info');
 
     if (newStatus === 'concluido' && task) {
       showTaskComplete(task.title);
@@ -450,7 +455,15 @@ const App: React.FC<AppProps> = () => {
         return taskWithCategory.category_id === categoryId;
       });
     } else {
-      tasksList = tasks.filter((task: Task) => task.status === navigation.selectedList);
+      tasksList = tasks.filter((task: Task) => {
+        if (task.status !== navigation.selectedList) return false;
+        // Hide tasks that belong to a shared category from personal status lists
+        if (task.category_id) {
+          const cat = categories.find(c => c.id === task.category_id);
+          if (cat?.is_shared) return false;
+        }
+        return true;
+      });
     }
 
     return (

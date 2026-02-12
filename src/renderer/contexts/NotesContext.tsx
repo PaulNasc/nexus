@@ -110,80 +110,39 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // ── CLOUD (Supabase) helpers ──────────────────────────────────
   const fetchNotesCloud = useCallback(async (): Promise<Note[]> => {
-    // JOIN with profiles to get creator display_name
-    let query = supabase
-      .from('notes')
-      .select('*, profiles!notes_user_id_fkey(display_name)');
+    // Fetch notes without JOIN to avoid FK name mismatch errors
+    let query = supabase.from('notes').select('*');
     if (activeOrg) {
       query = query.eq('organization_id', activeOrg.id);
     } else {
       query = query.is('organization_id', null);
     }
-    const { data, error: fetchError } = await query.order('is_pinned', { ascending: false }).order('created_at', { ascending: false });
+    const { data, error: fetchError } = await query
+      .order('is_pinned', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (fetchError) throw fetchError;
 
-    if (fetchError) {
-      // Fallback without JOIN if foreign key name doesn't match
-      let fallbackQuery = supabase.from('notes').select('*');
-      if (activeOrg) {
-        fallbackQuery = fallbackQuery.eq('organization_id', activeOrg.id);
-      } else {
-        fallbackQuery = fallbackQuery.is('organization_id', null);
-      }
-      const { data: fallbackData, error: fallbackError } = await fallbackQuery
-        .order('is_pinned', { ascending: false })
-        .order('created_at', { ascending: false });
-      if (fallbackError) throw fallbackError;
+    const rows = (data || []) as SupabaseNoteRow[];
 
-      const rows = (fallbackData || []) as SupabaseNoteRow[];
-
-      // Fetch creator names separately
-      const userIds = [...new Set(rows.map(r => r.user_id))];
-      const profileMap = new Map<string, string>();
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, display_name')
-          .in('id', userIds);
-        if (profiles) {
-          for (const p of profiles) {
-            profileMap.set(p.id, p.display_name || '');
-          }
+    // Fetch creator names separately via profiles table
+    const userIds = [...new Set(rows.map(r => r.user_id))];
+    const profileMap = new Map<string, string>();
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, display_name')
+        .in('id', userIds);
+      if (profiles) {
+        for (const p of profiles) {
+          profileMap.set(p.id, p.display_name || '');
         }
       }
-
-      const { data: links } = await supabase
-        .from('note_task_links')
-        .select('note_id, task_id');
-      const linkMap = new Map<number, number[]>();
-      if (links) {
-        for (const link of links) {
-          const existing = linkMap.get(link.note_id) || [];
-          existing.push(link.task_id);
-          linkMap.set(link.note_id, existing);
-        }
-      }
-
-      return rows.map(row => {
-        const note = dbRowToNote(row, linkMap.get(row.id));
-        note.creator_display_name = profileMap.get(row.user_id) || undefined;
-        return note;
-      });
     }
 
-    // Process JOIN result
-    const rows = (data || []).map((row: Record<string, unknown>) => {
-      const profiles = row.profiles as { display_name?: string } | null;
-      const noteRow: SupabaseNoteRow = {
-        ...(row as unknown as SupabaseNoteRow),
-        creator_display_name: profiles?.display_name ?? null,
-      };
-      return noteRow;
-    });
-
+    // Fetch note-task links
     const { data: links } = await supabase
       .from('note_task_links')
       .select('note_id, task_id');
-
     const linkMap = new Map<number, number[]>();
     if (links) {
       for (const link of links) {
@@ -193,7 +152,11 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
 
-    return rows.map(row => dbRowToNote(row, linkMap.get(row.id)));
+    return rows.map(row => {
+      const note = dbRowToNote(row, linkMap.get(row.id));
+      note.creator_display_name = profileMap.get(row.user_id) || undefined;
+      return note;
+    });
   }, [activeOrg]);
 
   const createNoteCloud = useCallback(async (noteData: CreateNoteData): Promise<Note | null> => {

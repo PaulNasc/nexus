@@ -43,4 +43,6 @@ export interface CreateTaskData {
   priority?: TaskPriority;
   due_date?: string;
   assigned_to?: string;
+  progress_status?: string;
+  progress_updated_by?: string;
 }

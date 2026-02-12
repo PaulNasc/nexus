@@ -179,9 +179,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           description: taskData.description,
           priority: taskData.priority,
           status: taskData.status as 'backlog' | 'esta_semana' | 'hoje' | 'concluido',
-          category_id: taskData.category_id
+          category_id: taskData.category_id,
+          assigned_to: assignedTo,
         });
-        savedTask = { ...editingTask, ...taskData } as Task;
+        savedTask = { ...editingTask, ...taskData, assigned_to: assignedTo } as Task;
       } else {
         const newTask = await createTask(taskData as unknown as Task);
         if (!newTask) {

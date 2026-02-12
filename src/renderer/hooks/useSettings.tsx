@@ -497,6 +497,23 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     // Sync to Supabase in background
     syncSettingsToSupabase(updatedSettings);
+
+    // If userName changed, also update profiles.display_name so notes/tasks/logs reflect it
+    if (newSettings.userName !== undefined && newSettings.userName !== settings.userName) {
+      (async () => {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+          await supabase.from('profiles').upsert({
+            id: user.id,
+            display_name: newSettings.userName,
+            updated_at: new Date().toISOString(),
+          });
+        } catch (err) {
+          console.warn('Failed to sync display_name to profiles:', err);
+        }
+      })();
+    }
   };
 
   const resetSettings = () => {

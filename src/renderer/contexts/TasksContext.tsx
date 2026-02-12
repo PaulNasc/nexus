@@ -353,6 +353,17 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (updates.priority !== undefined) updateData.priority = priorityToNumber(updates.priority);
         if (updates.category_id !== undefined) updateData.category_id = updates.category_id || null;
         if (updates.due_date !== undefined) updateData.due_date = updates.due_date || null;
+        if (updates.assigned_to !== undefined) {
+          updateData.assigned_to = updates.assigned_to || null;
+          if (updates.assigned_to) {
+            const { data: userData } = await supabase.auth.getUser();
+            updateData.assigned_by = userData?.user?.id || null;
+          } else {
+            updateData.assigned_by = null;
+          }
+        }
+        if (updates.progress_status !== undefined) updateData.progress_status = updates.progress_status || null;
+        if (updates.progress_updated_by !== undefined) updateData.progress_updated_by = updates.progress_updated_by || null;
 
         const { data, error: updateError } = await supabase
           .from('tasks')

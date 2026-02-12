@@ -179,8 +179,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       const isSystem = Boolean(category.isSystem);
       const key = isSystem ? (statusMap[category.name] || category.name.toLowerCase()) : `category_${category.id}`;
+      const sharedCategoryIds = (categories || []).filter(c => c.is_shared).map(c => c.id);
       const count = isSystem
-        ? (stats?.[key as keyof NonNullable<typeof stats>] as unknown as number) || 0
+        ? (tasks || []).filter((t) => t.status === key && !sharedCategoryIds.includes(t.category_id!)).length
         : (tasks || []).filter((t) => t.category_id === category.id).length;
 
       return {
@@ -189,7 +190,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         title: category.name,
         desc: `${count} ${count === 1 ? 'tarefa' : 'tarefas'}`,
         count,
-        icon: category.is_shared ? 'Share2' : (category.icon || 'Folder'),
+        icon: category.icon || 'Folder',
         accentColor: category.color,
         isSystem,
         isShared: category.is_shared === true,
@@ -871,6 +872,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
               title={card.title}
               count={showTaskCounters ? card.count : undefined}
               accentColor={card.accentColor}
+              quickAction={card.isShared ? (
+                <Users size={14} strokeWidth={2.2} color="#10B981" />
+              ) : undefined}
               onCardClick={() => {
                 onViewTaskList(card.key);
                 if (card.isSystem) {
