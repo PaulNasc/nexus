@@ -1,6 +1,7 @@
 // Adapter para armazenamento local em pasta configurável
 import fs from 'fs';
 import path from 'path';
+import { app } from 'electron';
 import crypto from 'crypto';
 import archiver from 'archiver';
 import * as cheerio from 'cheerio';
@@ -359,13 +360,34 @@ export class LocalStorageAdapter {
     return base.slice(0, base.length - ext.length).toLowerCase().trim();
   }
 
+  private ensureVideosDir(): string {
+    const videosDir = path.join(app.getPath('userData'), 'nexus-videos');
+    if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
+    return videosDir;
+  }
+
+  private uniqueVideoFileName(originalName: string): string {
+    const base = path.basename(originalName, path.extname(originalName));
+    const ext = path.extname(originalName) || '.mp4';
+    const safeBase = base.replace(/[^a-z0-9-_ ]/gi, '').trim() || 'video';
+    let candidate = `${safeBase}${ext}`;
+    const videosDir = this.ensureVideosDir();
+    let idx = 1;
+    while (fs.existsSync(path.join(videosDir, candidate))) {
+      candidate = `${safeBase}-${idx}${ext}`;
+      idx += 1;
+    }
+    return candidate;
+  }
+
   /**
    * Constrói notas a partir de arquivos mistos (txt, sql, imagens, etc).
    * Lógica:
    * 1. Cada arquivo de texto (.txt, .sql, .md) vira uma nota.
    * 2. Cada imagem tenta ser associada a uma nota com nome similar.
    * 3. Imagens sem nota correspondente viram notas próprias com a imagem anexada.
-   * 4. Vídeos, .doc/.docx, .rar aninhados são listados como warnings.
+   * 4. Cada vídeo vira uma nota própria com vídeo anexado.
+   * 5. .doc/.docx, .rar aninhados são listados como warnings.
    */
   buildNotesFromMixedFiles(scan: ReturnType<LocalStorageAdapter['scanAllFiles']>): {
     notes: Note[];
@@ -504,11 +526,33 @@ export class LocalStorageAdapter {
       }
     }
 
-    // 5. Listar arquivos não importáveis como warnings
+    // 5. Processar vídeos — cada vídeo vira uma nota
     for (const vidPath of scan.videoFiles) {
-      skippedFiles.push(path.basename(vidPath));
-      warnings.push(`Vídeo ignorado (use o editor para anexar): ${path.basename(vidPath)}`);
+      try {
+        const videoFileName = this.uniqueVideoFileName(path.basename(vidPath));
+        const videosDir = this.ensureVideosDir();
+        const destPath = path.join(videosDir, videoFileName);
+        fs.copyFileSync(vidPath, destPath);
+
+        const titleBase = path.basename(vidPath, path.extname(vidPath));
+        const note: Note = {
+          id: baseId + noteIdx++,
+          title: titleBase,
+          content: `[Vídeo anexado: ${videoFileName}]`,
+          format: 'text',
+          tags: ['video'],
+          attachedVideos: [videoFileName],
+          created_at: now,
+          updated_at: now,
+        };
+        notes.push(note);
+      } catch {
+        skippedFiles.push(path.basename(vidPath));
+        warnings.push(`Erro ao importar vídeo: ${path.basename(vidPath)}`);
+      }
     }
+
+    // 6. Listar arquivos não importáveis como warnings
     for (const docPath of scan.docFiles) {
       skippedFiles.push(path.basename(docPath));
       warnings.push(`Documento Office ignorado (converta para .txt): ${path.basename(docPath)}`);
