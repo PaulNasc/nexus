@@ -110,29 +110,40 @@ export class AppUpdater {
 
   /**
    * Detect if the app is running in portable mode.
-   * NSIS installs place an `app-update.yml` in the resources directory
-   * and install to a path like `AppData\Local\Programs\nexus`.
-   * Portable mode has none of these.
+   * Strategy:
+   * 1. Portable exe name matches pattern: Nexus-{version}-x64.exe
+   *    NSIS installs as just: Nexus.exe
+   * 2. NSIS installs have an uninstaller: "Uninstall Nexus.exe" in the same dir
+   * app-update.yml is NOT reliable — electron-builder includes it in both builds.
    */
   private detectPortableMode(): boolean {
     if (!app.isPackaged) return false;
 
     const exePath = app.getPath('exe');
     const exeDir = path.dirname(exePath);
+    const exeName = path.basename(exePath).toLowerCase();
 
-    // Definitive check: NSIS installs always have `app-update.yml` in resources.
-    // If it exists → NSIS installed. If it doesn't → portable, regardless of path.
-    const resourcesDir = path.join(exeDir, 'resources');
-    const appUpdateYml = path.join(resourcesDir, 'app-update.yml');
-    const isNsis = fs.existsSync(appUpdateYml);
+    // Check 1: NSIS uninstaller exists → definitely NSIS
+    const uninstaller = path.join(exeDir, 'Uninstall Nexus.exe');
+    const hasUninstaller = fs.existsSync(uninstaller);
+
+    // Check 2: Portable artifact name pattern: nexus-X.X.X-x64.exe
+    const portablePattern = /^nexus-[\d.]+-x64\.exe$/i;
+    const matchesPortableName = portablePattern.test(exeName);
+
+    // If uninstaller exists → NSIS. If exe matches portable pattern → portable.
+    // Fallback: no uninstaller + doesn't match portable name → assume portable.
+    const isPortable = !hasUninstaller || matchesPortableName;
 
     logger.info('Portable mode detection', 'updater', {
       exePath,
-      appUpdateYmlExists: isNsis,
-      result: !isNsis ? 'portable' : 'nsis',
+      exeName,
+      hasUninstaller,
+      matchesPortableName,
+      result: isPortable ? 'portable' : 'nsis',
     });
 
-    return !isNsis;
+    return isPortable;
   }
 
   // ─── Check for updates (works for both modes) ──────────────────
