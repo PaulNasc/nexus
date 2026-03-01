@@ -14,7 +14,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
 import { IncomingMessage } from 'http';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 
 // GitHub repo info — must match package.json build.publish
 const GH_OWNER = 'PaulNasc';
@@ -394,10 +394,11 @@ export class AppUpdater {
   }
 
   /**
-   * Portable install: use a batch script to:
-   * 1. Wait for the current process to exit
-   * 2. Promote the downloaded .update to the target versioned exe
-   * 3. Restart using the new versioned exe
+   * Portable install strategy:
+   * 1. Promote downloaded .update to target versioned exe immediately
+   * 2. Best-effort retarget desktop shortcuts to the new exe/icon
+   * 3. Schedule relaunch via detached shell command after short delay
+   * 4. Force app exit to avoid close handlers blocking updater flow
    */
   private quitAndInstallPortable(): void {
     if (!this.portableDownloadPath || !fs.existsSync(this.portableDownloadPath)) {
@@ -418,72 +419,84 @@ export class AppUpdater {
     const targetExeName = `Nexus-${nextVersion}-x64.exe`;
     const targetExePath = path.join(exeDir, targetExeName);
     const updatePath = this.portableDownloadPath;
-    const batchPath = path.join(exeDir, '_nexus_update.bat');
-
-    // Create a batch script that waits, promotes update file, and restarts
-    const batchContent = `@echo off
-setlocal
-title Nexus - Atualizando...
-echo Aguardando o Nexus fechar...
-timeout /t 2 /nobreak >nul
-:waitloop
-tasklist /FI "PID eq ${process.pid}" 2>NUL | find /I "${process.pid}" >NUL
-if not errorlevel 1 (
-  timeout /t 1 /nobreak >nul
-  goto waitloop
-)
-echo Aplicando atualizacao...
-if exist "${targetExePath}" del /f /q "${targetExePath}" >nul 2>&1
-move /y "${updatePath}" "${targetExePath}" >nul
-if errorlevel 1 (
-  echo Falha ao mover atualizacao.
-  echo Tentando reabrir versao atual...
-  start "" "${exePath}"
-  del "%~f0"
-  endlocal
-  exit /b 1
-)
-
-if not exist "${targetExePath}" (
-  echo Arquivo final da atualizacao nao encontrado.
-  echo Tentando reabrir versao atual...
-  start "" "${exePath}"
-  del "%~f0"
-  endlocal
-  exit /b 1
-)
-
-echo Reiniciando Nexus...
-start "" "${targetExePath}"
-del "%~f0"
-endlocal
-exit /b 0
-`;
 
     try {
-      fs.writeFileSync(batchPath, batchContent, { encoding: 'utf-8' });
-      logger.info('Portable update batch created, restarting...', 'updater', {
-        batchPath,
+      if (fs.existsSync(targetExePath)) {
+        fs.unlinkSync(targetExePath);
+      }
+
+      try {
+        fs.renameSync(updatePath, targetExePath);
+      } catch {
+        // Fallback for cross-device or lock edge cases
+        fs.copyFileSync(updatePath, targetExePath);
+        fs.unlinkSync(updatePath);
+      }
+
+      if (!fs.existsSync(targetExePath)) {
+        throw new Error('Arquivo final da atualização não foi criado.');
+      }
+
+      this.tryRetargetDesktopShortcuts(targetExePath);
+
+      logger.info('Portable update prepared, scheduling relaunch...', 'updater', {
         currentExePath: exePath,
         updatePath,
         targetExePath,
         nextVersion,
       });
 
-      // Launch the batch script detached
-      const child = spawn('cmd.exe', ['/c', batchPath], {
+      // Delay relaunch a bit to ensure single-instance lock is released
+      const relaunchCmd = `timeout /t 1 /nobreak >nul & start "" "${targetExePath}"`;
+      const child = spawn('cmd.exe', ['/d', '/s', '/c', relaunchCmd], {
         detached: true,
         stdio: 'ignore',
         windowsHide: true,
       });
       child.unref();
 
-      // Quit the app
-      app.quit();
+      // Force quit to avoid any close-to-tray/custom close handlers blocking install flow
+      app.exit(0);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error('Failed to create portable update batch', 'updater', { error: msg });
+      logger.error('Failed to apply portable update', 'updater', { error: msg });
       this.setStatus({ state: 'error', error: `Erro ao aplicar atualização: ${msg}`, isPortable: true });
+    }
+  }
+
+  private tryRetargetDesktopShortcuts(targetExePath: string): void {
+    if (process.platform !== 'win32') return;
+
+    const escapedTarget = targetExePath.replace(/'/g, "''");
+    const script = `
+$target = '${escapedTarget}'
+$shell = New-Object -ComObject WScript.Shell
+$desktopPaths = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('CommonDesktopDirectory'))
+foreach ($desktop in $desktopPaths) {
+  if (-not (Test-Path $desktop)) { continue }
+  Get-ChildItem -Path $desktop -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object {
+    try {
+      $shortcut = $shell.CreateShortcut($_.FullName)
+      if ($shortcut.TargetPath -match 'Nexus(-[0-9.]+-x64)?\\.exe$') {
+        $shortcut.TargetPath = $target
+        $shortcut.WorkingDirectory = Split-Path $target
+        $shortcut.IconLocation = "$target,0"
+        $shortcut.Save()
+      }
+    } catch {}
+  }
+}
+`;
+
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+      windowsHide: true,
+      stdio: 'ignore',
+    });
+
+    if (result.status !== 0) {
+      logger.warn('Portable shortcut retargeting failed (non-blocking)', 'updater', {
+        status: result.status,
+      });
     }
   }
 
