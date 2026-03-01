@@ -14,7 +14,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
 import { IncomingMessage } from 'http';
-import { spawn, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
 
 // GitHub repo info — must match package.json build.publish
 const GH_OWNER = 'PaulNasc';
@@ -396,8 +396,8 @@ export class AppUpdater {
   /**
    * Portable install strategy:
    * 1. Promote downloaded .update to target versioned exe immediately
-   * 2. Best-effort retarget desktop shortcuts to the new exe/icon
-   * 3. Schedule relaunch via detached shell command after short delay
+   * 2. Best-effort retarget common Windows shortcuts to the new exe/icon
+   * 3. Schedule relaunch through Electron using the new executable path
    * 4. Force app exit to avoid close handlers blocking updater flow
    */
   private quitAndInstallPortable(): void {
@@ -437,23 +437,21 @@ export class AppUpdater {
         throw new Error('Arquivo final da atualização não foi criado.');
       }
 
-      this.tryRetargetDesktopShortcuts(targetExePath);
+      this.tryRetargetWindowsShortcuts(targetExePath);
+
+      const relaunchArgs = process.argv
+        .slice(1)
+        .filter((arg) => !arg.startsWith('--squirrel'));
+
+      app.relaunch({ execPath: targetExePath, args: relaunchArgs });
 
       logger.info('Portable update prepared, scheduling relaunch...', 'updater', {
         currentExePath: exePath,
         updatePath,
         targetExePath,
         nextVersion,
+        relaunchArgs,
       });
-
-      // Delay relaunch a bit to ensure single-instance lock is released
-      const relaunchCmd = `timeout /t 1 /nobreak >nul & start "" "${targetExePath}"`;
-      const child = spawn('cmd.exe', ['/d', '/s', '/c', relaunchCmd], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-      });
-      child.unref();
 
       // Force quit to avoid any close-to-tray/custom close handlers blocking install flow
       app.exit(0);
@@ -464,27 +462,43 @@ export class AppUpdater {
     }
   }
 
-  private tryRetargetDesktopShortcuts(targetExePath: string): void {
+  private tryRetargetWindowsShortcuts(targetExePath: string): void {
     if (process.platform !== 'win32') return;
 
     const escapedTarget = targetExePath.replace(/'/g, "''");
     const script = `
 $target = '${escapedTarget}'
 $shell = New-Object -ComObject WScript.Shell
-$desktopPaths = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('CommonDesktopDirectory'))
-foreach ($desktop in $desktopPaths) {
-  if (-not (Test-Path $desktop)) { continue }
-  Get-ChildItem -Path $desktop -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object {
-    try {
-      $shortcut = $shell.CreateShortcut($_.FullName)
-      if ($shortcut.TargetPath -match 'Nexus(-[0-9.]+-x64)?\\.exe$') {
-        $shortcut.TargetPath = $target
-        $shortcut.WorkingDirectory = Split-Path $target
-        $shortcut.IconLocation = "$target,0"
-        $shortcut.Save()
-      }
-    } catch {}
+$roots = @(
+  [Environment]::GetFolderPath('Desktop'),
+  [Environment]::GetFolderPath('CommonDesktopDirectory'),
+  [Environment]::GetFolderPath('StartMenu'),
+  [Environment]::GetFolderPath('CommonStartMenu'),
+  (Join-Path $env:APPDATA 'Microsoft\\Internet Explorer\\Quick Launch\\User Pinned\\TaskBar'),
+  (Join-Path $env:APPDATA 'Microsoft\\Internet Explorer\\Quick Launch\\User Pinned\\StartMenu')
+)
+
+$shortcutPaths = New-Object System.Collections.Generic.HashSet[string]
+foreach ($root in $roots) {
+  if ([string]::IsNullOrWhiteSpace($root)) { continue }
+  if (-not (Test-Path $root)) { continue }
+  Get-ChildItem -Path $root -Filter *.lnk -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+    [void]$shortcutPaths.Add($_.FullName)
   }
+}
+
+foreach ($shortcutPath in $shortcutPaths) {
+  if (-not (Test-Path $shortcutPath)) { continue }
+  try {
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $currentTarget = [string]$shortcut.TargetPath
+    if ($currentTarget -and $currentTarget -match 'Nexus(-[0-9.]+-x64)?\\.exe$') {
+      $shortcut.TargetPath = $target
+      $shortcut.WorkingDirectory = Split-Path $target
+      $shortcut.IconLocation = "$target,0"
+      $shortcut.Save()
+    }
+  } catch {}
 }
 `;
 
