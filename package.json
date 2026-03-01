@@ -1,6 +1,6 @@
 {
   "name": "nexus",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "description": "Um sistema desktop de gerenciamento de tarefas com IA integrada, desenvolvido com Electron, React e TypeScript.",
   "main": "dist/main/index.js",
   "homepage": "./",
@@ -123,7 +123,8 @@
     "publish": {
       "provider": "github",
       "repo": "nexus",
-      "owner": "PaulNasc"
+      "owner": "PaulNasc",
+      "releaseType": "release"
     },
     "mac": {
       "icon": "assets/icon.icns",

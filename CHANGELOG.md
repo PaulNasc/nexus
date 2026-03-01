@@ -1,5 +1,10 @@
 ## Changelog
 
+### v1.1.8
+- Updater (Portable): Improved relaunch reliability after update by switching to Electron relaunch flow.
+- Updater (Portable): Expanded shortcut retargeting to Desktop, Start Menu, and pinned shortcuts.
+- Release: GitHub publish configuration now forces non-draft releases.
+
 ### v1.1.7
 - Notes: Header actions/filters aligned with the bottom separator line for cleaner visual consistency.
 - Organizations: Reduced redundant realtime refresh calls and improved async feedback handling in organization actions.
