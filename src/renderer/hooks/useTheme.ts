@@ -38,13 +38,12 @@ const normalizeTheme = (theme: ThemeConfig): ThemeConfig => {
 
 const loadInitialTheme = (storageKey: string): ThemeConfig => {
   try {
-    const savedTheme = localStorage.getItem(storageKey) || localStorage.getItem('krigzis-theme');
+    const savedTheme = localStorage.getItem(storageKey);
     if (!savedTheme) return normalizeTheme(defaultTheme);
 
     const parsed = JSON.parse(savedTheme) as ThemeConfig;
     const normalized = normalizeTheme(parsed);
     localStorage.setItem(storageKey, JSON.stringify(normalized));
-    localStorage.removeItem('krigzis-theme');
     return normalized;
   } catch {
     return normalizeTheme(defaultTheme);

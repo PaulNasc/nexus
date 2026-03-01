@@ -87,7 +87,6 @@ export const SystemTagsProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const refresh = useCallback(async () => {
     if (!activeOrg?.id) {
-      console.log('[SystemTags] No active org, clearing tags');
       setTags([]);
       return;
     }
@@ -95,8 +94,6 @@ export const SystemTagsProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (refreshInFlightRef.current && lastRefreshOrgRef.current === activeOrg.id) {
       return refreshInFlightRef.current;
     }
-
-    console.log('[SystemTags] Refreshing tags for org:', activeOrg.id);
 
     const promise = (async () => {
       setLoading(true);
@@ -109,13 +106,11 @@ export const SystemTagsProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           .order('name', { ascending: true });
 
         if (error) throw error;
-        console.log('[SystemTags] Loaded', (data || []).length, 'tags from cloud');
         setUseLocalFallback(false);
         clearMissingOrgSystemTagsTableMark(activeOrg.id);
         setTags((data || []) as OrgSystemTag[]);
       } catch (err) {
         if (isMissingOrgSystemTagsTable(err)) {
-          console.log('[SystemTags] Table missing, switching to local fallback');
           setUseLocalFallback(true);
           markMissingOrgSystemTagsTable(activeOrg.id);
           setTags(loadLocalFallbackTags(activeOrg.id));
@@ -146,27 +141,21 @@ export const SystemTagsProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   useEffect(() => {
     if (!activeOrg?.id || useLocalFallback) {
-      console.log('[SystemTags] Realtime subscription skipped:', { hasOrg: !!activeOrg?.id, useLocalFallback });
       return;
     }
 
-    console.log('[SystemTags] Setting up realtime subscription for org:', activeOrg.id);
     const channel = supabase
       .channel(`org-system-tags-realtime-${activeOrg.id}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'org_system_tags', filter: `org_id=eq.${activeOrg.id}` },
-        (payload) => {
-          console.log('[SystemTags] Realtime event received:', payload.eventType, payload);
+        () => {
           void refresh();
         },
       )
-      .subscribe((status) => {
-        console.log('[SystemTags] Realtime subscription status:', status);
-      });
+      .subscribe();
 
     return () => {
-      console.log('[SystemTags] Cleaning up realtime subscription');
       supabase.removeChannel(channel);
     };
   }, [activeOrg?.id, refresh, useLocalFallback]);

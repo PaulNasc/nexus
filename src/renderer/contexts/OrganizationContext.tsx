@@ -266,19 +266,29 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   useEffect(() => {
     if (!activeOrg) return;
 
+    let orgDetailsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleOrgDetailsRefresh = () => {
+      if (orgDetailsRefreshTimer) {
+        clearTimeout(orgDetailsRefreshTimer);
+      }
+      orgDetailsRefreshTimer = setTimeout(() => {
+        void loadOrgDetails(activeOrg.id);
+      }, 120);
+    };
+
     const membersChannel = supabase
-      .channel('org-members-realtime')
+      .channel(`org-members-realtime-${activeOrg.id}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'org_members', filter: `org_id=eq.${activeOrg.id}` },
         () => {
-          loadOrgDetails(activeOrg.id);
+          scheduleOrgDetailsRefresh();
         }
       )
       .subscribe();
 
     const invitesChannel = supabase
-      .channel('org-invites-realtime')
+      .channel(`org-invites-realtime-${activeOrg.id}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'org_invites', filter: `org_id=eq.${activeOrg.id}` },
@@ -291,7 +301,7 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
               notifyOrgEvent('Novo convite na organização', `Convite enviado para ${email}.`, `org-invite-${activeOrg.id}`);
             }
           }
-          loadOrgDetails(activeOrg.id);
+          scheduleOrgDetailsRefresh();
           void loadMyInvites();
         }
       )
@@ -322,7 +332,7 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             }
           }
 
-          loadOrgDetails(activeOrg.id);
+          scheduleOrgDetailsRefresh();
         }
       )
       .subscribe();
@@ -347,6 +357,9 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       .subscribe();
 
     return () => {
+      if (orgDetailsRefreshTimer) {
+        clearTimeout(orgDetailsRefreshTimer);
+      }
       supabase.removeChannel(membersChannel);
       supabase.removeChannel(invitesChannel);
       supabase.removeChannel(joinRequestsChannel);
@@ -359,6 +372,26 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     if (!currentUserId && !currentUserEmail) return;
 
     const channels: ReturnType<typeof supabase.channel>[] = [];
+    let organizationsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let myInvitesRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleOrganizationsRefresh = () => {
+      if (organizationsRefreshTimer) {
+        clearTimeout(organizationsRefreshTimer);
+      }
+      organizationsRefreshTimer = setTimeout(() => {
+        void loadOrganizations();
+      }, 120);
+    };
+
+    const scheduleMyInvitesRefresh = () => {
+      if (myInvitesRefreshTimer) {
+        clearTimeout(myInvitesRefreshTimer);
+      }
+      myInvitesRefreshTimer = setTimeout(() => {
+        void loadMyInvites();
+      }, 120);
+    };
 
     if (currentUserId) {
       const membershipChannel = supabase
@@ -367,7 +400,7 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           'postgres_changes',
           { event: '*', schema: 'public', table: 'org_members', filter: `user_id=eq.${currentUserId}` },
           () => {
-            void loadOrganizations();
+            scheduleOrganizationsRefresh();
           }
         )
         .subscribe();
@@ -390,8 +423,8 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
               }
             }
 
-            void loadMyInvites();
-            void loadOrganizations();
+            scheduleMyInvitesRefresh();
+            scheduleOrganizationsRefresh();
           }
         )
         .subscribe();
@@ -399,6 +432,12 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
 
     return () => {
+      if (organizationsRefreshTimer) {
+        clearTimeout(organizationsRefreshTimer);
+      }
+      if (myInvitesRefreshTimer) {
+        clearTimeout(myInvitesRefreshTimer);
+      }
       channels.forEach((channel) => {
         supabase.removeChannel(channel);
       });

@@ -479,7 +479,6 @@ const translations: Translations = {
 };
 
 const STORAGE_KEY = 'nexus-language';
-const LEGACY_STORAGE_KEY = 'krigzis-language';
 
 const DEFAULT_LANGUAGE: Language = 'pt-BR';
 
@@ -489,7 +488,7 @@ export const useI18n = () => {
   // Load language from localStorage on mount
   useEffect(() => {
     try {
-      const storedLanguage = (localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY)) as Language;
+      const storedLanguage = localStorage.getItem(STORAGE_KEY) as Language | null;
       if (storedLanguage && translations[storedLanguage]) {
         setCurrentLanguage(storedLanguage);
         localStorage.setItem(STORAGE_KEY, storedLanguage);

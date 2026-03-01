@@ -239,9 +239,6 @@ const DEFAULT_SETTINGS: UserSettings = {
 const SETTINGS_STORAGE_KEY = 'nexus-user-settings';
 const SYSTEM_INFO_STORAGE_KEY = 'nexus-system-info';
 const SESSION_INFO_STORAGE_KEY = 'nexus-session-info';
-const LEGACY_SETTINGS_STORAGE_KEY = 'krigzis-user-settings';
-const LEGACY_SYSTEM_INFO_STORAGE_KEY = 'krigzis-system-info';
-const LEGACY_SESSION_INFO_STORAGE_KEY = 'krigzis-session-info';
 
 // Generate unique machine ID
 const generateMachineId = (): string => {
@@ -450,7 +447,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const loadSettings = () => {
     try {
-      const stored = localStorage.getItem(SETTINGS_STORAGE_KEY) || localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY);
+      const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
       if (stored) {
         const parsedSettings = JSON.parse(stored);
 
@@ -471,7 +468,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         // Salvar as configurações migradas
         localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updatedSettings));
-        localStorage.removeItem(LEGACY_SETTINGS_STORAGE_KEY);
       }
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -522,7 +518,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch { /* fallback */ }
 
     try {
-      const storedSystemInfo = localStorage.getItem(SYSTEM_INFO_STORAGE_KEY) || localStorage.getItem(LEGACY_SYSTEM_INFO_STORAGE_KEY);
+      const storedSystemInfo = localStorage.getItem(SYSTEM_INFO_STORAGE_KEY);
 
       if (!storedSystemInfo) {
         // First time setup - generate system info
@@ -544,7 +540,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
         parsedSystemInfo.lastUpdate = new Date().toISOString();
         localStorage.setItem(SYSTEM_INFO_STORAGE_KEY, JSON.stringify(parsedSystemInfo));
-        localStorage.removeItem(LEGACY_SYSTEM_INFO_STORAGE_KEY);
 
         setSystemInfo(parsedSystemInfo);
       }
@@ -563,13 +558,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const loadSessionInfo = () => {
     try {
-      const stored = localStorage.getItem(SESSION_INFO_STORAGE_KEY) || localStorage.getItem(LEGACY_SESSION_INFO_STORAGE_KEY);
+      const stored = localStorage.getItem(SESSION_INFO_STORAGE_KEY);
 
       if (stored) {
         const parsedSessionInfo = JSON.parse(stored);
         setSessionInfo(parsedSessionInfo);
         localStorage.setItem(SESSION_INFO_STORAGE_KEY, JSON.stringify(parsedSessionInfo));
-        localStorage.removeItem(LEGACY_SESSION_INFO_STORAGE_KEY);
       }
     } catch (error) {
       console.error('Error loading session info:', error);
@@ -624,7 +618,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const allKeys = Object.keys(localStorage);
 
       allKeys.forEach(key => {
-        if ((key.startsWith('krigzis-') || key.startsWith('nexus-')) && !keysToKeep.includes(key)) {
+        if (key.startsWith('nexus-') && !keysToKeep.includes(key)) {
           localStorage.removeItem(key);
         }
       });
@@ -657,12 +651,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const prepareForDistribution = (): boolean => {
     try {
       // Lista de chaves que devem ser mantidas na distribuição
-      const systemKeys = [SYSTEM_INFO_STORAGE_KEY, LEGACY_SYSTEM_INFO_STORAGE_KEY];
+      const systemKeys = [SYSTEM_INFO_STORAGE_KEY];
 
       // Limpar todos os dados do usuário, mantendo apenas configurações do sistema
       const allKeys = Object.keys(localStorage);
       allKeys.forEach(key => {
-        if ((key.startsWith('krigzis-') || key.startsWith('nexus-')) && !systemKeys.includes(key)) {
+        if (key.startsWith('nexus-') && !systemKeys.includes(key)) {
           localStorage.removeItem(key);
         }
       });

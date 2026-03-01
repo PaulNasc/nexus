@@ -18,9 +18,8 @@ import { useToast } from './components/Toast';
 import { useAppearance } from './hooks/useAppearance';
 import { Task, TaskStatus } from '../shared/types/task';
 import { Screen } from '../shared/types/navigation';
-import { ThemeConfig } from './types/theme';
 import { UserSettings } from './hooks/useSettings';
-import { Settings as SettingsIcon, LogOut, StickyNote } from 'lucide-react';
+import { Settings as SettingsIcon, LogOut, StickyNote, Sun, Moon, ChevronUp, ChevronDown } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import ProactiveSuggestionsWidget from './components/ProactiveSuggestionsWidget';
 import UpdateNotification from './components/UpdateNotification';
@@ -53,12 +52,13 @@ interface AppHeaderProps {
   settings: UserSettings;
   settingsVersion: number;
   navigation: AppNavigationState;
-  theme: ThemeConfig;
   systemInfo: { platform: string; version: string; };
   goToDashboard: () => void;
   openTimer: () => void;
   openReports: () => void;
   openNotes: () => void;
+  effectiveMode: 'light' | 'dark';
+  onToggleTheme: () => void;
   handleOpenSettings: () => void;
   // handleOpenTaskModal: () => void;
   handleOpenNoteModal: () => void;
@@ -74,6 +74,8 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   openTimer,
   openReports,
   openNotes,
+  effectiveMode,
+  onToggleTheme,
   handleOpenSettings,
   // handleOpenTaskModal,
   handleOpenNoteModal,
@@ -114,6 +116,16 @@ const AppHeader: React.FC<AppHeaderProps> = ({
           <div className="header-icon-group">
             <button
               className="header-icon-btn"
+              onClick={onToggleTheme}
+              title={effectiveMode === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
+            >
+              {effectiveMode === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              <span className="header-tooltip">
+                {effectiveMode === 'dark' ? 'Modo claro' : 'Modo escuro'}
+              </span>
+            </button>
+            <button
+              className="header-icon-btn"
               onClick={handleOpenSettings}
               title="Configurações"
             >
@@ -130,20 +142,6 @@ const AppHeader: React.FC<AppHeaderProps> = ({
             </button>
           </div>
           <div className="header-action-group">
-            {/*
-              Hotfix: botão "Nova Tarefa" removido por solicitação do usuário.
-              Mantemos o bloco comentado para rastreabilidade do rollback.
-            */}
-            {/**
-            <button
-              className="header-action-btn header-action-btn--task"
-              onClick={handleOpenTaskModal}
-              title="Nova Tarefa"
-            >
-              <ListTodo size={16} />
-              <span className="header-tooltip">Nova Tarefa</span>
-            </button>
-            */}
             <button
               className="header-action-btn header-action-btn--note"
               onClick={handleOpenNoteModal}
@@ -175,9 +173,9 @@ const App: React.FC<AppProps> = () => {
   const [dailyGoalReached, setDailyGoalReached] = useState(false);
 
   // Theme hook
-  const { theme } = useTheme();
+  const { theme, effectiveMode, toggleMode } = useTheme();
   useI18n();
-  const { settings, settingsVersion } = useSettings();
+  const { settings, settingsVersion, updateSettings } = useSettings();
 
   // Aplicar configurações de aparência
   useAppearance();
@@ -369,6 +367,10 @@ const App: React.FC<AppProps> = () => {
     setIsSettingsOpen(false);
   };
 
+  const toggleHeaderVisibility = () => {
+    updateSettings({ showAppHeader: !settings.showAppHeader });
+  };
+
   // Task operations — TaskModal already handles create/update internally,
   // so this callback only shows the toast feedback.
   const handleSaveTask = async (_savedTask: Task) => {
@@ -432,6 +434,82 @@ const App: React.FC<AppProps> = () => {
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
 
+  const headerToggleButtonStyle: React.CSSProperties = settings.showAppHeader
+    ? {
+      position: 'fixed',
+      top: 56,
+      left: '50%',
+      transform: 'translateX(-50%)',
+      zIndex: 1200,
+      minWidth: 28,
+      height: 22,
+      borderRadius: 999,
+      padding: '0 8px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backdropFilter: 'blur(6px)',
+      backgroundColor: effectiveMode === 'dark' ? 'rgba(20,20,20,0.92)' : 'rgba(255,255,255,0.92)',
+      border: effectiveMode === 'dark' ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(15,23,42,0.12)',
+      color: effectiveMode === 'dark' ? '#A0A0A0' : '#475569',
+    }
+    : {
+      position: 'fixed',
+      top: 10,
+      left: '50%',
+      transform: 'translateX(-50%)',
+      zIndex: 1200,
+      minWidth: 28,
+      height: 22,
+      borderRadius: 999,
+      padding: '0 8px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backdropFilter: 'blur(6px)',
+      backgroundColor: effectiveMode === 'dark' ? 'rgba(20,20,20,0.92)' : 'rgba(255,255,255,0.92)',
+      border: effectiveMode === 'dark' ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(15,23,42,0.12)',
+      color: effectiveMode === 'dark' ? '#A0A0A0' : '#475569',
+    };
+
+  const renderAppHeader = () => {
+    if (!settings.showAppHeader) return null;
+
+    return (
+      <AppHeader
+        key={settingsVersion}
+        settings={settings}
+        settingsVersion={settingsVersion}
+        navigation={navigation}
+        systemInfo={systemInfo}
+        goToDashboard={goToDashboard}
+        openTimer={openTimer}
+        openReports={openReports}
+        openNotes={openNotes}
+        effectiveMode={effectiveMode}
+        onToggleTheme={toggleMode}
+        handleOpenSettings={handleOpenSettings}
+        // handleOpenTaskModal={handleOpenTaskModal}
+        handleOpenNoteModal={() => setIsNoteModalOpen(true)}
+        onSignOut={signOut}
+      />
+    );
+  };
+
+  const renderHeaderVisibilityToggle = () => (
+    <button
+      className="header-icon-btn"
+      onClick={toggleHeaderVisibility}
+      title={settings.showAppHeader ? 'Ocultar menu superior' : 'Mostrar menu superior'}
+      style={headerToggleButtonStyle}
+    >
+      {settings.showAppHeader ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      <span className="header-tooltip">
+        {settings.showAppHeader ? 'Ocultar menu superior' : 'Mostrar menu superior'}
+      </span>
+    </button>
+  );
+
   if (isLoading || tasksLoading) {
     return (
       <div className="loading-screen">
@@ -485,23 +563,8 @@ const App: React.FC<AppProps> = () => {
 
     return (
       <div className="app-container" data-theme={theme.mode}>
-        <AppHeader
-          key={settingsVersion}
-          settings={settings}
-          settingsVersion={settingsVersion}
-          navigation={navigation}
-          theme={theme}
-          systemInfo={systemInfo}
-          goToDashboard={goToDashboard}
-          openTimer={openTimer}
-          openReports={openReports}
-          openNotes={openNotes}
-          handleOpenSettings={handleOpenSettings}
-          // handleOpenTaskModal={handleOpenTaskModal}
-          handleOpenNoteModal={() => setIsNoteModalOpen(true)}
-          onSignOut={signOut}
-        />
-
+        {renderAppHeader()}
+        {renderHeaderVisibilityToggle()}
         <main className="app-main">
           <TaskList
             title={getListTitle(navigation.selectedList)}
@@ -535,23 +598,8 @@ const App: React.FC<AppProps> = () => {
   // Dashboard principal com abas para Timer e Reports
   return (
     <div className="app-container" data-theme={theme.mode}>
-      <AppHeader
-        key={settingsVersion}
-        settings={settings}
-        settingsVersion={settingsVersion}
-        navigation={navigation}
-        theme={theme}
-        systemInfo={systemInfo}
-        goToDashboard={goToDashboard}
-        openTimer={openTimer}
-        openReports={openReports}
-        openNotes={openNotes}
-        handleOpenSettings={handleOpenSettings}
-        // handleOpenTaskModal={handleOpenTaskModal}
-        handleOpenNoteModal={() => setIsNoteModalOpen(true)}
-        onSignOut={signOut}
-      />
-
+      {renderAppHeader()}
+      {renderHeaderVisibilityToggle()}
       <main className="app-main">
         {navigation.currentScreen === 'dashboard' && (
           <Dashboard
@@ -575,7 +623,7 @@ const App: React.FC<AppProps> = () => {
           </div>
         )}
         {navigation.currentScreen === 'notes' && (
-          <Notes onBack={goToDashboard} initialNoteId={navigation.selectedNoteId} />
+          <Notes initialNoteId={navigation.selectedNoteId} />
         )}
 
         <NoteModal

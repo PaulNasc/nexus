@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNotes } from '../contexts/NotesContext';
 import { useSettings } from '../hooks/useSettings';
 import { useSystemTags } from '../contexts/SystemTagsContext';
+import { useOrganization } from '../contexts/OrganizationContext';
+import { useI18n } from '../hooks/useI18n';
 
 import { Note, CreateNoteData } from '../../shared/types/note';
 import { Button } from './ui/Button';
@@ -9,19 +11,20 @@ import { Badge } from './ui/Badge';
 import { Input } from './ui/Input';
 import { NoteEditor } from './NoteEditor';
 import { LinkedTasksModal } from './LinkedTasksModal';
-import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, ChevronLeft, Pencil, CheckSquare, Square, Filter, X, ArrowUpDown } from 'lucide-react';
+import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, Pencil, CheckSquare, Square, Filter, X, ArrowUpDown, Users } from 'lucide-react';
 
 import { NoteViewerModal } from './NoteViewerModal';
 
-interface NotesProps {
-  onBack?: () => void;
+export interface NotesProps {
   initialNoteId?: number;
 }
 
-export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
+export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
   const { notes, isLoading, error, fetchNotes, deleteNote, createNote, updateNote } = useNotes();
-  const { settings } = useSettings();
+  const { settings, getGreeting } = useSettings();
   const { tags: systemTags } = useSystemTags();
+  const { activeOrg } = useOrganization();
+  const { t } = useI18n();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
@@ -299,6 +302,12 @@ export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
     return getColorClass(note.color);
   }, [getColorClass, getSystemTagForNote]);
 
+  const greetingText = useMemo(() => {
+    const greetingKey = getGreeting();
+    const displayName = settings.userName?.trim() || 'Usuario';
+    return t(greetingKey, { name: displayName });
+  }, [getGreeting, settings.userName, t]);
+
   const renderTagBadges = useCallback((note: Note) => {
     if (!note.tags || note.tags.length === 0) return null;
 
@@ -350,18 +359,19 @@ export const Notes: React.FC<NotesProps> = ({ onBack, initialNoteId }) => {
     <div className="notes-container">
       <div className="notes-header">
         <div className="notes-title-section">
-
-          {onBack && (
-            <button onClick={onBack} title="Voltar ao Dashboard" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: '1px solid var(--color-border-primary)', borderRadius: '8px', width: '36px', height: '36px', color: 'var(--color-text-secondary)', cursor: 'pointer', transition: 'all 0.2s ease', marginRight: 'var(--space-3)' }}>
-              <ChevronLeft size={18} strokeWidth={1.7} />
-            </button>
-          )}
+          <p className="notes-greeting">{greetingText}</p>
           <div className="notes-title-group">
             <StickyNote size={28} className="notes-icon" />
             <h1 className="notes-title">Notas</h1>
+            {activeOrg && (
+              <span className="notes-org-tag">
+                <Users size={12} /> {activeOrg.name}
+              </span>
+            )}
             <Badge variant="secondary" className="notes-count">{filteredNotes.length}</Badge>
           </div>
         </div>
+
         {settings.showNotesMenu && (
           <div className="notes-actions">
             <div className="search-container">

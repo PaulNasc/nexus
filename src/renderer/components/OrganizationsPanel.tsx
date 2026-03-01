@@ -31,7 +31,7 @@ interface OrganizationsPanelProps {
   isDark: boolean;
 }
 
-type PanelView = 'list' | 'create' | 'details' | 'invite' | 'join' | 'myInvites';
+type PanelView = 'list' | 'create' | 'details' | 'invite' | 'join';
 
 export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }) => {
   const {
@@ -188,6 +188,30 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
     setTimeout(() => setFeedback(null), 4000);
   };
 
+  const executeBooleanAction = async (
+    action: () => Promise<boolean>,
+    successMsg: string,
+    errorMsg: string,
+    onSuccess?: () => void,
+  ): Promise<boolean> => {
+    setActionLoading(true);
+    try {
+      const ok = await action();
+      if (ok) {
+        showFeedback('success', successMsg);
+        onSuccess?.();
+        return true;
+      }
+      showFeedback('error', errorMsg);
+      return false;
+    } catch (err) {
+      showFeedback('error', err instanceof Error ? err.message : errorMsg);
+      return false;
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const cardStyle: React.CSSProperties = {
     padding: '16px',
     borderRadius: '12px',
@@ -273,15 +297,13 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
 
   const handleInvite = async () => {
     if (!inviteEmail.trim()) return;
-    setActionLoading(true);
-    const ok = await inviteMember(inviteEmail.trim(), inviteRole);
-    setActionLoading(false);
-    if (ok) {
-      showFeedback('success', `Convite enviado para ${inviteEmail}`);
-      setInviteEmail('');
-    } else {
-      showFeedback('error', 'Erro ao enviar convite');
-    }
+    const email = inviteEmail.trim();
+    await executeBooleanAction(
+      () => inviteMember(email, inviteRole),
+      `Convite enviado para ${email}`,
+      'Erro ao enviar convite',
+      () => setInviteEmail(''),
+    );
   };
 
   const handleSearchOrg = async () => {
@@ -299,40 +321,94 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
 
   const handleRequestJoin = async () => {
     if (!foundOrg) return;
-    setActionLoading(true);
-    const ok = await requestToJoin(foundOrg.id, joinMessage.trim());
-    setActionLoading(false);
-    if (ok) {
-      showFeedback('success', 'Pedido de entrada enviado!');
-      setJoinSlug('');
-      setJoinMessage('');
-      setFoundOrg(null);
-      setView('list');
-    } else {
-      showFeedback('error', 'Erro ao enviar pedido');
-    }
+    await executeBooleanAction(
+      () => requestToJoin(foundOrg.id, joinMessage.trim()),
+      'Pedido de entrada enviado!',
+      'Erro ao enviar pedido',
+      () => {
+        setJoinSlug('');
+        setJoinMessage('');
+        setFoundOrg(null);
+        setView('list');
+      },
+    );
   };
 
   const handleLeave = async (orgId: string) => {
     if (!confirm('Tem certeza que deseja sair desta organização?')) return;
-    setActionLoading(true);
-    const ok = await leaveOrganization(orgId);
-    setActionLoading(false);
-    if (ok) {
-      showFeedback('success', 'Você saiu da organização');
-      setView('list');
-    }
+    await executeBooleanAction(
+      () => leaveOrganization(orgId),
+      'Você saiu da organização',
+      'Erro ao sair da organização',
+      () => setView('list'),
+    );
   };
 
   const handleDelete = async (orgId: string) => {
     if (!confirm('Tem certeza? Todos os dados da organização serão perdidos.')) return;
-    setActionLoading(true);
-    const ok = await deleteOrganization(orgId);
-    setActionLoading(false);
-    if (ok) {
-      showFeedback('success', 'Organização excluída');
-      setView('list');
-    }
+    await executeBooleanAction(
+      () => deleteOrganization(orgId),
+      'Organização excluída',
+      'Erro ao excluir organização',
+      () => setView('list'),
+    );
+  };
+
+  const handleAcceptInviteAction = async (inviteId: string) => {
+    await executeBooleanAction(
+      () => acceptInvite(inviteId),
+      'Convite aceito!',
+      'Erro ao aceitar convite',
+    );
+  };
+
+  const handleDeclineInviteAction = async (inviteId: string) => {
+    await executeBooleanAction(
+      () => declineInvite(inviteId),
+      'Convite recusado',
+      'Erro ao recusar convite',
+    );
+  };
+
+  const handleCancelInviteAction = async (inviteId: string) => {
+    await executeBooleanAction(
+      () => cancelInvite(inviteId),
+      'Convite cancelado',
+      'Erro ao cancelar convite',
+    );
+  };
+
+  const handleApproveJoinRequestAction = async (requestId: string) => {
+    await executeBooleanAction(
+      () => approveJoinRequest(requestId),
+      'Pedido aprovado',
+      'Erro ao aprovar pedido',
+    );
+  };
+
+  const handleRejectJoinRequestAction = async (requestId: string) => {
+    await executeBooleanAction(
+      () => rejectJoinRequest(requestId),
+      'Pedido rejeitado',
+      'Erro ao rejeitar pedido',
+    );
+  };
+
+  const handleUpdateMemberRoleAction = async (memberId: number, role: 'admin' | 'member') => {
+    await executeBooleanAction(
+      () => updateMemberRole(memberId, role),
+      'Cargo atualizado',
+      'Erro ao atualizar cargo',
+    );
+  };
+
+  const handleRemoveMemberAction = async (memberId: number, memberLabel: string) => {
+    if (!confirm(`Remover ${memberLabel}?`)) return;
+    await executeBooleanAction(
+      () => removeMember(memberId),
+      'Membro removido',
+      'Erro ao remover membro',
+    );
   };
 
   const copyToClipboard = (text: string) => {
@@ -446,20 +522,16 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                   </div>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <button
-                      style={{ ...btnPrimary, padding: '6px 12px', fontSize: '12px' }}
-                      onClick={async () => {
-                        await acceptInvite(inv.id);
-                        showFeedback('success', 'Convite aceito!');
-                      }}
+                      style={{ ...btnPrimary, padding: '6px 12px', fontSize: '12px', opacity: actionLoading ? 0.6 : 1 }}
+                      onClick={() => void handleAcceptInviteAction(inv.id)}
+                      disabled={actionLoading}
                     >
                       <Check size={14} /> Aceitar
                     </button>
                     <button
-                      style={{ ...btnDanger, padding: '6px 12px', fontSize: '12px' }}
-                      onClick={async () => {
-                        await declineInvite(inv.id);
-                        showFeedback('success', 'Convite recusado');
-                      }}
+                      style={{ ...btnDanger, padding: '6px 12px', fontSize: '12px', opacity: actionLoading ? 0.6 : 1 }}
+                      onClick={() => void handleDeclineInviteAction(inv.id)}
+                      disabled={actionLoading}
                     >
                       <X size={14} /> Recusar
                     </button>
@@ -718,9 +790,8 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                       {myRole === 'owner' && (
                         <select
                           value={m.role}
-                          onChange={async (e) => {
-                            await updateMemberRole(m.id, e.target.value as 'admin' | 'member');
-                            showFeedback('success', 'Cargo atualizado');
+                          onChange={(e) => {
+                            void handleUpdateMemberRoleAction(m.id, e.target.value as 'admin' | 'member');
                           }}
                           style={{
                             padding: '4px 8px',
@@ -730,6 +801,7 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                             color: isDark ? '#CCC' : '#374151',
                             fontSize: '12px',
                           }}
+                          disabled={actionLoading}
                         >
                           <option value="member">Membro</option>
                           <option value="admin">Admin</option>
@@ -737,12 +809,8 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                       )}
                       <button
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
-                        onClick={async () => {
-                          if (confirm(`Remover ${m.display_name || m.email}?`)) {
-                            await removeMember(m.id);
-                            showFeedback('success', 'Membro removido');
-                          }
-                        }}
+                        onClick={() => void handleRemoveMemberAction(m.id, m.display_name || m.email || 'membro')}
+                        disabled={actionLoading}
                       >
                         <Trash2 size={14} color="#EF4444" />
                       </button>
@@ -776,11 +844,9 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                     </div>
                   </div>
                   <button
-                    style={{ ...btnDanger, padding: '4px 10px', fontSize: '11px' }}
-                    onClick={async () => {
-                      await cancelInvite(inv.id);
-                      showFeedback('success', 'Convite cancelado');
-                    }}
+                    style={{ ...btnDanger, padding: '4px 10px', fontSize: '11px', opacity: actionLoading ? 0.6 : 1 }}
+                    onClick={() => void handleCancelInviteAction(inv.id)}
+                    disabled={actionLoading}
                   >
                     <X size={12} /> Cancelar
                   </button>
@@ -817,20 +883,16 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                   </div>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <button
-                      style={{ ...btnPrimary, padding: '6px 10px', fontSize: '11px' }}
-                      onClick={async () => {
-                        await approveJoinRequest(req.id);
-                        showFeedback('success', 'Pedido aprovado');
-                      }}
+                      style={{ ...btnPrimary, padding: '6px 10px', fontSize: '11px', opacity: actionLoading ? 0.6 : 1 }}
+                      onClick={() => void handleApproveJoinRequestAction(req.id)}
+                      disabled={actionLoading}
                     >
                       <Check size={12} /> Aprovar
                     </button>
                     <button
-                      style={{ ...btnDanger, padding: '6px 10px', fontSize: '11px' }}
-                      onClick={async () => {
-                        await rejectJoinRequest(req.id);
-                        showFeedback('success', 'Pedido rejeitado');
-                      }}
+                      style={{ ...btnDanger, padding: '6px 10px', fontSize: '11px', opacity: actionLoading ? 0.6 : 1 }}
+                      onClick={() => void handleRejectJoinRequestAction(req.id)}
+                      disabled={actionLoading}
                     >
                       <X size={12} /> Rejeitar
                     </button>

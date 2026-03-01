@@ -358,7 +358,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     systemInfo,
   } = useSettings();
   const { t, currentLanguage, changeLanguage, getAvailableLanguages } = useI18n();
-  const { theme: rawTheme, effectiveMode } = useTheme();
+  const { theme: rawTheme } = useTheme();
   const { showNotification } = useNotifications();
   const { createTask } = useTasks();
   const { createNote, fetchNotes } = useNotes();
@@ -378,8 +378,10 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   type ExportFormat = Parameters<ImportExportModalPropsType['onExport']>[0];
   const [initialImportIntent, setInitialImportIntent] = useState<ImportIntent | null>(null);
 
-  const isDark = effectiveMode === 'dark';
-  const theme = { ...rawTheme, mode: effectiveMode };
+  const resolvedMode: 'light' | 'dark' =
+    document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  const isDark = resolvedMode === 'dark';
+  const theme = { ...rawTheme, mode: resolvedMode };
 
   const getElectron = () => (window as unknown as { electronAPI: import('../../main/preload').ElectronAPI }).electronAPI;
 

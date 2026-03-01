@@ -1,5 +1,10 @@
 ## Changelog
 
+### v1.1.7
+- Notes: Header actions/filters aligned with the bottom separator line for cleaner visual consistency.
+- Organizations: Reduced redundant realtime refresh calls and improved async feedback handling in organization actions.
+- Storage: Added one-time migration from legacy `krigzis-*` keys to `nexus-*` keys and removed legacy fallback reads.
+
 ### v1.1.2
 - Notes: Video attachments now follow backups and can be relinked on another machine if missing.
 - Backup: Include nexus-videos in export/import to keep video notes playable across devices.

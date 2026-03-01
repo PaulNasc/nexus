@@ -9,8 +9,9 @@ import { CategoriesProvider } from './contexts/CategoriesContext';
 import { OrganizationProvider } from './contexts/OrganizationContext';
 import { SystemTagsProvider } from './contexts/SystemTagsContext';
 import AuthScreen from './components/AuthScreen';
+import { migrateLegacyStorageKeys } from './utils/migrateLegacyStorage';
 
-console.log('index.tsx loaded');
+migrateLegacyStorageKeys();
 
 // Tratamento de erro global
 window.addEventListener('error', (event) => {
@@ -67,10 +68,8 @@ const RootApp: React.FC = () => {
 };
 
 const container = document.getElementById('root');
-console.log('Container element:', container);
 
 if (container) {
-  console.log('Creating React 18 root...');
   try {
     const root = createRoot(container);
     root.render(
@@ -78,7 +77,6 @@ if (container) {
         <RootApp />
       </AuthProvider>
     );
-    console.log('App rendered successfully with React 18');
   } catch (error) {
     console.error('Error rendering app:', error);
     container.innerHTML = `

@@ -404,23 +404,16 @@ const fetchNotes = useCallback(async () => {
     return fetchInFlightRef.current;
   }
 
-  console.log('[NotesContext] fetchNotes called, useCloud:', useCloud, 'useLocal:', useLocal, 'activeOrg:', activeOrg?.id);
-
   const promise = (async () => {
     if (!initialLoadDone.current) setIsLoading(true);
     setError(null);
     try {
       let result: Note[] = [];
       if (useCloud) {
-        console.log('[NotesContext] Fetching from cloud...');
         result = await fetchNotesCloud();
-        console.log('[NotesContext] Cloud fetch returned', result.length, 'notes');
       } else if (useLocal) {
-        console.log('[NotesContext] Fetching from local...');
         result = await fetchNotesLocal();
-        console.log('[NotesContext] Local fetch returned', result.length, 'notes');
       }
-      console.log('[NotesContext] Setting notes state with', result.length, 'notes');
       setNotes(result);
     } catch (err) {
       console.error('[NotesContext] fetchNotes error:', err);
@@ -428,12 +421,9 @@ const fetchNotes = useCallback(async () => {
       // Fallback to local if cloud fails
       if (useCloud && useLocal) {
         try {
-          console.log('[NotesContext] Cloud failed, trying local fallback...');
           const localNotes = await fetchNotesLocal();
-          console.log('[NotesContext] Local fallback returned', localNotes.length, 'notes');
           setNotes(localNotes);
         } catch {
-          console.log('[NotesContext] Local fallback also failed');
           setNotes([]);
         }
       }
@@ -456,33 +446,27 @@ const fetchNotes = useCallback(async () => {
 }, [useCloud, useLocal, fetchNotesCloud, fetchNotesLocal, activeOrg?.id]);
 
 const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | null> => {
-console.log('[NotesContext] createNote called:', { title: noteData.title, useCloud, useLocal, orgId: activeOrg?.id });
-setError(null);
-try {
-let created: Note | null = null;
+  setError(null);
+  try {
+    let created: Note | null = null;
 
-if (useCloud) {
-console.log('[NotesContext] Creating note in cloud...');
-created = await createNoteCloud(noteData);
-console.log('[NotesContext] Cloud create result:', created?.id);
-} else if (useLocal) {
-console.log('[NotesContext] Creating note locally...');
-created = await createNoteLocal(noteData);
-console.log('[NotesContext] Local create result:', created?.id);
-}
-if (created) {
-console.log('[NotesContext] Adding created note to state');
-setNotes(prev => (prev.some(n => n.id === created!.id) ? prev : [created, ...prev]));
-} else {
-console.log('[NotesContext] Note creation returned null');
-}
-return created;
-} catch (err) {
-console.error('[NotesContext] createNote error:', err);
-setError(err instanceof Error ? err.message : 'Erro ao criar nota');
-return null;
-}
-}, [useCloud, useLocal, createNoteCloud, createNoteLocal, activeOrg]);
+    if (useCloud) {
+      created = await createNoteCloud(noteData);
+    } else if (useLocal) {
+      created = await createNoteLocal(noteData);
+    }
+
+    if (created) {
+      setNotes(prev => (prev.some(n => n.id === created!.id) ? prev : [created, ...prev]));
+    }
+
+    return created;
+  } catch (err) {
+    console.error('[NotesContext] createNote error:', err);
+    setError(err instanceof Error ? err.message : 'Erro ao criar nota');
+    return null;
+  }
+}, [useCloud, useLocal, createNoteCloud, createNoteLocal]);
 
   const updateNote = useCallback(async (id: number, updates: UpdateNoteData): Promise<Note | null> => {
     setError(null);
