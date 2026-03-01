@@ -396,8 +396,8 @@ export class AppUpdater {
   /**
    * Portable install: use a batch script to:
    * 1. Wait for the current process to exit
-   * 2. Replace the old exe with the new one
-   * 3. Restart the new exe
+   * 2. Promote the downloaded .update to the target versioned exe
+   * 3. Restart using the new versioned exe
    */
   private quitAndInstallPortable(): void {
     if (!this.portableDownloadPath || !fs.existsSync(this.portableDownloadPath)) {
@@ -407,11 +407,22 @@ export class AppUpdater {
     }
 
     const exePath = app.getPath('exe');
-    const updatePath = this.portableDownloadPath;
-    const batchPath = path.join(path.dirname(exePath), '_nexus_update.bat');
+    const nextVersion = this.status.version;
+    if (!nextVersion) {
+      logger.error('Portable update version is missing before install', 'updater');
+      this.setStatus({ state: 'error', error: 'Versão da atualização não identificada.', isPortable: true });
+      return;
+    }
 
-    // Create a batch script that waits, swaps, and restarts
+    const exeDir = path.dirname(exePath);
+    const targetExeName = `Nexus-${nextVersion}-x64.exe`;
+    const targetExePath = path.join(exeDir, targetExeName);
+    const updatePath = this.portableDownloadPath;
+    const batchPath = path.join(exeDir, '_nexus_update.bat');
+
+    // Create a batch script that waits, promotes update file, and restarts
     const batchContent = `@echo off
+setlocal
 title Nexus - Atualizando...
 echo Aguardando o Nexus fechar...
 timeout /t 2 /nobreak >nul
@@ -422,17 +433,42 @@ if not errorlevel 1 (
   goto waitloop
 )
 echo Aplicando atualizacao...
-del "${exePath}"
-move "${updatePath}" "${exePath}"
+if exist "${targetExePath}" del /f /q "${targetExePath}" >nul 2>&1
+move /y "${updatePath}" "${targetExePath}" >nul
+if errorlevel 1 (
+  echo Falha ao mover atualizacao.
+  echo Tentando reabrir versao atual...
+  start "" "${exePath}"
+  del "%~f0"
+  endlocal
+  exit /b 1
+)
+
+if not exist "${targetExePath}" (
+  echo Arquivo final da atualizacao nao encontrado.
+  echo Tentando reabrir versao atual...
+  start "" "${exePath}"
+  del "%~f0"
+  endlocal
+  exit /b 1
+)
+
 echo Reiniciando Nexus...
-start "" "${exePath}"
+start "" "${targetExePath}"
 del "%~f0"
-exit
+endlocal
+exit /b 0
 `;
 
     try {
       fs.writeFileSync(batchPath, batchContent, { encoding: 'utf-8' });
-      logger.info('Portable update batch created, restarting...', 'updater', { batchPath });
+      logger.info('Portable update batch created, restarting...', 'updater', {
+        batchPath,
+        currentExePath: exePath,
+        updatePath,
+        targetExePath,
+        nextVersion,
+      });
 
       // Launch the batch script detached
       const child = spawn('cmd.exe', ['/c', batchPath], {
