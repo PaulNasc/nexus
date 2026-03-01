@@ -52,8 +52,9 @@ export interface ImportExportModalProps {
   onClose: () => void;
   onExport: (format: ExportFormat) => Promise<void>;
   onImportPreview: (intent: ImportIntent) => Promise<RestorePreview | null>;
-  onImportApply: (intent: ImportIntent, options?: { color?: string }) => Promise<ImportResult | null>;
+  onImportApply: (intent: ImportIntent, options?: { color?: string; systemTagId?: number }) => Promise<ImportResult | null>;
   initialImportIntent?: ImportIntent | null;
+  systemTagOptions?: Array<{ id: number; name: string; color: string; is_active?: boolean }>;
 }
 
 export const ImportExportModal: React.FC<ImportExportModalProps> = ({
@@ -64,6 +65,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   onImportPreview,
   onImportApply,
   initialImportIntent,
+  systemTagOptions = [],
 }) => {
   const [isBusy, setIsBusy] = useState(false);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('zip');
@@ -73,6 +75,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [hasApplied, setHasApplied] = useState(false);
   const [importColor, setImportColor] = useState<string>('teal');
+  const [importSystemTagId, setImportSystemTagId] = useState<number | ''>('');
   const applyInFlightRef = useRef(false);
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
@@ -103,6 +106,15 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   const title = useMemo(() => {
     return mode === 'import' ? 'Importar' : 'Exportar';
   }, [mode]);
+
+  useEffect(() => {
+    if (!open || mode !== 'import' || !preview || hasApplied) return;
+    if (importSystemTagId !== '') return;
+    const firstActive = systemTagOptions.find((tag) => tag.is_active !== false);
+    if (firstActive) {
+      setImportSystemTagId(firstActive.id);
+    }
+  }, [open, mode, preview, hasApplied, importSystemTagId, systemTagOptions]);
 
   useEffect(() => {
     if (!open) return;
@@ -144,6 +156,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     applyInFlightRef.current = false;
     setProgress(0);
     setProgressLabel('');
+    setImportSystemTagId('');
     if (progressTimerRef.current) clearInterval(progressTimerRef.current);
     progressTimerRef.current = null;
   };
@@ -356,7 +369,10 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     setIsBusy(true);
     startProgress('Importando dados...');
     try {
-      const r = await onImportApply(intent, { color: importColor });
+      const r = await onImportApply(intent, {
+        color: importColor,
+        systemTagId: importSystemTagId === '' ? undefined : importSystemTagId,
+      });
       setResult(r);
       if (r?.success) {
         setHasApplied(true);
@@ -549,6 +565,33 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                     }}
                   />
                 ))}
+              </div>
+            )}
+
+            {preview && !hasApplied && systemTagOptions.length > 0 && (
+              <div style={{ display: 'grid', gap: '8px' }}>
+                <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>Tag principal de sistema:</span>
+                <select
+                  value={importSystemTagId}
+                  onChange={(e) => setImportSystemTagId(e.target.value ? Number(e.target.value) : '')}
+                  style={{
+                    padding: '10px 12px',
+                    backgroundColor: 'var(--color-bg-primary)',
+                    border: '1px solid var(--color-border-primary)',
+                    borderRadius: '8px',
+                    color: 'var(--color-text-primary)',
+                    fontSize: '14px',
+                  }}
+                >
+                  <option value="">Sem tag de sistema</option>
+                  {systemTagOptions
+                    .filter((tag) => tag.is_active !== false)
+                    .map((tag) => (
+                      <option key={tag.id} value={tag.id}>
+                        {tag.name}
+                      </option>
+                    ))}
+                </select>
               </div>
             )}
 

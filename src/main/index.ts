@@ -855,6 +855,16 @@ class MainApplication {
 
     // === VIDEO IPC HANDLERS ===
     const videosDir = path.join(app.getPath('userData'), 'nexus-videos');
+    const safeVideoName = (fileName: string): string => path.basename(String(fileName || ''));
+    const mimeFromVideoName = (fileName: string): string => {
+      const ext = path.extname(fileName).toLowerCase();
+      if (ext === '.webm') return 'video/webm';
+      if (ext === '.ogg') return 'video/ogg';
+      if (ext === '.mov') return 'video/quicktime';
+      if (ext === '.avi') return 'video/x-msvideo';
+      if (ext === '.mkv') return 'video/x-matroska';
+      return 'video/mp4';
+    };
 
     ipcMain.handle('video:getVideosDir', async () => {
       if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
@@ -864,7 +874,7 @@ class MainApplication {
     ipcMain.handle('video:copyToLocal', async (_event, sourcePath: string, fileName: string) => {
       try {
         if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
-        const destPath = path.join(videosDir, fileName);
+        const destPath = path.join(videosDir, safeVideoName(fileName));
         await fs.promises.copyFile(sourcePath, destPath);
         return { success: true, localPath: destPath };
       } catch (error) {
@@ -873,18 +883,48 @@ class MainApplication {
     });
 
     ipcMain.handle('video:checkLocal', async (_event, fileName: string) => {
-      const localPath = path.join(videosDir, fileName);
+      const localPath = path.join(videosDir, safeVideoName(fileName));
       const exists = fs.existsSync(localPath);
       return { exists, localPath: exists ? localPath : undefined };
     });
 
     ipcMain.handle('video:getLocalPath', async (_event, fileName: string) => {
-      return path.join(videosDir, fileName);
+      return path.join(videosDir, safeVideoName(fileName));
+    });
+
+    ipcMain.handle('video:readLocalAsBase64', async (_event, fileName: string) => {
+      try {
+        const safeName = safeVideoName(fileName);
+        const localPath = path.join(videosDir, safeName);
+        if (!fs.existsSync(localPath)) return { success: false, error: 'Arquivo não encontrado' };
+        const buf = await fs.promises.readFile(localPath);
+        return {
+          success: true,
+          base64: buf.toString('base64'),
+          mimeType: mimeFromVideoName(safeName),
+          fileName: safeName,
+        };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    ipcMain.handle('video:writeBase64ToLocal', async (_event, fileName: string, base64: string) => {
+      try {
+        if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
+        const safeName = safeVideoName(fileName);
+        const localPath = path.join(videosDir, safeName);
+        const buf = Buffer.from(String(base64 || ''), 'base64');
+        await fs.promises.writeFile(localPath, buf);
+        return { success: true, localPath };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
     });
 
     ipcMain.handle('video:openExternal', async (_event, fileName: string) => {
       try {
-        const localPath = path.join(videosDir, fileName);
+        const localPath = path.join(videosDir, safeVideoName(fileName));
         if (!fs.existsSync(localPath)) return { success: false, error: 'Arquivo não encontrado' };
         await shell.openPath(localPath);
         return { success: true };
@@ -895,13 +935,14 @@ class MainApplication {
 
     ipcMain.handle('video:saveAs', async (_event, fileName: string) => {
       try {
-        const localPath = path.join(videosDir, fileName);
+        const safeName = safeVideoName(fileName);
+        const localPath = path.join(videosDir, safeName);
         if (!fs.existsSync(localPath)) return { success: false, error: 'Arquivo não encontrado' };
-        const ext = path.extname(fileName).replace('.', '');
+        const ext = path.extname(safeName).replace('.', '');
         const save = await dialog.showSaveDialog(this.mainWindow!, {
           title: 'Salvar vídeo',
           buttonLabel: 'Salvar',
-          defaultPath: fileName.replace(/^\d+-/, ''),
+          defaultPath: safeName.replace(/^\d+-/, ''),
           filters: [{ name: 'Vídeo', extensions: [ext || 'mp4'] }],
         });
         if (save.canceled || !save.filePath) return { success: false, canceled: true };

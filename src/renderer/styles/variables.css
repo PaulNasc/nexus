@@ -204,11 +204,36 @@
   --primary-600: #00b894;
 }
 
-/* Light theme removed - only dark theme supported */
+/* === LIGHT THEME OVERRIDES === */
+[data-theme="light"] {
+  --color-bg-primary: #FFFFFF;
+  --color-bg-secondary: #F9FAFB;
+  --color-bg-tertiary: #F3F4F6;
+  --color-bg-card: #FFFFFF;
+  --color-bg-elevated: #FFFFFF;
+  --color-bg-hover: #EEF2F7;
 
-/* === DARK MODE FORCED === */
-:root {
+  --color-border-primary: #E5E7EB;
+  --color-border-secondary: #D1D5DB;
+  --color-border-hover: #9CA3AF;
+
+  --color-text-primary: #111827;
+  --color-text-secondary: #374151;
+  --color-text-muted: #6B7280;
+  --color-text-disabled: #9CA3AF;
+
+  --gradient-card: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%);
+  --gradient-card-hover: linear-gradient(135deg, #FFFFFF 0%, #EEF2F7 100%);
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(17, 24, 39, 0.08);
+}
+
+[data-theme="dark"] {
   color-scheme: dark;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
 }
 
 /* === SMOOTH THEME TRANSITIONS === */
@@ -221,23 +246,11 @@ body,
 button,
 input,
 select,
-textarea,
-div[style*="background"],
-div[style*="border"],
-div[style*="color"] {
+textarea {
   transition: background-color var(--transition-theme), 
               border-color var(--transition-theme), 
               color var(--transition-theme),
               box-shadow var(--transition-theme);
-}
-
-/* Smooth transitions for interactive elements */
-[style*="background"], 
-[style*="color"], 
-[style*="border"] {
-  transition: background-color var(--transition-theme),
-              border-color var(--transition-theme),
-              color var(--transition-theme);
 }
 
 /* === ANIMATION UTILITIES === */

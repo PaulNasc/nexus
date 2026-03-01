@@ -2,9 +2,12 @@ import React, { useState } from 'react';
 import { useTheme } from '../hooks/useTheme';
 import { useNotes } from '../contexts/NotesContext';
 import { useTasks } from '../contexts/TasksContext';
+import { useSettings } from '../hooks/useSettings';
+import { useSystemTags } from '../contexts/SystemTagsContext';
+
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { X, Save, Link2 } from 'lucide-react';
+import { X, Save, Link2, Flag } from 'lucide-react';
 
 interface NoteModalProps {
   isOpen: boolean;
@@ -13,32 +16,44 @@ interface NoteModalProps {
 }
 
 export const NoteModal: React.FC<NoteModalProps> = ({ isOpen, onClose, modalTitle = 'Nova Nota' }) => {
-  const { theme } = useTheme();
+  const { effectiveMode } = useTheme();
   const { createNote } = useNotes();
   const { tasks } = useTasks();
+  const { settings } = useSettings();
+  const { tags: systemTags } = useSystemTags();
+
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [linkedTaskId, setLinkedTaskId] = useState<number | undefined>();
+  const [systemTagId, setSystemTagId] = useState<number | ''>('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const isDark = theme.mode === 'dark';
+  const isDark = effectiveMode === 'dark';
 
   const handleSave = async () => {
     if (!title.trim()) return;
+
+    const selectedSystemTag =
+      systemTagId === ''
+        ? undefined
+        : systemTags.find((tag) => tag.id === systemTagId && tag.is_active);
 
     setIsLoading(true);
     try {
       await createNote({
         title: title.trim(),
         content,
-        linkedTaskIds: linkedTaskId ? [linkedTaskId] : [],
-        format: 'text'
+        tags: selectedSystemTag ? [selectedSystemTag.name] : [],
+        linkedTaskIds: settings.showDashboard && linkedTaskId ? [linkedTaskId] : [],
+        format: 'text',
+        system_tag_id: selectedSystemTag?.id,
       });
-      
+
       // Reset form
       setTitle('');
       setContent('');
       setLinkedTaskId(undefined);
+      setSystemTagId('');
       onClose();
     } catch (error) {
       console.error('Erro ao criar nota:', error);
@@ -51,6 +66,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({ isOpen, onClose, modalTitl
     setTitle('');
     setContent('');
     setLinkedTaskId(undefined);
+    setSystemTagId('');
     onClose();
   };
 
@@ -169,41 +185,83 @@ export const NoteModal: React.FC<NoteModalProps> = ({ isOpen, onClose, modalTitl
           </div>
 
           {/* Vincular tarefa */}
-          <div>
-            <label style={{
-              display: 'flex',
-              fontSize: 14,
-              fontWeight: 500,
-              color: isDark ? 'var(--color-text-primary)' : '#374151',
-              marginBottom: 6,
-              alignItems: 'center',
-              gap: 6
-            }}>
-              <Link2 size={14} />
-              Vincular à Tarefa (opcional)
-            </label>
-            <select
-              value={linkedTaskId || ''}
-              onChange={(e) => setLinkedTaskId(e.target.value ? Number(e.target.value) : undefined)}
-              style={{
-                width: '100%',
-                padding: 12,
-                backgroundColor: isDark ? 'var(--color-bg-tertiary)' : '#F9FAFB',
-                border: `1px solid ${isDark ? 'var(--color-border-primary)' : '#E5E7EB'}`,
-                borderRadius: 8,
-                color: isDark ? 'var(--color-text-primary)' : '#1F2937',
+          {settings.showDashboard && (
+            <div>
+              <label style={{
+                display: 'flex',
                 fontSize: 14,
-                outline: 'none'
-              }}
-            >
-              <option value="">Nenhuma tarefa</option>
-              {tasks.map(task => (
-                <option key={task.id} value={task.id}>
-                  {task.title}
-                </option>
-              ))}
-            </select>
-          </div>
+                fontWeight: 500,
+                color: isDark ? 'var(--color-text-primary)' : '#374151',
+                marginBottom: 6,
+                alignItems: 'center',
+                gap: 6
+              }}>
+                <Link2 size={14} />
+                Vincular à Tarefa (opcional)
+              </label>
+              <select
+                value={linkedTaskId || ''}
+                onChange={(e) => setLinkedTaskId(e.target.value ? Number(e.target.value) : undefined)}
+                style={{
+                  width: '100%',
+                  padding: 12,
+                  backgroundColor: isDark ? 'var(--color-bg-tertiary)' : '#F9FAFB',
+                  border: `1px solid ${isDark ? 'var(--color-border-primary)' : '#E5E7EB'}`,
+                  borderRadius: 8,
+                  color: isDark ? 'var(--color-text-primary)' : '#1F2937',
+                  fontSize: 14,
+                  outline: 'none'
+                }}
+              >
+                <option value="">Nenhuma tarefa</option>
+                {tasks.map(task => (
+                  <option key={task.id} value={task.id}>
+                    {task.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {systemTags.some((tag) => tag.is_active) && (
+            <div>
+              <label style={{
+                display: 'flex',
+                fontSize: 14,
+                fontWeight: 500,
+                color: isDark ? 'var(--color-text-primary)' : '#374151',
+                marginBottom: 6,
+                alignItems: 'center',
+                gap: 6,
+              }}>
+                <Flag size={14} />
+                Tag principal de sistema (opcional)
+              </label>
+              <select
+                value={systemTagId}
+                onChange={(e) => setSystemTagId(e.target.value ? Number(e.target.value) : '')}
+                style={{
+                  width: '100%',
+                  padding: 12,
+                  backgroundColor: isDark ? 'var(--color-bg-tertiary)' : '#F9FAFB',
+                  border: `1px solid ${isDark ? 'var(--color-border-primary)' : '#E5E7EB'}`,
+                  borderRadius: 8,
+                  color: isDark ? 'var(--color-text-primary)' : '#1F2937',
+                  fontSize: 14,
+                  outline: 'none',
+                }}
+              >
+                <option value="">Sem tag de sistema</option>
+                {systemTags
+                  .filter((tag) => tag.is_active)
+                  .map((tag) => (
+                    <option key={tag.id} value={tag.id}>
+                      {tag.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

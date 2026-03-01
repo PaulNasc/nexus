@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useContext, createContext, useRef } from 'react';
 import { Language } from './useI18n';
 import { supabase } from '../lib/supabase';
+import { getEnforcedModuleVisibility, NOTES_ONLY_RELEASE } from '../config/featureFlags';
 
 export interface TaskStatusCard {
   id: string;
@@ -52,12 +53,15 @@ export interface UserSettings {
   showTimer: boolean;
   showReports: boolean;
   showNotes: boolean;
+  showDashboard: boolean;
+  showNotesMenu: boolean;
+  showAppHeader: boolean;
   showQuickActions: boolean;
   highContrastMode: boolean;
   largeFontMode: boolean;
   showTaskCounters: boolean;
-  keyboardNavigation?: boolean;
-  focusIndicators?: boolean;
+  keyboardNavigation: boolean;
+  focusIndicators: boolean;
 
   // Appearance
   fontSizePx?: number;
@@ -188,13 +192,18 @@ const DEFAULT_SETTINGS: UserSettings = {
   backupFolder: undefined,
   keepBackups: 10,
   cloudSync: false,
-  showTimer: true,
-  showReports: true,
+  showTimer: false,
+  showReports: false,
   showNotes: true,
+  showDashboard: false,
+  showNotesMenu: true,
+  showAppHeader: true,
   showQuickActions: true,
   highContrastMode: false,
   largeFontMode: false,
   showTaskCounters: true,
+  keyboardNavigation: true,
+  focusIndicators: true,
 
   // Data Management
   storageType: 'localStorage',
@@ -223,7 +232,7 @@ const DEFAULT_SETTINGS: UserSettings = {
 
   taskCards: DEFAULT_TASK_CARDS,
   quickActions: DEFAULT_QUICK_ACTIONS,
-  tabOrder: ['dashboard', 'notes', 'reports'], // Ordem padrão das abas
+  tabOrder: ['notes'],
 };
 
 const SETTINGS_STORAGE_KEY = 'nexus-user-settings';
@@ -283,6 +292,25 @@ interface SettingsContextType {
 
 const SettingsContext = createContext<SettingsContextType | null>(null);
 
+const enforceModuleSettings = (base: UserSettings): UserSettings => {
+  const enforced = getEnforcedModuleVisibility({
+    showDashboard: base.showDashboard,
+    showTimer: base.showTimer,
+    showReports: base.showReports,
+    showNotes: base.showNotes,
+  });
+
+  const tabOrder = NOTES_ONLY_RELEASE
+    ? ['notes']
+    : (Array.isArray(base.tabOrder) && base.tabOrder.length > 0 ? base.tabOrder : DEFAULT_SETTINGS.tabOrder);
+
+  return {
+    ...base,
+    ...enforced,
+    tabOrder,
+  };
+};
+
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [settingsVersion, setSettingsVersion] = useState(0);
@@ -302,9 +330,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return; // not logged in, skip sync
+        const enforcedSettings = enforceModuleSettings(settingsToSync);
         await supabase.from('user_settings').upsert({
           user_id: user.id,
-          settings: settingsToSync,
+          settings: enforcedSettings,
           updated_at: new Date().toISOString(),
         });
       } catch (err) {
@@ -334,7 +363,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const remoteSettings = data.settings as Partial<UserSettings>;
         // Merge: remote wins for non-empty values
         setSettings(prev => {
-          const merged = { ...prev, ...remoteSettings };
+          const merged = enforceModuleSettings({ ...prev, ...remoteSettings });
           // If userName is empty, use the display_name from auth profile
           if (!merged.userName && profileName) {
             merged.userName = profileName;
@@ -346,7 +375,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // No remote settings yet — at least set userName from auth profile
         setSettings(prev => {
           if (!prev.userName) {
-            const updated = { ...prev, userName: profileName };
+            const updated = enforceModuleSettings({ ...prev, userName: profileName });
             localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updated));
             return updated;
           }
@@ -365,6 +394,55 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     loadSessionInfo();
     // After local load, try to merge from Supabase
     loadSettingsFromSupabase();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Realtime sync: reflect user_settings updates from other devices immediately
+  useEffect(() => {
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const subscribe = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      channel = supabase
+        .channel(`user-settings-realtime-${user.id}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'user_settings', filter: `user_id=eq.${user.id}` },
+          (payload) => {
+            const row = payload.new as { settings?: unknown };
+            if (!row?.settings || typeof row.settings !== 'object') return;
+
+            const incoming = enforceModuleSettings({
+              ...DEFAULT_SETTINGS,
+              ...(row.settings as Partial<UserSettings>),
+            });
+
+            setSettings((prev) => {
+              const prevRaw = JSON.stringify(prev);
+              const incomingRaw = JSON.stringify(incoming);
+              if (prevRaw === incomingRaw) return prev;
+
+              try {
+                localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(incoming));
+              } catch (error) {
+                console.error('Error saving realtime settings:', error);
+              }
+
+              setSettingsVersion((v) => v + 1);
+              return incoming;
+            });
+          }
+        )
+        .subscribe();
+    };
+
+    void subscribe();
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
   }, []);
 
   const loadSettings = () => {
@@ -376,11 +454,11 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // Migração: Adicionar novas ações rápidas se não existirem
         const migratedQuickActions = migrateQuickActions(parsedSettings.quickActions || []);
 
-        const updatedSettings = {
+        const updatedSettings = enforceModuleSettings({
           ...DEFAULT_SETTINGS,
           ...parsedSettings,
           quickActions: migratedQuickActions
-        };
+        });
 
         if (updatedSettings.backupFrequency === 'monthly') {
           updatedSettings.backupFrequency = 'weekly';
@@ -422,12 +500,18 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Fetch real version from electron-updater (app.getVersion())
     let appVersion = '1.0.0';
     let hwMachineId = '';
+    const electron = (window as unknown as {
+      electronAPI?: {
+        updater?: { getVersion?: () => Promise<string> };
+        system?: { getMachineId?: () => Promise<string> };
+      };
+    }).electronAPI;
     try {
-      if (window.electronAPI?.updater?.getVersion) {
-        appVersion = await window.electronAPI.updater.getVersion() || appVersion;
+      if (electron?.updater?.getVersion) {
+        appVersion = await electron.updater.getVersion() || appVersion;
       }
-      if (window.electronAPI?.system?.getMachineId) {
-        hwMachineId = await window.electronAPI.system.getMachineId();
+      if (electron?.system?.getMachineId) {
+        hwMachineId = await electron.system.getMachineId();
       }
     } catch { /* fallback */ }
 
@@ -487,7 +571,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateSettings = (newSettings: Partial<UserSettings>) => {
-    const updatedSettings = { ...settings, ...newSettings };
+    const updatedSettings = enforceModuleSettings({ ...settings, ...newSettings });
+
     setSettings(updatedSettings);
     setSettingsVersion(v => v + 1);
     try {
@@ -517,9 +602,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const resetSettings = () => {
-    setSettings(DEFAULT_SETTINGS);
+    const reset = enforceModuleSettings(DEFAULT_SETTINGS);
+    setSettings(reset);
     try {
-      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(DEFAULT_SETTINGS));
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(reset));
     } catch (error) {
       console.error('Error resetting settings:', error);
     }
@@ -538,13 +624,13 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
 
       // Reset to default settings
-      setSettings(DEFAULT_SETTINGS);
+      const reset = enforceModuleSettings(DEFAULT_SETTINGS);
+      setSettings(reset);
       setSessionInfo({ isHost: true, isConnected: false });
 
       // Clear Supabase data for current user
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        await supabase.from('note_task_links').delete().eq('user_id', user.id);
         await supabase.from('tasks').delete().eq('user_id', user.id);
         await supabase.from('notes').delete().eq('user_id', user.id);
         await supabase.from('categories').delete().eq('user_id', user.id).eq('is_system', false);
@@ -552,7 +638,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
 
       // Save default settings
-      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(DEFAULT_SETTINGS));
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(reset));
 
       return true;
     } catch (error) {
@@ -576,13 +662,13 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
 
       // Resetar configurações para padrão
-      const cleanSettings: UserSettings = {
+      const cleanSettings = enforceModuleSettings({
         ...DEFAULT_SETTINGS,
         userName: '', // Usuário define seu nome
         storageType: 'localStorage' as const, // Padrão para novos usuários
         dataPath: undefined, // Usuário escolhe local
         databaseLocation: undefined
-      };
+      });
 
       setSettings(cleanSettings);
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(cleanSettings));

@@ -171,6 +171,8 @@ export interface ElectronAPI {
     copyToLocal: (sourcePath: string, fileName: string) => Promise<{ success: boolean; localPath?: string; error?: string }>;
     checkLocal: (fileName: string) => Promise<{ exists: boolean; localPath?: string }>;
     getLocalPath: (fileName: string) => Promise<string>;
+    readLocalAsBase64: (fileName: string) => Promise<{ success: boolean; base64?: string; mimeType?: string; fileName?: string; error?: string }>;
+    writeBase64ToLocal: (fileName: string, base64: string) => Promise<{ success: boolean; localPath?: string; error?: string }>;
     selectVideoFile: () => Promise<{ canceled: boolean; filePath?: string; fileName?: string; size?: number }>;
     getVideosDir: () => Promise<string>;
     openExternal: (fileName: string) => Promise<{ success: boolean; error?: string }>;
@@ -340,6 +342,8 @@ const electronAPI: ElectronAPI = {
     copyToLocal: (sourcePath: string, fileName: string) => ipcRenderer.invoke('video:copyToLocal', sourcePath, fileName),
     checkLocal: (fileName: string) => ipcRenderer.invoke('video:checkLocal', fileName),
     getLocalPath: (fileName: string) => ipcRenderer.invoke('video:getLocalPath', fileName),
+    readLocalAsBase64: (fileName: string) => ipcRenderer.invoke('video:readLocalAsBase64', fileName),
+    writeBase64ToLocal: (fileName: string, base64: string) => ipcRenderer.invoke('video:writeBase64ToLocal', fileName, base64),
     selectVideoFile: () => ipcRenderer.invoke('video:selectVideoFile'),
     getVideosDir: () => ipcRenderer.invoke('video:getVideosDir'),
     openExternal: (fileName: string) => ipcRenderer.invoke('video:openExternal', fileName),

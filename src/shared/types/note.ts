@@ -16,6 +16,7 @@ export interface Note {
   color?: string;
   sequential_id?: number; // ID sequencial por organização
   creator_display_name?: string; // Nome do criador (via JOIN profiles)
+  system_tag_id?: number;
 }
 
 export interface NoteAttachment {
@@ -38,6 +39,7 @@ export interface CreateNoteData {
   color?: string;
   attachedImages?: string[]; // Array de imagens em base64
   attachedVideos?: string[]; // Array de nomes de arquivo de vídeo
+  system_tag_id?: number;
 }
 
 export interface UpdateNoteData extends Partial<CreateNoteData> {

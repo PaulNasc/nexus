@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useTheme } from '../hooks/useTheme';
 import { useTasks } from '../contexts/TasksContext';
+import { useSettings } from '../hooks/useSettings';
+import { useSystemTags } from '../contexts/SystemTagsContext';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { 
@@ -12,6 +14,7 @@ import {
 } from 'lucide-react';
 import type { ElectronAPI } from '../../main/preload';
 import { Note, CreateNoteData } from '../../shared/types/note';
+import { parseVideoRef } from '../utils/videoAttachment';
 
 interface NoteEditorProps {
   note?: Note | null;
@@ -28,8 +31,10 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
   onBack,
   onClose 
 }) => {
-  const { theme } = useTheme();
+  const { effectiveMode } = useTheme();
   const { tasks } = useTasks();
+  const { settings } = useSettings();
+  const { tags: systemTags } = useSystemTags();
   const [title, setTitle] = useState(note?.title || '');
   const [content, setContent] = useState(note?.content || '');
   const [tags, setTags] = useState<string[]>(note?.tags || []);
@@ -48,6 +53,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
   const [copied, setCopied] = useState(false);
   const [splitView, setSplitView] = useState(false);
   const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
+  const [systemTagId, setSystemTagId] = useState<number | ''>(note?.system_tag_id ?? '');
 
   const getElectron = (): ElectronAPI | null => {
     return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI || null;
@@ -55,7 +61,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const isDark = theme.mode === 'dark';
+  const isDark = effectiveMode === 'dark';
 
   // Função para converter arquivo para base64
   const fileToBase64 = useCallback((file: File): Promise<string> => {
@@ -177,18 +183,58 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
     }
   }, [note]);
 
+  useEffect(() => {
+    setTitle(note?.title || '');
+    setContent(note?.content || '');
+    setTags(note?.tags || []);
+    setLinkedTaskIds(note?.linkedTaskIds || []);
+    setColor(note?.color || '');
+    setFormat(note?.format || 'text');
+    setAttachedImages(note?.attachedImages || []);
+    setAttachedVideos(note?.attachedVideos || []);
+    setSystemTagId(note?.system_tag_id ?? '');
+  }, [note]);
+
+  useEffect(() => {
+    if (!note || systemTagId !== '') return;
+    if (note.system_tag_id !== undefined) {
+      setSystemTagId(note.system_tag_id);
+      return;
+    }
+    const matched = systemTags.find((tag) =>
+      tag.is_active && note.tags?.some((noteTag) => noteTag.toLowerCase() === tag.name.toLowerCase()),
+    );
+    if (matched) {
+      setSystemTagId(matched.id);
+    }
+  }, [note, systemTags, systemTagId]);
+
   const handleSave = () => {
     if (!title.trim()) return;
+
+    const selectedSystemTag =
+      systemTagId === ''
+        ? undefined
+        : systemTags.find((tag) => tag.id === systemTagId && tag.is_active);
+
+    const previousSystemTagName = note?.system_tag_id !== undefined
+      ? systemTags.find((tag) => tag.id === note.system_tag_id)?.name
+      : systemTags.find((tag) => note?.tags?.some((noteTag) => noteTag.toLowerCase() === tag.name.toLowerCase()))?.name;
+
+    const mergedTags = selectedSystemTag
+      ? [selectedSystemTag.name, ...tags.filter((tag) => tag.toLowerCase() !== selectedSystemTag.name.toLowerCase())]
+      : tags.filter((tag) => (previousSystemTagName ? tag.toLowerCase() !== previousSystemTagName.toLowerCase() : true));
     
     const noteData: CreateNoteData = {
       title: title.trim(),
       content,
       format,
-      tags,
-      linkedTaskIds,
+      tags: mergedTags,
+      linkedTaskIds: settings.showDashboard ? linkedTaskIds : [],
       color: color || undefined,
       attachedImages,
       attachedVideos,
+      system_tag_id: selectedSystemTag?.id,
     };
 
     if (onSave) {
@@ -476,7 +522,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
                     {attachedVideos.map((videoName, index) => (
                       <div key={index} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', backgroundColor: isDark ? '#2A2A2A' : '#F3F4F6', borderRadius: 4, fontSize: 11 }}>
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: isDark ? 'var(--color-text-secondary)' : '#6B7280' }}>
-                          {videoName.replace(/^\d+-/, '')}
+                          {(parseVideoRef(videoName).localFileName || videoName).replace(/^\d+-/, '')}
                         </span>
                         <button onClick={() => removeVideo(index)} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', flexShrink: 0 }} title="Remover">
                           <X size={10} />
@@ -512,35 +558,60 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
                 )}
               </div>
 
+              {/* Tag principal de sistema */}
+              {systemTags.some((tag) => tag.is_active) && (
+                <div>
+                  <h4 style={{ fontSize: 12, fontWeight: 600, color: isDark ? 'var(--color-text-primary)' : '#1F2937', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Tag size={14} /> Tag principal de sistema
+                  </h4>
+                  <select
+                    value={systemTagId}
+                    onChange={(e) => setSystemTagId(e.target.value ? Number(e.target.value) : '')}
+                    style={{ width: '100%', background: isDark ? 'var(--color-bg-tertiary)' : '#F9FAFB', border: `1px solid ${isDark ? 'var(--color-border-primary)' : '#E5E7EB'}`, color: isDark ? 'var(--color-text-primary)' : '#374151', padding: '6px 8px', borderRadius: 4, fontSize: 11 }}
+                  >
+                    <option value="">Sem tag de sistema</option>
+                    {systemTags
+                      .filter((tag) => tag.is_active)
+                      .map((tag) => (
+                        <option key={tag.id} value={tag.id}>{tag.name}</option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
               {/* Vincular Tarefa */}
-              <div>
-                <button onClick={() => setIsLinkedTasksExpanded(!isLinkedTasksExpanded)} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', padding: 0, marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, fontWeight: 600, color: isDark ? 'var(--color-text-primary)' : '#1F2937' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Link2 size={14} /> Tarefas ({linkedTaskIds.length})</span>
-                  {isLinkedTasksExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                </button>
-                {isLinkedTasksExpanded && (
-                  <div>
-                    <select value="" onChange={(e) => { if (e.target.value) { const id = Number(e.target.value); if (!linkedTaskIds.includes(id)) setLinkedTaskIds([...linkedTaskIds, id]); } }}
-                      style={{ width: '100%', background: isDark ? 'var(--color-bg-tertiary)' : '#F9FAFB', border: `1px solid ${isDark ? 'var(--color-border-primary)' : '#E5E7EB'}`, color: isDark ? 'var(--color-text-primary)' : '#374151', padding: '4px 8px', borderRadius: 4, fontSize: 11 }}>
-                      <option value="">Adicionar tarefa...</option>
-                      {tasks.filter(t => !linkedTaskIds.includes(t.id)).map(t => (<option key={t.id} value={t.id}>{t.title}</option>))}
-                    </select>
-                    {linkedTaskIds.length > 0 && (
-                      <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        {linkedTaskIds.map(taskId => {
-                          const task = tasks.find(t => t.id === taskId);
-                          return task ? (
-                            <div key={taskId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 6px', backgroundColor: isDark ? '#2A2A2A' : '#F3F4F6', borderRadius: 3, fontSize: 11 }}>
-                              <span>{task.title}</span>
-                              <button onClick={() => setLinkedTaskIds(linkedTaskIds.filter(id => id !== taskId))} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: 12 }}>×</button>
-                            </div>
-                          ) : null;
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              {settings.showDashboard && (
+                <div>
+                  <button onClick={() => setIsLinkedTasksExpanded(!isLinkedTasksExpanded)} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', padding: 0, marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, fontWeight: 600, color: isDark ? 'var(--color-text-primary)' : '#1F2937' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Link2 size={14} /> Tarefas ({linkedTaskIds.length})</span>
+                    {isLinkedTasksExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+                  {isLinkedTasksExpanded && (
+                    <div>
+                      <select value="" onChange={(e) => { if (e.target.value) { const id = Number(e.target.value); if (!linkedTaskIds.includes(id)) setLinkedTaskIds([...linkedTaskIds, id]); } }}
+                        style={{ width: '100%', background: isDark ? 'var(--color-bg-tertiary)' : '#F9FAFB', border: `1px solid ${isDark ? 'var(--color-border-primary)' : '#E5E7EB'}`, color: isDark ? 'var(--color-text-primary)' : '#374151', padding: '4px 8px', borderRadius: 4, fontSize: 11 }}>
+                        <option value="">Adicionar tarefa...</option>
+                        {tasks.filter((t) => !linkedTaskIds.includes(t.id)).map((t) => (
+                          <option key={t.id} value={t.id}>{t.title}</option>
+                        ))}
+                      </select>
+                      {linkedTaskIds.length > 0 && (
+                        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          {linkedTaskIds.map((taskId) => {
+                            const task = tasks.find((t) => t.id === taskId);
+                            return task ? (
+                              <div key={taskId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 6px', backgroundColor: isDark ? '#2A2A2A' : '#F3F4F6', borderRadius: 3, fontSize: 11 }}>
+                                <span>{task.title}</span>
+                                <button onClick={() => setLinkedTaskIds(linkedTaskIds.filter(id => id !== taskId))} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: 12 }}>×</button>
+                              </div>
+                            ) : null;
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

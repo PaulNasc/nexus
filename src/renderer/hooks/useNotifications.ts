@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useSettings } from './useSettings';
 
 export type NotificationPermission = 'default' | 'granted' | 'denied';
 
@@ -14,9 +15,24 @@ interface NotificationOptions {
     title: string;
     icon?: string;
   }>;
+  // If provided, notification respects this user preference key
+  preferenceKey?: 'notifyTaskReminders' | 'notifyTodayTasks' | 'notifyOverdueTasks' | 'notifyProductivityInsights';
+  // Bypass user notification toggles (used for organization-critical events)
+  force?: boolean;
+}
+
+interface ElectronNotificationsApi {
+  notifications?: {
+    showNative?: (options: { title: string; body?: string; icon?: string }) => Promise<unknown>;
+  };
+}
+
+interface WindowAudioConstructor {
+  new (): AudioContext;
 }
 
 export const useNotifications = () => {
+  const { settings } = useSettings();
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [isSupported, setIsSupported] = useState(false);
 
@@ -46,7 +62,11 @@ export const useNotifications = () => {
   const playNotificationSound = useCallback(() => {
     try {
       // Simple beep sound using Web Audio API
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const fallbackAudio = (window as unknown as { webkitAudioContext?: WindowAudioConstructor }).webkitAudioContext;
+      const AudioCtor = window.AudioContext || fallbackAudio;
+      if (!AudioCtor) return;
+
+      const audioContext = new AudioCtor();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
       
@@ -67,7 +87,15 @@ export const useNotifications = () => {
   }, []);
 
   const showNotification = useCallback((options: NotificationOptions): Notification | null => {
-    const electronAPI = (window as any).electronAPI;
+    const shouldRespectSettings = !options.force;
+    const perPreferenceEnabled = options.preferenceKey ? settings[options.preferenceKey] !== false : true;
+    const notificationsEnabled = settings.showNotifications !== false;
+
+    if (shouldRespectSettings && (!notificationsEnabled || !perPreferenceEnabled)) {
+      return null;
+    }
+
+    const electronAPI = (window as unknown as { electronAPI?: ElectronNotificationsApi }).electronAPI;
     
     // Prefer native Electron notifications
     if (electronAPI?.notifications?.showNative) {
@@ -75,7 +103,7 @@ export const useNotifications = () => {
         title: options.title,
         body: options.body,
         icon: options.icon
-      }).catch((error: any) => {
+      }).catch((error: unknown) => {
         console.error('Error showing native notification:', error);
       });
       
@@ -110,7 +138,7 @@ export const useNotifications = () => {
       console.error('Error showing notification:', error);
       return null;
     }
-  }, [isSupported, permission]);
+  }, [isSupported, permission, settings]);
 
   // Predefined notification types
   const showTaskReminder = useCallback((taskTitle: string, dueDate?: string) => {
@@ -123,6 +151,7 @@ export const useNotifications = () => {
       body,
       tag: 'task-reminder',
       requireInteraction: true,
+      preferenceKey: 'notifyTaskReminders',
     });
   }, [showNotification]);
 

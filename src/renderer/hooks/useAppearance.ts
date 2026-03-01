@@ -1,6 +1,34 @@
 import { useEffect } from 'react';
 import { useSettings } from './useSettings';
 
+const BASE_FONT_SIZE = 14;
+const FONT_BASE_ATTR = 'data-nexus-base-font-size';
+
+const applyTypographyScale = (targetFontSize: number) => {
+  const scale = Math.max(0.85, Math.min(1.6, targetFontSize / BASE_FONT_SIZE));
+
+  const applyToElement = (element: Element) => {
+    if (!(element instanceof HTMLElement)) return;
+    if (['SCRIPT', 'STYLE', 'NOSCRIPT'].includes(element.tagName)) return;
+
+    const existingBase = element.getAttribute(FONT_BASE_ATTR);
+    const baseFontSize = existingBase
+      ? Number.parseFloat(existingBase)
+      : Number.parseFloat(window.getComputedStyle(element).fontSize);
+
+    if (!Number.isFinite(baseFontSize) || baseFontSize <= 0) return;
+    if (!existingBase) {
+      element.setAttribute(FONT_BASE_ATTR, String(baseFontSize));
+    }
+
+    const scaledFont = Math.max(11, Math.round(baseFontSize * scale * 100) / 100);
+    element.style.fontSize = `${scaledFont}px`;
+  };
+
+  applyToElement(document.body);
+  document.body.querySelectorAll('*').forEach(applyToElement);
+};
+
 /**
  * Hook para aplicar configurações de aparência em tempo real
  */
@@ -13,6 +41,9 @@ export const useAppearance = () => {
     // Aplicar tamanho da fonte
     const fontSize = settings.fontSizePx ?? (settings.largeFontMode ? 16 : 14);
     html.style.fontSize = `${fontSize}px`;
+
+    // Escala global somente de tipografia (sem ampliar layout/conteineres)
+    applyTypographyScale(fontSize);
     
     // Aplicar modo alto contraste
     html.classList.toggle('high-contrast', settings.highContrastMode);
@@ -68,6 +99,7 @@ export const useAppearance = () => {
       const html = document.documentElement;
       const fontSize = settings.fontSizePx ?? (settings.largeFontMode ? 16 : 14);
       html.style.fontSize = `${fontSize}px`;
+      applyTypographyScale(fontSize);
       html.classList.toggle('high-contrast', settings.highContrastMode);
       html.classList.toggle('reduce-motion', settings.reduceAnimations || false);
       html.setAttribute('data-density', settings.interfaceDensity || 'normal');

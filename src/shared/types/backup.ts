@@ -67,6 +67,8 @@ export interface ImportResult {
     attachedVideos?: string[];
     linkedTaskIds?: number[];
     color?: string;
+    systemTagId?: number;
+    systemTagName?: string;
   }>;
   importedTasks?: Array<{
     title: string;

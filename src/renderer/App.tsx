@@ -84,7 +84,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
     : (systemInfo?.version ? String(systemInfo.version) : '');
 
   const tabs = [
-    { key: 'dashboard', label: 'Dashboard', onClick: goToDashboard },
+    ...(settings.showDashboard ? [{ key: 'dashboard', label: 'Dashboard', onClick: goToDashboard }] : []),
     ...(settings.showTimer ? [{ key: 'timer', label: 'Timer', onClick: openTimer }] : []),
     ...(settings.showNotes ? [{ key: 'notes', label: 'Notas', onClick: openNotes }] : []),
     ...(settings.showReports ? [{ key: 'reports', label: 'Relatórios', onClick: openReports }] : [])
@@ -160,7 +160,7 @@ const App: React.FC<AppProps> = () => {
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
   const [navigation, setNavigation] = useState<AppNavigationState>({
-    currentScreen: 'dashboard'
+    currentScreen: 'notes'
   });
   const [systemInfo, setSystemInfo] = useState<{
     platform: string;
@@ -304,6 +304,10 @@ const App: React.FC<AppProps> = () => {
   };
 
   const goToDashboard = () => {
+    if (!settings.showDashboard) {
+      openNotes();
+      return;
+    }
     navigateTo('dashboard');
   };
 
@@ -326,6 +330,12 @@ const App: React.FC<AppProps> = () => {
   const openNoteById = (noteId: number) => {
     setNavigation({ currentScreen: 'notes', selectedNoteId: noteId });
   };
+
+  useEffect(() => {
+    if (navigation.currentScreen === 'dashboard' && !settings.showDashboard) {
+      openNotes();
+    }
+  }, [navigation.currentScreen, settings.showDashboard]);
 
   // Modal functions
   const handleOpenTaskModal = () => {

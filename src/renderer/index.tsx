@@ -7,6 +7,7 @@ import { TasksProvider } from './contexts/TasksContext';
 import { NotesProvider } from './contexts/NotesContext';
 import { CategoriesProvider } from './contexts/CategoriesContext';
 import { OrganizationProvider } from './contexts/OrganizationContext';
+import { SystemTagsProvider } from './contexts/SystemTagsContext';
 import AuthScreen from './components/AuthScreen';
 
 console.log('index.tsx loaded');
@@ -47,13 +48,15 @@ const RootApp: React.FC = () => {
     return (
       <SettingsProvider>
         <OrganizationProvider>
-          <TasksProvider>
-            <NotesProvider>
-              <CategoriesProvider>
-                <App />
-              </CategoriesProvider>
-            </NotesProvider>
-          </TasksProvider>
+          <SystemTagsProvider>
+            <TasksProvider>
+              <NotesProvider>
+                <CategoriesProvider>
+                  <App />
+                </CategoriesProvider>
+              </NotesProvider>
+            </TasksProvider>
+          </SystemTagsProvider>
         </OrganizationProvider>
       </SettingsProvider>
     );

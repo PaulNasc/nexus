@@ -3,6 +3,9 @@ import { Button } from './ui/Button';
 import { X, Image as ImageIcon, FileText, FileCode2, Pin, Video, Download, Copy, Play, ExternalLink } from 'lucide-react';
 import type { ElectronAPI } from '../../main/preload';
 import { Note, NoteAttachment } from '../../shared/types/note';
+import { supabase } from '../lib/supabase';
+import { parseVideoRef } from '../utils/videoAttachment';
+import { downloadVideoBlobFromR2Signed } from '../lib/r2Videos';
 
 interface NoteViewerModalProps {
   isOpen: boolean;
@@ -83,11 +86,23 @@ const getElectron = (): ElectronAPI | null => {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI || null;
 };
 
+const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onloadend = () => {
+    const dataUrl = String(reader.result || '');
+    const commaIndex = dataUrl.indexOf(',');
+    resolve(commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl);
+  };
+  reader.onerror = () => reject(reader.error || new Error('Falha ao converter blob para base64'));
+  reader.readAsDataURL(blob);
+});
+
 export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, onClose, onTogglePin }) => {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [videoLightbox, setVideoLightbox] = useState<string | null>(null);
   const [videoUrls, setVideoUrls] = useState<Record<string, string>>({});
   const [videoPaths, setVideoPaths] = useState<Record<string, string>>({});
+  const [videoMissing, setVideoMissing] = useState<Record<string, boolean>>({});
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
 
   const hasVideos = useMemo(() => {
@@ -98,24 +113,111 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     if (!note?.attachedVideos || note.attachedVideos.length === 0) {
       setVideoUrls({});
       setVideoPaths({});
+      setVideoMissing({});
       return;
     }
     const electron = getElectron();
     if (!electron?.video) return;
 
+    let canceled = false;
+
     const resolve = async () => {
+      const { data: noteScopeData } = await supabase
+        .from('notes')
+        .select('user_id, organization_id')
+        .eq('id', note.id)
+        .maybeSingle();
+
+      const noteScope = noteScopeData as { user_id?: string | null; organization_id?: string | null } | null;
+      const noteOwnerId = noteScope?.user_id || null;
+      const noteOrgId = noteScope?.organization_id || null;
+
       const urls: Record<string, string> = {};
       const paths: Record<string, string> = {};
-      for (const name of note.attachedVideos!) {
-        const localPath = await electron.video.getLocalPath(name);
-        paths[name] = localPath;
-        urls[name] = `file://${localPath.replace(/\\/g, '/')}`;
+      const missing: Record<string, boolean> = {};
+      for (const videoRef of note.attachedVideos!) {
+        const parsed = parseVideoRef(videoRef);
+        const localVideoName = parsed.localFileName || videoRef;
+
+        const check = await electron.video.checkLocal(localVideoName);
+        if (check.exists && check.localPath) {
+          paths[videoRef] = check.localPath;
+          urls[videoRef] = `file://${check.localPath.replace(/\\/g, '/')}`;
+        } else {
+          let downloaded = false;
+          let lastDownloadError: string | null = null;
+
+          const candidateStoragePaths = new Set<string>();
+          if (parsed.storagePath) {
+            candidateStoragePaths.add(parsed.storagePath);
+          } else {
+            if (noteOrgId) {
+              candidateStoragePaths.add(`org/${noteOrgId}/${encodeURIComponent(localVideoName)}`);
+              candidateStoragePaths.add(`org/${noteOrgId}/${localVideoName}`);
+            }
+            if (noteOwnerId) {
+              candidateStoragePaths.add(`user/${noteOwnerId}/${encodeURIComponent(localVideoName)}`);
+              candidateStoragePaths.add(`user/${noteOwnerId}/${localVideoName}`);
+            }
+          }
+
+          if (candidateStoragePaths.size > 0) {
+            try {
+              for (const objectKey of candidateStoragePaths) {
+                let downloadedBlob: Blob;
+                try {
+                  downloadedBlob = await downloadVideoBlobFromR2Signed(objectKey);
+                } catch (r2Err) {
+                  lastDownloadError = r2Err instanceof Error
+                    ? r2Err.message
+                    : String(r2Err);
+                  continue;
+                }
+
+                const base64 = await blobToBase64(downloadedBlob);
+                const write = await electron.video.writeBase64ToLocal(localVideoName, base64);
+                if (write.success) {
+                  const localPath = write.localPath || await electron.video.getLocalPath(localVideoName);
+                  paths[videoRef] = localPath;
+                  urls[videoRef] = `file://${localPath.replace(/\\/g, '/')}`;
+                  downloaded = true;
+                  break;
+                }
+
+                lastDownloadError = write.error || 'Falha ao gravar vídeo localmente';
+              }
+            } catch (downloadError) {
+              lastDownloadError = downloadError instanceof Error ? downloadError.message : String(downloadError);
+            }
+
+            if (!downloaded && lastDownloadError) {
+              console.warn('NoteViewerModal cloud video download failed:', {
+                videoRef,
+                localVideoName,
+                candidateStoragePaths: Array.from(candidateStoragePaths),
+                error: lastDownloadError,
+              });
+            }
+          }
+
+          if (!downloaded) {
+            missing[videoRef] = true;
+            const expectedPath = await electron.video.getLocalPath(localVideoName);
+            paths[videoRef] = expectedPath;
+          }
+        }
       }
+      if (canceled) return;
       setVideoUrls(urls);
       setVideoPaths(paths);
+      setVideoMissing(missing);
     };
     resolve();
-  }, [note?.attachedVideos]);
+
+    return () => {
+      canceled = true;
+    };
+  }, [note?.attachedVideos, note?.id]);
 
   const hasImages = useMemo(() => {
     if (!note) return false;
@@ -147,28 +249,47 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     }
   };
 
-  const handleCopyVideoPath = async (videoName: string) => {
-    const p = videoPaths[videoName];
+  const handleCopyVideoPath = async (videoRef: string) => {
+    const p = videoPaths[videoRef];
     if (!p) return;
     try {
       await navigator.clipboard.writeText(p);
-      setCopiedPath(videoName);
+      setCopiedPath(videoRef);
       setTimeout(() => setCopiedPath(null), 2000);
     } catch (err) {
       console.error('Erro ao copiar caminho:', err);
     }
   };
 
-  const handleOpenVideoExternal = async (videoName: string) => {
+  const handleOpenVideoExternal = async (videoRef: string) => {
     const electron = getElectron();
     if (!electron?.video) return;
-    await electron.video.openExternal(videoName);
+    const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
+    await electron.video.openExternal(localVideoName);
   };
 
-  const handleSaveVideoAs = async (videoName: string) => {
+  const handleSaveVideoAs = async (videoRef: string) => {
     const electron = getElectron();
     if (!electron?.video) return;
-    await electron.video.saveAs(videoName);
+    const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
+    await electron.video.saveAs(localVideoName);
+  };
+
+  const handleRelinkVideo = async (videoRef: string) => {
+    const electron = getElectron();
+    if (!electron?.video) return;
+    const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
+    const result = await electron.video.selectVideoFile();
+    if (result.canceled || !result.filePath) return;
+    const copy = await electron.video.copyToLocal(result.filePath, localVideoName);
+    if (!copy.success) {
+      console.error('Erro ao relinkar video:', copy.error);
+      return;
+    }
+    const localPath = copy.localPath || await electron.video.getLocalPath(localVideoName);
+    setVideoUrls(prev => ({ ...prev, [videoRef]: `file://${localPath.replace(/\\/g, '/')}` }));
+    setVideoPaths(prev => ({ ...prev, [videoRef]: localPath }));
+    setVideoMissing(prev => ({ ...prev, [videoRef]: false }));
   };
 
   return (
@@ -237,53 +358,74 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                     Vídeos ({note.attachedVideos!.length})
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {note.attachedVideos!.map((videoName, idx) => (
+                    {note.attachedVideos!.map((videoRef, idx) => {
+                      const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
+                      const displayVideoName = localVideoName.replace(/^\d+-/, '');
+                      return (
                       <div key={`video-${idx}`} style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid var(--color-border-primary)', backgroundColor: 'var(--color-bg-primary)' }}>
                         {/* Thumbnail / mini player */}
                         <div
-                          style={{ position: 'relative', cursor: 'pointer', backgroundColor: '#000' }}
-                          onClick={() => setVideoLightbox(videoName)}
-                          title="Clique para expandir"
+                          style={{ position: 'relative', cursor: videoMissing[videoRef] ? 'default' : 'pointer', backgroundColor: '#000' }}
+                          onClick={() => !videoMissing[videoRef] && setVideoLightbox(videoRef)}
+                          title={videoMissing[videoRef] ? 'Arquivo nao encontrado' : 'Clique para expandir'}
                         >
                           <video
                             preload="metadata"
                             style={{ width: '100%', maxHeight: 160, display: 'block' }}
-                            src={videoUrls[videoName] || ''}
+                            src={videoUrls[videoRef] || ''}
                           />
                           <div style={{
                             position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
                             background: 'rgba(0,0,0,0.3)', transition: 'background 0.2s',
                           }}>
-                            <Play size={32} color="#fff" fill="#fff" style={{ opacity: 0.9 }} />
+                            {videoMissing[videoRef] ? (
+                              <span style={{ color: '#fff', fontSize: 12, background: 'rgba(0,0,0,0.5)', padding: '4px 8px', borderRadius: 6 }}>Arquivo nao encontrado</span>
+                            ) : (
+                              <Play size={32} color="#fff" fill="#fff" style={{ opacity: 0.9 }} />
+                            )}
                           </div>
                         </div>
                         {/* Info + actions */}
                         <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', wordBreak: 'break-all' }}>
-                            {videoName.replace(/^\d+-/, '')}
+                            {displayVideoName}
                           </div>
-                          {videoPaths[videoName] && (
+                          {videoPaths[videoRef] && (
                             <div style={{ fontSize: 10, color: 'var(--color-text-muted)', wordBreak: 'break-all', fontFamily: 'monospace', background: 'var(--color-bg-hover)', padding: '4px 6px', borderRadius: 4 }}>
-                              {videoPaths[videoName]}
+                              {videoPaths[videoRef]}
+                            </div>
+                          )}
+                          {videoMissing[videoRef] && (
+                            <div style={{ fontSize: 10, color: 'var(--color-warning, #f59e0b)' }}>
+                              Video nao localizado nesta maquina. Clique para relinkar.
                             </div>
                           )}
                           <div style={{ display: 'flex', gap: 4 }}>
+                            {videoMissing[videoRef] && (
+                              <button
+                                onClick={() => handleRelinkVideo(videoRef)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', fontSize: 10, border: '1px solid var(--color-border-primary)', borderRadius: 4, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                                title="Selecionar arquivo para este video"
+                              >
+                                <Download size={10} /> Localizar
+                              </button>
+                            )}
                             <button
-                              onClick={() => handleCopyVideoPath(videoName)}
-                              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', fontSize: 10, border: '1px solid var(--color-border-primary)', borderRadius: 4, background: copiedPath === videoName ? 'var(--color-primary-teal)' : 'var(--color-bg-hover)', color: copiedPath === videoName ? '#fff' : 'var(--color-text-secondary)', cursor: 'pointer', transition: 'all 0.2s' }}
+                              onClick={() => handleCopyVideoPath(videoRef)}
+                              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', fontSize: 10, border: '1px solid var(--color-border-primary)', borderRadius: 4, background: copiedPath === videoRef ? 'var(--color-primary-teal)' : 'var(--color-bg-hover)', color: copiedPath === videoRef ? '#fff' : 'var(--color-text-secondary)', cursor: 'pointer', transition: 'all 0.2s' }}
                               title="Copiar caminho"
                             >
-                              <Copy size={10} /> {copiedPath === videoName ? 'Copiado!' : 'Caminho'}
+                              <Copy size={10} /> {copiedPath === videoRef ? 'Copiado!' : 'Caminho'}
                             </button>
                             <button
-                              onClick={() => handleOpenVideoExternal(videoName)}
+                              onClick={() => handleOpenVideoExternal(videoRef)}
                               style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', fontSize: 10, border: '1px solid var(--color-border-primary)', borderRadius: 4, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
                               title="Abrir no player do sistema"
                             >
                               <ExternalLink size={10} /> Abrir
                             </button>
                             <button
-                              onClick={() => handleSaveVideoAs(videoName)}
+                              onClick={() => handleSaveVideoAs(videoRef)}
                               style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', fontSize: 10, border: '1px solid var(--color-border-primary)', borderRadius: 4, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
                               title="Salvar como..."
                             >
@@ -292,7 +434,8 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                           </div>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -368,7 +511,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                 Seu navegador não suporta reprodução de vídeo.
               </video>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{videoLightbox.replace(/^\d+-/, '')}</span>
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{(parseVideoRef(videoLightbox).localFileName || videoLightbox).replace(/^\d+-/, '')}</span>
                 <button
                   onClick={() => handleCopyVideoPath(videoLightbox)}
                   style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 11, border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, background: copiedPath === videoLightbox ? 'var(--color-primary-teal)' : 'rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer' }}

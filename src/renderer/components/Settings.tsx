@@ -1,427 +1,345 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+
 import { useSettings } from '../hooks/useSettings';
 import { useI18n } from '../hooks/useI18n';
 import { useTheme } from '../hooks/useTheme';
 import { useNotifications } from '../hooks/useNotifications';
-import { CategoryManager } from './CategoryManager';
+import { useTasks } from '../contexts/TasksContext';
+import { useNotes } from '../contexts/NotesContext';
+import { useSystemTags } from '../contexts/SystemTagsContext';
+import { useStorageMode } from '../hooks/useStorageMode';
+import { isModuleLocked } from '../config/featureFlags';
+
+// import { CategoryManager } from './CategoryManager'; // Temporariamente desativado: seção removida de Configurações > Geral
+
 import { Button } from './ui/Button';
 import { ImportExportModal } from './ImportExportModal';
 import { OrganizationsPanel } from './OrganizationsPanel';
+import {
+  Settings as SettingsIcon,
+  Palette,
+  Bell,
+  Eye,
+  Keyboard,
+  MousePointer,
+  Volume2,
+  HardDrive,
+  Users,
+  Database,
+  RefreshCw,
+  Info,
+  Copy,
+  RotateCcw,
+  Save,
+  X,
+  Layout,
+  AlertCircle,
+  Upload,
+  Download,
+  TestTube,
+  Type,
+} from 'lucide-react';
+import type { ImportResult, RestorePreview } from '../../shared/types/backup';
 
-// Componente para visualizar logs
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+interface SettingsLogEntry {
+  timestamp: string;
+  level: LogLevel;
+  category: string;
+  message: string;
+  data?: unknown;
+}
+
+interface UpdaterStatus {
+  state: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
+  version?: string;
+  releaseNotes?: string;
+  error?: string;
+  isPortable?: boolean;
+  progress?: { percent: number; bytesPerSecond: number; transferred: number; total: number };
+}
+
 const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
-  const [logs, setLogs] = React.useState<any[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [filter, setFilter] = React.useState({ level: '', category: '', search: '' });
+  const [logs, setLogs] = useState<SettingsLogEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [level, setLevel] = useState<string>('');
+  const [category, setCategory] = useState<string>('');
+  const [search, setSearch] = useState('');
 
-  React.useEffect(() => {
-    const loadLogs = async () => {
+  const getElectron = () => (window as unknown as { electronAPI?: import('../../main/preload').ElectronAPI }).electronAPI;
+
+  const loadLogs = async () => {
+    setLoading(true);
+    try {
+      const result = await getElectron()?.logging?.getLogs?.({ level: level || undefined, category: category || undefined, limit: 300 });
+      setLogs(Array.isArray(result) ? (result as SettingsLogEntry[]) : []);
+    } catch (error) {
+      console.error('Falha ao carregar logs:', error);
+      setLogs([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const run = async () => {
+      setLoading(true);
       try {
-        const electronAPI = (window as any).electronAPI;
-        if (electronAPI?.logging?.getLogs) {
-          const logsData = await electronAPI.logging.getLogs({ limit: 100 });
-          setLogs(logsData || []);
-        }
+        const result = await getElectron()?.logging?.getLogs?.({ level: level || undefined, category: category || undefined, limit: 300 });
+        setLogs(Array.isArray(result) ? (result as SettingsLogEntry[]) : []);
       } catch (error) {
-        console.error('Erro ao carregar logs:', error);
+        console.error('Falha ao carregar logs:', error);
+        setLogs([]);
       } finally {
         setLoading(false);
       }
     };
+    void run();
+  }, [level, category]);
 
-    loadLogs();
-  }, []);
-
-  const filteredLogs = logs.filter(log => {
-    const matchesLevel = !filter.level || log.level === filter.level;
-    const matchesCategory = !filter.category || log.category === filter.category;
-    const matchesSearch = !filter.search || 
-      log.message.toLowerCase().includes(filter.search.toLowerCase()) ||
-      (log.data && JSON.stringify(log.data).toLowerCase().includes(filter.search.toLowerCase()));
-    
-    return matchesLevel && matchesCategory && matchesSearch;
+  const filtered = logs.filter((log) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    const dataText = log.data ? JSON.stringify(log.data).toLowerCase() : '';
+    return log.message.toLowerCase().includes(q) || log.category.toLowerCase().includes(q) || dataText.includes(q);
   });
 
-  const getLevelColor = (level: string) => {
-    switch (level) {
-      case 'error': return '#EF4444';
-      case 'warn': return '#F59E0B';
-      case 'info': return '#3B82F6';
-      case 'debug': return '#6B7280';
-      default: return isDark ? '#A0A0A0' : '#6B7280';
+  const handleClear = async () => {
+    try {
+      await getElectron()?.logging?.clearLogs?.();
+      await loadLogs();
+    } catch (error) {
+      console.error('Falha ao limpar logs:', error);
     }
   };
 
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'security': return '#DC2626';
-      case 'performance': return '#059669';
-      case 'user': return '#7C3AED';
-      case 'ai': return '#0891B2';
-      case 'database': return '#EA580C';
-      default: return isDark ? '#6B7280' : '#9CA3AF';
+  const handleExport = async () => {
+    try {
+      await getElectron()?.logging?.exportLogs?.({ level: level || undefined, category: category || undefined });
+    } catch (error) {
+      console.error('Falha ao exportar logs:', error);
     }
   };
 
-  if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: '40px 20px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-        Carregando logs...
-      </div>
-    );
-  }
+  const getLevelColor = (currentLevel: LogLevel) => {
+    if (currentLevel === 'error') return '#EF4444';
+    if (currentLevel === 'warn') return '#F59E0B';
+    if (currentLevel === 'info') return '#3B82F6';
+    return '#6B7280';
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Filtros */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
-        gap: '12px',
-        padding: '16px',
-        backgroundColor: isDark ? '#1A1A1A' : '#F9FAFB',
-        borderRadius: '8px',
-        border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`
+    <div style={{ display: 'grid', gap: '16px' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gap: '10px',
+        padding: '14px',
+        borderRadius: '10px',
+        border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+        backgroundColor: isDark ? '#0F0F0F' : '#F9FAFB',
       }}>
-        <select
-          value={filter.level}
-          onChange={(e) => setFilter({ ...filter, level: e.target.value })}
-          style={{
-            padding: '8px 12px',
-            borderRadius: '6px',
-            border: `1px solid ${isDark ? '#2A2A2A' : '#D1D5DB'}`,
-            backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
-            color: isDark ? '#FFFFFF' : '#1F2937',
-            fontSize: '14px'
-          }}
-        >
+        <select value={level} onChange={(e) => setLevel(e.target.value)} style={{ padding: '8px 10px', borderRadius: '8px' }}>
           <option value="">Todos os níveis</option>
           <option value="debug">Debug</option>
           <option value="info">Info</option>
           <option value="warn">Warning</option>
           <option value="error">Error</option>
         </select>
-
-        <select
-          value={filter.category}
-          onChange={(e) => setFilter({ ...filter, category: e.target.value })}
-          style={{
-            padding: '8px 12px',
-            borderRadius: '6px',
-            border: `1px solid ${isDark ? '#2A2A2A' : '#D1D5DB'}`,
-            backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
-            color: isDark ? '#FFFFFF' : '#1F2937',
-            fontSize: '14px'
-          }}
-        >
-          <option value="">Todas as categorias</option>
-          <option value="system">Sistema</option>
-          <option value="security">Segurança</option>
-          <option value="performance">Performance</option>
-          <option value="user">Usuário</option>
-          <option value="ai">IA</option>
-          <option value="database">Database</option>
-        </select>
-
         <input
-          type="text"
-          placeholder="Buscar nos logs..."
-          value={filter.search}
-          onChange={(e) => setFilter({ ...filter, search: e.target.value })}
-          style={{
-            padding: '8px 12px',
-            borderRadius: '6px',
-            border: `1px solid ${isDark ? '#2A2A2A' : '#D1D5DB'}`,
-            backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF',
-            color: isDark ? '#FFFFFF' : '#1F2937',
-            fontSize: '14px'
-          }}
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          placeholder="Categoria (ex: system)"
+          style={{ padding: '8px 10px', borderRadius: '8px' }}
         />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar nos logs"
+          style={{ padding: '8px 10px', borderRadius: '8px' }}
+        />
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          <Button onClick={() => { void loadLogs(); }} disabled={loading}>Atualizar</Button>
+          <Button onClick={handleExport} variant="secondary">Exportar</Button>
+          <Button onClick={handleClear} variant="danger">Limpar</Button>
+        </div>
       </div>
 
-      {/* Lista de logs */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {filteredLogs.length === 0 ? (
-          <div style={{ 
-            textAlign: 'center', 
-            padding: '40px 20px', 
+        {loading && <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>Carregando logs...</div>}
+        {!loading && filtered.length === 0 && (
+          <div style={{
+            padding: '16px',
+            borderRadius: '10px',
+            border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+            backgroundColor: isDark ? '#0F0F0F' : '#FFFFFF',
             color: isDark ? '#A0A0A0' : '#6B7280',
-            backgroundColor: isDark ? '#1A1A1A' : '#F9FAFB',
-            borderRadius: '8px',
-            border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`
+            fontSize: '13px',
           }}>
-            {logs.length === 0 ? 'Nenhum log encontrado' : 'Nenhum log corresponde aos filtros'}
+            Nenhum log encontrado.
           </div>
-        ) : (
-          filteredLogs.map((log, index) => (
-            <div
-              key={index}
-              style={{
-                padding: '12px 16px',
-                backgroundColor: isDark ? '#1A1A1A' : '#F9FAFB',
-                border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                borderRadius: '8px',
-                fontSize: '13px',
-                fontFamily: 'monospace'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                <span style={{ 
-                  color: isDark ? '#A0A0A0' : '#6B7280',
-                  fontSize: '12px'
-                }}>
-                  {new Date(log.timestamp).toLocaleString()}
-                </span>
-                <span style={{
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  backgroundColor: getLevelColor(log.level),
-                  color: '#FFFFFF',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  textTransform: 'uppercase'
-                }}>
-                  {log.level}
-                </span>
-                <span style={{
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  backgroundColor: getCategoryColor(log.category),
-                  color: '#FFFFFF',
-                  fontSize: '11px',
-                  fontWeight: 500
-                }}>
-                  {log.category}
-                </span>
-              </div>
-              <div style={{ 
-                color: isDark ? '#FFFFFF' : '#1F2937',
-                marginBottom: log.data ? '8px' : '0'
-              }}>
-                {log.message}
-              </div>
-              {log.data && (
-                <details style={{ marginTop: '8px' }}>
-                  <summary style={{ 
-                    cursor: 'pointer', 
-                    color: isDark ? '#00D4AA' : '#059669',
-                    fontSize: '12px'
-                  }}>
-                    Dados adicionais
-                  </summary>
-                  <pre style={{
-                    marginTop: '8px',
-                    padding: '8px',
-                    backgroundColor: isDark ? '#0A0A0A' : '#F3F4F6',
-                    borderRadius: '4px',
-                    fontSize: '11px',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    color: isDark ? '#D1D5DB' : '#374151'
-                  }}>
-                    {JSON.stringify(log.data, null, 2)}
-                  </pre>
-                </details>
-              )}
-            </div>
-          ))
         )}
+        {filtered.map((log, index) => (
+          <div key={`${log.timestamp}-${index}`} style={{
+            padding: '12px 14px',
+            borderRadius: '10px',
+            border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+            backgroundColor: isDark ? '#0F0F0F' : '#FFFFFF',
+          }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', color: '#FFFFFF', backgroundColor: getLevelColor(log.level), borderRadius: '4px', padding: '2px 6px', textTransform: 'uppercase', fontWeight: 700 }}>{log.level}</span>
+              <span style={{ fontSize: '11px', color: isDark ? '#A0A0A0' : '#6B7280' }}>{log.category}</span>
+              <span style={{ fontSize: '11px', color: isDark ? '#777' : '#9CA3AF' }}>{new Date(log.timestamp).toLocaleString('pt-BR')}</span>
+            </div>
+            <div style={{ fontSize: '13px', color: isDark ? '#E5E7EB' : '#1F2937' }}>{log.message}</div>
+            {Boolean(log.data) && (
+              <details style={{ marginTop: '8px' }}>
+                <summary style={{ cursor: 'pointer', fontSize: '12px', color: isDark ? '#00D4AA' : '#059669' }}>Dados adicionais</summary>
+                <pre style={{ marginTop: '6px', fontSize: '11px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: isDark ? '#A0A0A0' : '#4B5563' }}>{JSON.stringify(log.data, null, 2)}</pre>
+              </details>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
 };
 
-// Componente para gerenciar atualizações (electron-updater)
 const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
-  const [version, setVersion] = React.useState<string>('');
-  const [status, setStatus] = React.useState<{
-    state: string;
-    version?: string;
-    progress?: { percent: number; bytesPerSecond: number; transferred: number; total: number };
-    releaseNotes?: string;
-    error?: string;
-  }>({ state: 'idle' });
+  const [status, setStatus] = useState<UpdaterStatus>({ state: 'idle' });
+  const [autoDownload, setAutoDownload] = useState(false);
 
-  React.useEffect(() => {
-    const electronAPI = (window as any).electronAPI;
-    // Load current version
-    electronAPI?.updater?.getVersion?.().then((v: string) => setVersion(v)).catch(() => {});
-    // Load current status
-    electronAPI?.updater?.getStatus?.().then((s: any) => setStatus(s)).catch(() => {});
-    // Subscribe to status changes
-    const unsub = electronAPI?.updater?.onStatus?.((s: any) => setStatus(s));
-    return () => { unsub?.(); };
+  const getElectron = () => (window as unknown as { electronAPI?: import('../../main/preload').ElectronAPI }).electronAPI;
+
+  useEffect(() => {
+    const electron = getElectron();
+    if (!electron?.updater) return;
+
+    electron.updater.getStatus().then((s) => setStatus(s as UpdaterStatus)).catch(() => {});
+    electron.settings.get('autoDownloadUpdates').then((value) => {
+      if (typeof value === 'boolean') setAutoDownload(value);
+    }).catch(() => {});
+
+    const unsubscribe = electron.updater.onStatus((s) => setStatus(s as UpdaterStatus));
+    return () => {
+      unsubscribe?.();
+    };
   }, []);
 
-  const handleCheck = async () => {
-    const electronAPI = (window as any).electronAPI;
-    await electronAPI?.updater?.checkForUpdates?.();
+  const checkUpdates = async () => {
+    try {
+      const next = await getElectron()?.updater?.checkForUpdates?.();
+      if (next) setStatus(next as UpdaterStatus);
+    } catch (error) {
+      console.error('Falha ao verificar atualizações:', error);
+    }
   };
 
-  const handleDownload = async () => {
-    const electronAPI = (window as any).electronAPI;
-    await electronAPI?.updater?.downloadUpdate?.();
+  const downloadUpdate = async () => {
+    try {
+      await getElectron()?.updater?.downloadUpdate?.();
+    } catch (error) {
+      console.error('Falha ao baixar atualização:', error);
+    }
   };
 
-  const handleInstall = () => {
-    const electronAPI = (window as any).electronAPI;
-    electronAPI?.updater?.quitAndInstall?.();
+  const installUpdate = async () => {
+    try {
+      await getElectron()?.updater?.quitAndInstall?.();
+    } catch (error) {
+      console.error('Falha ao instalar atualização:', error);
+    }
   };
 
-  const stateLabel: Record<string, string> = {
-    idle: 'Pronto',
-    checking: 'Verificando...',
-    available: 'Atualização disponível',
-    'not-available': 'Você está na versão mais recente',
-    downloading: 'Baixando...',
-    downloaded: 'Pronto para instalar',
-    error: 'Erro ao verificar',
-  };
-
-  const stateColor: Record<string, string> = {
-    idle: isDark ? '#A0A0A0' : '#6B7280',
-    checking: '#00D4AA',
-    available: '#00D4AA',
-    'not-available': isDark ? '#A0A0A0' : '#6B7280',
-    downloading: '#7B3FF2',
-    downloaded: '#00D4AA',
-    error: '#EF4444',
+  const toggleAutoDownload = async (checked: boolean) => {
+    setAutoDownload(checked);
+    try {
+      await getElectron()?.settings?.set('autoDownloadUpdates', checked);
+    } catch (error) {
+      console.error('Falha ao salvar preferência de atualização automática:', error);
+    }
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Versão e Status */}
+    <div style={{ display: 'grid', gap: '16px' }}>
       <div style={{
-        padding: '20px',
-        backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
+        padding: '16px',
+        borderRadius: '10px',
         border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-        borderRadius: '12px',
+        backgroundColor: isDark ? '#0F0F0F' : '#FFFFFF',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '12px' }}>
           <div>
-            <h4 style={{ fontSize: '16px', fontWeight: 600, color: isDark ? '#FFFFFF' : '#1F2937', margin: 0 }}>
-              Nexus v{version || '...'}
-            </h4>
-            <p style={{ fontSize: '13px', color: stateColor[status.state] || (isDark ? '#A0A0A0' : '#6B7280'), margin: '4px 0 0 0', fontWeight: 500 }}>
-              {stateLabel[status.state] || status.state}
-              {status.state === 'available' && status.version ? ` — v${status.version}` : ''}
-            </p>
+            <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>Status</div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFFFFF' : '#1F2937' }}>{status.state}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>Versão disponível</div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFFFFF' : '#1F2937' }}>{status.version || '-'}</div>
           </div>
         </div>
 
-        {/* Barra de progresso do download */}
-        {status.state === 'downloading' && status.progress && (
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{
-              width: '100%', height: '6px', borderRadius: '3px',
-              backgroundColor: isDark ? '#1A1A1A' : '#E5E7EB',
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                width: `${status.progress.percent}%`, height: '100%', borderRadius: '3px',
-                background: 'linear-gradient(90deg, #00D4AA, #7B3FF2)',
-                transition: 'width 0.3s ease',
-              }} />
+        {status.releaseNotes && (
+          <details style={{ marginBottom: '12px' }}>
+            <summary style={{ cursor: 'pointer', fontSize: '13px', color: isDark ? '#00D4AA' : '#059669' }}>Release notes</summary>
+            <pre style={{ marginTop: '8px', whiteSpace: 'pre-wrap', fontSize: '12px', color: isDark ? '#A0A0A0' : '#4B5563' }}>{status.releaseNotes}</pre>
+          </details>
+        )}
+
+        {status.progress && status.state === 'downloading' && (
+          <div style={{ marginBottom: '12px' }}>
+            <div style={{ width: '100%', height: '6px', borderRadius: '999px', backgroundColor: isDark ? '#2A2A2A' : '#E5E7EB', overflow: 'hidden' }}>
+              <div style={{ width: `${status.progress.percent}%`, height: '100%', background: 'linear-gradient(90deg, #00D4AA, #7B3FF2)' }} />
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
-              <span style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-                {status.progress.percent}%
-              </span>
-              <span style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-                {(status.progress.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s
-              </span>
-            </div>
+            <div style={{ fontSize: '11px', marginTop: '4px', color: isDark ? '#A0A0A0' : '#6B7280' }}>{status.progress.percent}%</div>
           </div>
         )}
 
-        {/* Release notes */}
-        {(status.state === 'available' || status.state === 'downloaded') && status.releaseNotes && (
-          <div style={{
-            padding: '12px', borderRadius: '8px', marginBottom: '16px',
-            backgroundColor: isDark ? '#111' : '#F0FDF4',
-            border: `1px solid ${isDark ? '#1A3A2A' : '#BBF7D0'}`,
-          }}>
-            <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#374151', whiteSpace: 'pre-wrap', maxHeight: '120px', overflow: 'auto' }}>
-              {status.releaseNotes}
-            </div>
-          </div>
+        {status.error && (
+          <div style={{ marginBottom: '12px', fontSize: '12px', color: '#EF4444' }}>{status.error}</div>
         )}
 
-        {/* Error message */}
-        {status.state === 'error' && status.error && (
-          <div style={{
-            padding: '12px', borderRadius: '8px', marginBottom: '16px',
-            backgroundColor: isDark ? '#1A0A0A' : '#FEF2F2',
-            border: `1px solid ${isDark ? '#3A1A1A' : '#FECACA'}`,
-          }}>
-            <div style={{ fontSize: '13px', color: '#EF4444' }}>
-              {status.error}
-            </div>
-          </div>
-        )}
-
-        {/* Action buttons */}
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {(status.state === 'idle' || status.state === 'not-available' || status.state === 'error') && (
-            <Button onClick={handleCheck} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <RefreshCw size={16} />
-              Verificar Atualizações
-            </Button>
-          )}
-          {status.state === 'checking' && (
-            <Button disabled style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.6 }}>
-              <RefreshCw size={16} className="spin" />
-              Verificando...
-            </Button>
-          )}
-          {status.state === 'available' && (
-            <Button onClick={handleDownload} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Download size={16} />
-              Baixar v{status.version}
-            </Button>
-          )}
-          {status.state === 'downloading' && (
-            <Button disabled style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.6 }}>
-              <Download size={16} className="spin" />
-              Baixando...
+          <Button onClick={checkUpdates}>
+            <RefreshCw size={15} style={{ marginRight: '6px' }} />
+            Verificar Atualizações
+          </Button>
+          {(status.state === 'available' || status.state === 'downloading') && (
+            <Button onClick={downloadUpdate} variant="secondary">
+              <Download size={15} style={{ marginRight: '6px' }} />
+              Baixar
             </Button>
           )}
           {status.state === 'downloaded' && (
-            <Button onClick={handleInstall} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'linear-gradient(135deg, #00D4AA, #7B3FF2)', color: '#fff', border: 'none' }}>
-              <RotateCcw size={16} />
-              Reiniciar e Instalar v{status.version}
+            <Button onClick={installUpdate}>
+              Instalar e Reiniciar
             </Button>
           )}
         </div>
       </div>
+
+      <div style={{
+        padding: '16px',
+        borderRadius: '10px',
+        border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+        backgroundColor: isDark ? '#0F0F0F' : '#FFFFFF',
+      }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={autoDownload}
+            onChange={(e) => { void toggleAutoDownload(e.target.checked); }}
+            style={{ width: '16px', height: '16px', accentColor: 'var(--color-primary-teal)' }}
+          />
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFFFFF' : '#1F2937' }}>Download automático</div>
+            <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>Baixar atualização automaticamente quando houver nova versão</div>
+          </div>
+        </label>
+      </div>
     </div>
   );
 };
-
-import { 
-  Settings as SettingsIcon, 
-  Palette, 
-  Bell, 
-  Eye, 
-  Database, 
-  Info,
-  X,
-  Save,
-  RotateCcw,
-  RefreshCw,
-  Download,
-  Upload,
-  TestTube,
-  AlertCircle,
-  Layout,
-  HardDrive,
-  Keyboard,
-  MousePointer,
-  Volume2,
-  Type,
-  Copy,
-  Users
-} from 'lucide-react';
 
 interface SettingsProps {
   isOpen: boolean;
@@ -431,16 +349,22 @@ interface SettingsProps {
 type TabType = 'geral' | 'aparencia' | 'notificacoes' | 'acessibilidade' | 'dados' | 'organizacoes' | 'logs' | 'atualizacoes' | 'sobre';
 
 export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
-  const { 
-    settings, 
-    updateSettings, 
-    resetSettings, 
-    clearAllData, 
-    systemInfo 
+
+  const {
+    settings,
+    updateSettings,
+    resetSettings,
+    clearAllData,
+    systemInfo,
   } = useSettings();
   const { t, currentLanguage, changeLanguage, getAvailableLanguages } = useI18n();
-  const { theme, effectiveMode } = useTheme();
+  const { theme: rawTheme, effectiveMode } = useTheme();
   const { showNotification } = useNotifications();
+  const { createTask } = useTasks();
+  const { createNote, fetchNotes } = useNotes();
+  const { tags: systemTags } = useSystemTags();
+  const { useCloud } = useStorageMode();
+
   const [activeTab, setActiveTab] = useState<TabType>('geral');
   const [isResetting, setIsResetting] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -452,17 +376,102 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   type ImportExportModalPropsType = React.ComponentProps<typeof ImportExportModal>;
   type ImportIntent = Parameters<ImportExportModalPropsType['onImportPreview']>[0];
   type ExportFormat = Parameters<ImportExportModalPropsType['onExport']>[0];
+  const [initialImportIntent, setInitialImportIntent] = useState<ImportIntent | null>(null);
 
   const isDark = effectiveMode === 'dark';
+  const theme = { ...rawTheme, mode: effectiveMode };
 
   const getElectron = () => (window as unknown as { electronAPI: import('../../main/preload').ElectronAPI }).electronAPI;
 
-  // Sync language with i18n hook
+  const dragDepthRef = useRef(0);
+
   useEffect(() => {
-    if (settings.language !== currentLanguage) {
-      changeLanguage(settings.language);
-    }
-  }, [settings.language, currentLanguage, changeLanguage]);
+    const hasFiles = (event: DragEvent): boolean => {
+      const types = event.dataTransfer?.types;
+      if (!types) return false;
+      return Array.from(types).includes('Files');
+    };
+
+    const onDragEnter = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      dragDepthRef.current += 1;
+    };
+
+    const onDragOver = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+    };
+
+    const onDragLeave = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    };
+
+    const onDrop = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      dragDepthRef.current = 0;
+
+      const droppedPath = event.dataTransfer?.files?.[0]?.path;
+      if (!droppedPath) return;
+
+      window.dispatchEvent(new CustomEvent('openImportIntent', {
+        detail: { filePath: droppedPath },
+      }));
+    };
+
+    window.addEventListener('dragenter', onDragEnter);
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('dragleave', onDragLeave);
+    window.addEventListener('drop', onDrop);
+
+    return () => {
+      window.removeEventListener('dragenter', onDragEnter);
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('dragleave', onDragLeave);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, []);
+
+  useEffect(() => {
+    const detectIntentFromPath = (filePath: string): ImportIntent => {
+      const lower = filePath.toLowerCase();
+
+      if (lower.endsWith('.zip') || lower.endsWith('.rar')) return { kind: 'zip', filePath };
+      if (lower.endsWith('.json')) return { kind: 'json', filePath };
+      if (lower.endsWith('.csv')) return { kind: 'csv', filePath };
+      if (lower.endsWith('.enex')) return { kind: 'enex', filePath };
+      if (lower.endsWith('.html') || lower.endsWith('.htm')) return { kind: 'html-file', filePath };
+      if (lower.endsWith('.pdf')) return { kind: 'pdf-file', filePath };
+      if (lower.endsWith('.txt')) return { kind: 'txt-file', filePath };
+      if (lower.endsWith('.md') || lower.endsWith('.markdown')) return { kind: 'md-file', filePath };
+      if (lower.endsWith('.mp4')) return { kind: 'mp4-file', filePath };
+
+      return {
+        kind: 'unsupported',
+        filePath,
+        reason: 'Formato de arquivo não suportado para importação',
+      };
+    };
+
+    const handleOpenImportIntent = (event: Event) => {
+      const detail = (event as CustomEvent<{ intent?: ImportIntent; filePath?: string }>).detail;
+      const intent = detail?.intent ?? (detail?.filePath ? detectIntentFromPath(detail.filePath) : undefined);
+      if (!intent) return;
+
+      window.dispatchEvent(new Event('openSettings'));
+      setImportExportMode('import');
+      setInitialImportIntent(intent);
+      setImportExportModalOpen(true);
+    };
+
+    window.addEventListener('openImportIntent', handleOpenImportIntent);
+    return () => {
+      window.removeEventListener('openImportIntent', handleOpenImportIntent);
+    };
+  }, []);
 
   if (!isOpen) return null;
 
@@ -527,7 +536,8 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     });
   };
 
-  const handleImportExportPreview = async (intent: ImportIntent): Promise<import('../../shared/types/backup').RestorePreview | null> => {
+  const handleImportExportPreview = async (intent: ImportIntent): Promise<RestorePreview | null> => {
+
     try {
       const electron = getElectron();
       if (intent?.kind === 'zip') return await electron.backup.importZipPreview({ source: 'external', filePath: intent.filePath });
@@ -535,47 +545,121 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       if (intent?.kind === 'json') return await electron.backup.importJsonPreview({ filePath: intent.filePath });
       if (intent?.kind === 'csv') return await electron.backup.importCsvPreview({ filePath: intent.filePath });
       if (intent?.kind === 'enex') return await electron.backup.importEnexPreview({ filePath: intent.filePath });
-      if (intent?.kind === 'html-file') return await electron.invoke('import:html-preview', { filePath: intent.filePath }) as import('../../shared/types/backup').RestorePreview;
-      if (intent?.kind === 'pdf-file') return await electron.invoke('import:pdf-preview', { filePath: intent.filePath }) as import('../../shared/types/backup').RestorePreview;
-      if (intent?.kind === 'txt-file') return await electron.invoke('import:txt-preview', { filePath: intent.filePath }) as import('../../shared/types/backup').RestorePreview;
-      if (intent?.kind === 'md-file') return await electron.invoke('import:md-preview', { filePath: intent.filePath }) as import('../../shared/types/backup').RestorePreview;
-      if (intent?.kind === 'folder') return await electron.invoke('import:folder-preview', { folderPath: intent.folderPath }) as import('../../shared/types/backup').RestorePreview;
+      if (intent?.kind === 'html-file') return await electron.invoke('import:html-preview', { filePath: intent.filePath }) as RestorePreview;
+      if (intent?.kind === 'pdf-file') return await electron.invoke('import:pdf-preview', { filePath: intent.filePath }) as RestorePreview;
+      if (intent?.kind === 'txt-file') return await electron.invoke('import:txt-preview', { filePath: intent.filePath }) as RestorePreview;
+      if (intent?.kind === 'md-file') return await electron.invoke('import:md-preview', { filePath: intent.filePath }) as RestorePreview;
+      if (intent?.kind === 'folder') return await electron.invoke('import:folder-preview', { folderPath: intent.folderPath }) as RestorePreview;
       return null;
+
     } catch (err) {
       console.error('Erro ao gerar preview do import:', err);
       return null;
     }
   };
 
-  const handleImportExportApply = async (intent: ImportIntent, _options?: { color?: string }): Promise<import('../../shared/types/backup').ImportResult | null> => {
+  const handleImportExportApply = async (intent: ImportIntent, options?: { color?: string; systemTagId?: number }): Promise<ImportResult | null> => {
     try {
       const electron = getElectron();
-      let result: import('../../shared/types/backup').ImportResult | null = null;
+      let result: ImportResult | null = null;
+      const selectedSystemTag =
+        options?.systemTagId !== undefined
+          ? systemTags.find((tag) => tag.id === options.systemTagId && tag.is_active)
+          : undefined;
+      const mergeSystemTag = (tags: string[] | undefined, systemTagName?: string): string[] => {
+        const safe = Array.isArray(tags) ? tags : [];
+        if (!systemTagName) return safe;
+        const deduped = safe.filter((tag) => tag.toLowerCase() !== systemTagName.toLowerCase());
+        return [systemTagName, ...deduped];
+      };
       if (intent?.kind === 'zip') result = await electron.backup.importZipApply({ source: 'external', filePath: intent.filePath });
       else if (intent?.kind === 'zip-backup') result = await electron.backup.importZipApply({ source: 'backupId', backupId: intent.backupId });
       else if (intent?.kind === 'json') result = await electron.backup.importJsonApply({ filePath: intent.filePath });
       else if (intent?.kind === 'csv') result = await electron.backup.importCsvApply({ filePath: intent.filePath });
       else if (intent?.kind === 'enex') result = await electron.backup.importEnexApply({ filePath: intent.filePath });
-      else if (intent?.kind === 'html-file') result = await electron.invoke('import:html-apply', { filePath: intent.filePath }) as import('../../shared/types/backup').ImportResult;
-      else if (intent?.kind === 'pdf-file') result = await electron.invoke('import:pdf-apply', { filePath: intent.filePath }) as import('../../shared/types/backup').ImportResult;
-      else if (intent?.kind === 'txt-file') result = await electron.invoke('import:txt-apply', { filePath: intent.filePath }) as import('../../shared/types/backup').ImportResult;
-      else if (intent?.kind === 'md-file') result = await electron.invoke('import:md-apply', { filePath: intent.filePath }) as import('../../shared/types/backup').ImportResult;
-      else if (intent?.kind === 'mp4-file') result = await electron.invoke('import:mp4-apply', { filePath: intent.filePath }) as import('../../shared/types/backup').ImportResult;
-      else if (intent?.kind === 'folder') result = await electron.invoke('import:folder-apply', { folderPath: intent.folderPath }) as import('../../shared/types/backup').ImportResult;
+      else if (intent?.kind === 'html-file') result = await electron.invoke('import:html-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
+      else if (intent?.kind === 'pdf-file') result = await electron.invoke('import:pdf-apply', { filePath: intent.filePath }) as ImportResult;
+      else if (intent?.kind === 'txt-file') result = await electron.invoke('import:txt-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
+      else if (intent?.kind === 'md-file') result = await electron.invoke('import:md-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
+      else if (intent?.kind === 'mp4-file') result = await electron.invoke('import:mp4-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
+      else if (intent?.kind === 'folder') result = await electron.invoke('import:folder-apply', { folderPath: intent.folderPath }) as ImportResult;
+
       // Capitalize first letter of all imported note titles
       if (result?.importedNotes) {
         result.importedNotes = result.importedNotes.map(n => ({
           ...n,
           title: n.title ? n.title.charAt(0).toUpperCase() + n.title.slice(1) : n.title,
+          systemTagId: selectedSystemTag?.id ?? n.systemTagId,
+          systemTagName: selectedSystemTag?.name ?? n.systemTagName,
+          tags: mergeSystemTag(n.tags, selectedSystemTag?.name ?? n.systemTagName),
         }));
       }
       if (result?.success) {
+        if (useCloud) {
+          let syncedNotes = 0;
+          let syncedTasks = 0;
+
+          if (result.importedNotes && result.importedNotes.length > 0) {
+            for (const note of result.importedNotes) {
+              const created = await createNote({
+                title: note.title,
+                content: note.content,
+                format: note.format || 'text',
+                tags: mergeSystemTag(note.tags, note.systemTagName),
+                attachedImages: note.attachedImages,
+                attachedVideos: note.attachedVideos,
+                linkedTaskIds: note.linkedTaskIds,
+                color: options?.color || note.color,
+                system_tag_id: note.systemTagId,
+              });
+
+              if (created) {
+                syncedNotes += 1;
+              }
+            }
+          }
+
+          if (result.importedTasks && result.importedTasks.length > 0) {
+            for (const task of result.importedTasks) {
+              const created = await createTask({
+                title: task.title,
+                description: task.description,
+                status: (task.status as 'backlog' | 'esta_semana' | 'hoje' | 'concluido') || 'backlog',
+                priority: (task.priority as 'low' | 'medium' | 'high') || 'medium',
+              });
+
+              if (created) {
+                syncedTasks += 1;
+              }
+            }
+          }
+
+          if (result.imported.notes > syncedNotes) {
+            result.warnings.push({
+              type: 'note',
+              message: `Algumas notas não foram sincronizadas na nuvem (${syncedNotes}/${result.imported.notes}).`,
+            });
+          }
+
+          if (result.imported.tasks > syncedTasks) {
+            result.warnings.push({
+              type: 'task',
+              message: `Algumas tarefas não foram sincronizadas na nuvem (${syncedTasks}/${result.imported.tasks}).`,
+            });
+          }
+
+          result.imported.notes = syncedNotes;
+          result.imported.tasks = syncedTasks;
+        }
+
         window.dispatchEvent(new Event('tasksUpdated'));
         window.dispatchEvent(new Event('categoriesUpdated'));
         window.dispatchEvent(new Event('notesUpdated'));
+        await fetchNotes();
       }
       return result;
     } catch (err) {
+
       console.error('Erro ao aplicar import:', err);
       return null;
     }
@@ -828,7 +912,8 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </select>
                 </div>
 
-                <div>
+                {/* Removido por solicitação: seção "Meta Diária" */}
+                {/* <div>
                   <label style={{
                     display: 'block',
                     marginBottom: '8px',
@@ -854,234 +939,18 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       fontSize: '14px',
                     }}
                   />
-                </div>
+                </div> */}
 
-                {/* Produtividade & Sugestões Proativas */}
-                <div style={{
-                  padding: '20px',
-                  backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : '#F9FAFB',
-                  border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : '#E5E7EB'}`,
-                  borderRadius: '12px',
-                }}>
-                  <h4 style={{
-                    fontSize: '16px',
-                    fontWeight: 600,
-                    color: isDark ? '#FFFFFF' : '#1F2937',
-                    margin: '0 0 16px 0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}>
-                    <Layout size={18} />
-                    Produtividade & Sugestões
-                  </h4>
+                {/* Removido por solicitação: seção "Produtividade & Sugestões" */}
+                {/* 
+                  // Safe JSX comment
+                */}
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {/* Dicas de Produtividade */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div>
-                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
-                          Dicas de Produtividade
-                        </div>
-                        <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-                          Exibir dicas contextuais baseadas no seu progresso
-                        </div>
-                      </div>
-                      <label style={{ position: 'relative', display: 'inline-block', width: '44px', height: '24px' }}>
-                        <input
-                          type="checkbox"
-                          checked={settings.showProductivityTips}
-                          onChange={(e) => updateSettings({ showProductivityTips: e.target.checked })}
-                          style={{ opacity: 0, width: 0, height: 0 }}
-                        />
-                        <span style={{
-                          position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
-                          backgroundColor: settings.showProductivityTips ? '#00D4AA' : (isDark ? '#404040' : '#D1D5DB'),
-                          borderRadius: '12px', transition: 'background-color 0.2s',
-                        }}>
-                          <span style={{
-                            position: 'absolute', height: '18px', width: '18px', left: settings.showProductivityTips ? '23px' : '3px',
-                            bottom: '3px', backgroundColor: '#FFFFFF', borderRadius: '50%', transition: 'left 0.2s',
-                          }} />
-                        </span>
-                      </label>
-                    </div>
+                {/* Removido por solicitação: seção "Produtividade & Sugestões" */}
+                {/* 
+                  // Safe JSX comment
+                */}
 
-                    {/* Insights de Progresso */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div>
-                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
-                          Insights de Progresso
-                        </div>
-                        <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-                          Mostrar resumos e métricas do seu desempenho
-                        </div>
-                      </div>
-                      <label style={{ position: 'relative', display: 'inline-block', width: '44px', height: '24px' }}>
-                        <input
-                          type="checkbox"
-                          checked={settings.showProgressInsights}
-                          onChange={(e) => updateSettings({ showProgressInsights: e.target.checked })}
-                          style={{ opacity: 0, width: 0, height: 0 }}
-                        />
-                        <span style={{
-                          position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
-                          backgroundColor: settings.showProgressInsights ? '#00D4AA' : (isDark ? '#404040' : '#D1D5DB'),
-                          borderRadius: '12px', transition: 'background-color 0.2s',
-                        }}>
-                          <span style={{
-                            position: 'absolute', height: '18px', width: '18px', left: settings.showProgressInsights ? '23px' : '3px',
-                            bottom: '3px', backgroundColor: '#FFFFFF', borderRadius: '50%', transition: 'left 0.2s',
-                          }} />
-                        </span>
-                      </label>
-                    </div>
-
-                    {/* Modo Proativo */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div>
-                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
-                          Sugestões Proativas
-                        </div>
-                        <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-                          Gerar sugestões automáticas baseadas nas suas tarefas
-                        </div>
-                      </div>
-                      <label style={{ position: 'relative', display: 'inline-block', width: '44px', height: '24px' }}>
-                        <input
-                          type="checkbox"
-                          checked={settings.aiProactiveMode}
-                          onChange={(e) => updateSettings({ aiProactiveMode: e.target.checked })}
-                          style={{ opacity: 0, width: 0, height: 0 }}
-                        />
-                        <span style={{
-                          position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
-                          backgroundColor: settings.aiProactiveMode ? '#00D4AA' : (isDark ? '#404040' : '#D1D5DB'),
-                          borderRadius: '12px', transition: 'background-color 0.2s',
-                        }}>
-                          <span style={{
-                            position: 'absolute', height: '18px', width: '18px', left: settings.aiProactiveMode ? '23px' : '3px',
-                            bottom: '3px', backgroundColor: '#FFFFFF', borderRadius: '50%', transition: 'left 0.2s',
-                          }} />
-                        </span>
-                      </label>
-                    </div>
-
-                    {/* Widget Flutuante (só aparece se proativo está ativo) */}
-                    {settings.aiProactiveMode && (
-                      <>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <div>
-                            <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
-                              Widget Flutuante
-                            </div>
-                            <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-                              Exibir botão flutuante com sugestões na tela
-                            </div>
-                          </div>
-                          <label style={{ position: 'relative', display: 'inline-block', width: '44px', height: '24px' }}>
-                            <input
-                              type="checkbox"
-                              checked={settings.showProactiveSuggestionsWidget}
-                              onChange={(e) => updateSettings({ showProactiveSuggestionsWidget: e.target.checked })}
-                              style={{ opacity: 0, width: 0, height: 0 }}
-                            />
-                            <span style={{
-                              position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
-                              backgroundColor: settings.showProactiveSuggestionsWidget ? '#00D4AA' : (isDark ? '#404040' : '#D1D5DB'),
-                              borderRadius: '12px', transition: 'background-color 0.2s',
-                            }}>
-                              <span style={{
-                                position: 'absolute', height: '18px', width: '18px', left: settings.showProactiveSuggestionsWidget ? '23px' : '3px',
-                                bottom: '3px', backgroundColor: '#FFFFFF', borderRadius: '50%', transition: 'left 0.2s',
-                              }} />
-                            </span>
-                          </label>
-                        </div>
-
-                        {/* Opacidade do Widget */}
-                        {settings.showProactiveSuggestionsWidget && (
-                          <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                              <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
-                                Opacidade do Widget
-                              </div>
-                              <span style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-                                {settings.widgetButtonOpacity}%
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              min="20"
-                              max="100"
-                              value={settings.widgetButtonOpacity}
-                              onChange={(e) => updateSettings({ widgetButtonOpacity: parseInt(e.target.value) })}
-                              style={{ width: '100%', accentColor: '#00D4AA' }}
-                            />
-                          </div>
-                        )}
-
-                        {/* Tamanho do Widget */}
-                        {settings.showProactiveSuggestionsWidget && (
-                          <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                              <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>
-                                Tamanho do Widget
-                              </div>
-                              <span style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
-                                {settings.widgetButtonSize}px
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              min="36"
-                              max="80"
-                              value={settings.widgetButtonSize}
-                              onChange={(e) => updateSettings({ widgetButtonSize: parseInt(e.target.value) })}
-                              style={{ width: '100%', accentColor: '#00D4AA' }}
-                            />
-                          </div>
-                        )}
-                      </>
-                    )}
-
-                    {/* Modo de Resposta */}
-                    <div>
-                      <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '8px' }}>
-                        Nível de Detalhe das Sugestões
-                      </div>
-                      <select
-                        value={settings.aiResponseMode}
-                        onChange={(e) => updateSettings({ aiResponseMode: e.target.value as 'detailed' | 'balanced' | 'concise' })}
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          borderRadius: '8px',
-                          border: `1px solid ${isDark ? '#2A2A2A' : '#D1D5DB'}`,
-                          backgroundColor: isDark ? '#141414' : '#FFFFFF',
-                          color: isDark ? '#FFFFFF' : '#1F2937',
-                          fontSize: '14px',
-                        }}
-                      >
-                        <option value="concise">Conciso — frases curtas e diretas</option>
-                        <option value="balanced">Equilibrado — resumo com contexto</option>
-                        <option value="detailed">Detalhado — explicações completas</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Gerenciador de Categorias */}
-                <div style={{
-                  backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : 'var(--color-bg-secondary)',
-                  border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
-                  borderRadius: '12px',
-                  overflow: 'hidden'
-                }}>
-                  <CategoryManager onSave={() => {
-                    showToast('Categorias atualizadas com sucesso!', 'success');
-                  }} />
-                </div>
               </div>
             )}
 
@@ -1093,7 +962,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     margin: '0 0 16px 0',
                     fontSize: '16px',
                     fontWeight: 600,
-                    color: '#FFFFFF',
+                    color: 'var(--color-text-primary)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px'
@@ -1103,24 +972,24 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </h3>
                   <div style={{
                     padding: '16px',
-                    backgroundColor: '#0A0A0A',
-                    border: '1px solid #2A2A2A',
+                    backgroundColor: isDark ? '#0A0A0A' : 'var(--color-bg-secondary)',
+                    border: `1px solid ${isDark ? '#2A2A2A' : 'var(--color-border-primary)'}`,
                     borderRadius: '12px',
                     marginBottom: '20px'
                   }}>
                     <div style={{
                       padding: '12px',
-                      backgroundColor: '#1A1A1A',
+                      backgroundColor: isDark ? '#1A1A1A' : 'var(--color-bg-card)',
                       borderRadius: '8px',
-                      border: '1px solid #3A3A3A',
+                      border: `1px solid ${isDark ? '#3A3A3A' : 'var(--color-border-primary)'}`,
                       textAlign: 'center'
                     }}>
                       <p style={{
                         margin: 0,
                         fontSize: '14px',
-                        color: '#A0A0A0'
+                        color: 'var(--color-text-secondary)'
                       }}>
-                        🌙 <strong style={{ color: '#FFFFFF' }}>Modo Escuro</strong> - Otimizado para produtividade
+                        <strong style={{ color: 'var(--color-text-primary)' }}>{isDark ? 'Modo Escuro' : 'Modo Claro'}</strong> - Otimizado para produtividade
                       </p>
                     </div>
                   </div>
@@ -1132,7 +1001,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     margin: '0 0 12px 0',
                     fontSize: '14px',
                     fontWeight: 600,
-                    color: '#FFFFFF',
+                    color: 'var(--color-text-primary)',
                   }}>
                     Tamanho da Fonte
                   </h4>
@@ -1142,10 +1011,13 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       min="12"
                       max="20"
                       step="1"
-                      value={settings.largeFontMode ? 16 : 14}
+                      value={settings.fontSizePx ?? (settings.largeFontMode ? 16 : 14)}
                       onChange={(e) => {
-                        const fontSize = parseInt(e.target.value);
-                        updateSettings({ largeFontMode: fontSize > 14 });
+                        const fontSize = parseInt(e.target.value, 10);
+                        updateSettings({
+                          fontSizePx: fontSize,
+                          largeFontMode: fontSize > 14,
+                        });
                       }}
                       style={{
                         flex: 1,
@@ -1154,16 +1026,16 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     />
                     <span style={{
                       fontSize: '14px',
-                      color: '#A0A0A0',
+                      color: 'var(--color-text-secondary)',
                       minWidth: '40px',
                       textAlign: 'right'
                     }}>
-                      {settings.largeFontMode ? '16px' : '14px'}
+                      {(settings.fontSizePx ?? (settings.largeFontMode ? 16 : 14))}px
                     </span>
                   </div>
                   <p style={{
                     fontSize: '12px',
-                    color: '#666',
+                    color: 'var(--color-text-muted)',
                     marginTop: '4px',
                     marginBottom: 0
                   }}>
@@ -1177,7 +1049,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     margin: '0 0 12px 0',
                     fontSize: '14px',
                     fontWeight: 600,
-                    color: '#FFFFFF',
+                    color: 'var(--color-text-primary)',
                   }}>
                     Densidade da Interface
                   </h4>
@@ -1192,8 +1064,8 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         alignItems: 'flex-start',
                         gap: '12px',
                         padding: '12px',
-                        backgroundColor: '#0A0A0A',
-                        border: `1px solid ${(settings as any).interfaceDensity === density.key ? 'var(--color-primary-teal)' : '#2A2A2A'}`,
+                        backgroundColor: isDark ? '#0A0A0A' : 'var(--color-bg-secondary)',
+                        border: `1px solid ${(settings as any).interfaceDensity === density.key ? 'var(--color-primary-teal)' : (isDark ? '#2A2A2A' : 'var(--color-border-primary)')}`,
                         borderRadius: '8px',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
@@ -1212,7 +1084,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         <div style={{ flex: 1 }}>
                           <div style={{
                             fontSize: '14px',
-                            color: '#FFFFFF',
+                            color: 'var(--color-text-primary)',
                             fontWeight: 500,
                             marginBottom: '4px'
                           }}>
@@ -1220,7 +1092,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           </div>
                           <div style={{
                             fontSize: '12px',
-                            color: '#A0A0A0'
+                            color: 'var(--color-text-secondary)'
                           }}>
                             {density.desc}
                           </div>
@@ -1236,7 +1108,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     margin: '0 0 8px 0',
                     fontSize: '14px',
                     fontWeight: 600,
-                    color: '#FFFFFF',
+                    color: 'var(--color-text-primary)',
                   }}>
                     Transparência dos Cards
                   </h4>
@@ -1258,7 +1130,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     />
                     <span style={{
                       fontSize: '14px',
-                      color: '#A0A0A0',
+                      color: 'var(--color-text-secondary)',
                       minWidth: '40px',
                       textAlign: 'right'
                     }}>
@@ -1267,7 +1139,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                   <p style={{
                     fontSize: '12px',
-                    color: '#666',
+                    color: 'var(--color-text-muted)',
                     marginTop: '4px',
                     marginBottom: 0
                   }}>
@@ -1281,7 +1153,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     margin: '20px 0 16px 0',
                     fontSize: '16px',
                     fontWeight: 600,
-                    color: '#FFFFFF',
+                    color: 'var(--color-text-primary)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px'
@@ -1289,7 +1161,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     <Eye size={18} />
                     Acessibilidade
                   </h3>
-                  
                   <div style={{ display: 'grid', gap: '12px' }}>
                     {/* Alto Contraste */}
                     <label style={{
@@ -1298,8 +1169,8 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       gap: '12px',
                       cursor: 'pointer',
                       padding: '12px',
-                      backgroundColor: '#0A0A0A',
-                      border: '1px solid #2A2A2A',
+                      backgroundColor: isDark ? '#0A0A0A' : 'var(--color-bg-secondary)',
+                      border: `1px solid ${isDark ? '#2A2A2A' : 'var(--color-border-primary)'}`,
                       borderRadius: '8px',
                       transition: 'all 0.2s ease'
                     }}>
@@ -1315,7 +1186,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       <div style={{ flex: 1 }}>
                         <div style={{
                           fontSize: '14px',
-                          color: '#FFFFFF',
+                          color: 'var(--color-text-primary)',
                           fontWeight: 500,
                           marginBottom: '2px'
                         }}>
@@ -1323,9 +1194,9 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         </div>
                         <div style={{
                           fontSize: '12px',
-                          color: '#A0A0A0'
+                          color: 'var(--color-text-secondary)'
                         }}>
-                          Aumenta o contraste para melhor visibilidade
+                          Aumenta o contraste entre texto e fundo para melhor visibilidade
                         </div>
                       </div>
                     </label>
@@ -1337,15 +1208,15 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       gap: '12px',
                       cursor: 'pointer',
                       padding: '12px',
-                      backgroundColor: '#0A0A0A',
-                      border: '1px solid #2A2A2A',
+                      backgroundColor: isDark ? '#0A0A0A' : 'var(--color-bg-secondary)',
+                      border: `1px solid ${isDark ? '#2A2A2A' : 'var(--color-border-primary)'}`,
                       borderRadius: '8px',
                       transition: 'all 0.2s ease'
                     }}>
                       <input
                         type="checkbox"
-                        checked={!(settings.reduceAnimations)}
-                        onChange={(e) => updateSettings({ reduceAnimations: !e.target.checked })}
+                        checked={(settings as any).reduceAnimations}
+                        onChange={(e) => updateSettings({ reduceAnimations: e.target.checked })}
                         style={{
                           accentColor: 'var(--color-primary-teal)',
                           transform: 'scale(1.1)',
@@ -1354,7 +1225,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       <div style={{ flex: 1 }}>
                         <div style={{
                           fontSize: '14px',
-                          color: '#FFFFFF',
+                          color: 'var(--color-text-primary)',
                           fontWeight: 500,
                           marginBottom: '2px'
                         }}>
@@ -1362,7 +1233,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         </div>
                         <div style={{
                           fontSize: '12px',
-                          color: '#A0A0A0'
+                          color: 'var(--color-text-secondary)'
                         }}>
                           Desabilite para melhorar performance em computadores mais lentos
                         </div>
@@ -1377,7 +1248,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     margin: '20px 0 16px 0',
                     fontSize: '16px',
                     fontWeight: 600,
-                    color: '#FFFFFF',
+                    color: 'var(--color-text-primary)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px'
@@ -1385,55 +1256,63 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     <Layout size={18} />
                     Componentes da Interface
                   </h3>
-                  
                   <div style={{ display: 'grid', gap: '12px' }}>
                     {[
+                      { key: 'showDashboard', label: 'Dashboard', desc: 'Exibir aba do dashboard e funcionalidades de tarefas' },
                       { key: 'showTimer', label: 'Timer Pomodoro', desc: 'Exibir funcionalidade de timer' },
                       { key: 'showReports', label: 'Relatórios', desc: 'Exibir aba de relatórios e estatísticas' },
                       { key: 'showNotes', label: 'Notas', desc: 'Exibir sistema de notas e anotações' },
                       { key: 'showQuickActions', label: 'Ações Rápidas', desc: 'Exibir botões de acesso rápido' },
                       { key: 'showTaskCounters', label: 'Contadores de Tarefas', desc: 'Exibir números e estatísticas nas tarefas' }
                     ].map((component) => (
-                      <label key={component.key} style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        padding: '12px',
-                        backgroundColor: '#0A0A0A',
-                        border: '1px solid #2A2A2A',
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease'
-                      }}>
-                        <input
-                          type="checkbox"
-                          checked={(settings as any)[component.key]}
-                          onChange={(e) => updateSettings({ [component.key]: e.target.checked })}
-                          style={{
-                            accentColor: 'var(--color-primary-teal)',
-                            transform: 'scale(1.1)',
-                          }}
-                        />
-                        <div style={{ flex: 1 }}>
-                          <div style={{
-                            fontSize: '14px',
-                            color: '#FFFFFF',
-                            fontWeight: 500,
-                            marginBottom: '2px'
+                      (() => {
+                        const isLocked = isModuleLocked(component.key as 'showDashboard' | 'showTimer' | 'showReports');
+                        return (
+                          <label key={component.key} style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            padding: '12px',
+                            backgroundColor: isDark ? '#0A0A0A' : 'var(--color-bg-secondary)',
+                            border: `1px solid ${isDark ? '#2A2A2A' : 'var(--color-border-primary)'}`,
+                            borderRadius: '8px',
+                            cursor: isLocked ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.2s ease',
+                            opacity: isLocked ? 0.6 : 1,
                           }}>
-                            {component.label}
-                          </div>
-                          <div style={{
-                            fontSize: '12px',
-                            color: '#A0A0A0'
-                          }}>
-                            {component.desc}
-                          </div>
-                        </div>
-                      </label>
+                            <input
+                              type="checkbox"
+                              checked={(settings as any)[component.key]}
+                              disabled={isLocked}
+                              onChange={(e) => updateSettings({ [component.key]: e.target.checked })}
+                              style={{
+                                accentColor: 'var(--color-primary-teal)',
+                                transform: 'scale(1.1)',
+                              }}
+                            />
+                            <div style={{ flex: 1 }}>
+                              <div style={{
+                                fontSize: '14px',
+                                color: 'var(--color-text-primary)',
+                                fontWeight: 500,
+                                marginBottom: '2px'
+                              }}>
+                                {component.label}
+                              </div>
+                              <div style={{
+                                fontSize: '12px',
+                                color: 'var(--color-text-secondary)'
+                              }}>
+                                {component.desc}{isLocked ? ' (bloqueado no modo notes-only)' : ''}
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })()
                     ))}
                   </div>
                 </div>
+
               </div>
             )}
 
@@ -1623,11 +1502,11 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     Use o sistema avançado de importação e exportação multi-formato.
                   </p>
                   <div style={{ display: 'flex', gap: '12px' }}>
-                    <Button onClick={() => { setImportExportMode('import'); setImportExportModalOpen(true); }}>
+                    <Button onClick={() => { setImportExportMode('import'); setInitialImportIntent(null); setImportExportModalOpen(true); }}>
                       <Upload size={16} style={{ marginRight: '6px' }} />
                       Importar
                     </Button>
-                    <Button onClick={() => { setImportExportMode('export'); setImportExportModalOpen(true); }} variant="secondary">
+                    <Button onClick={() => { setImportExportMode('export'); setInitialImportIntent(null); setImportExportModalOpen(true); }} variant="secondary">
                       <Download size={16} style={{ marginRight: '6px' }} />
                       Exportar
                     </Button>
@@ -1714,8 +1593,14 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     }}>
                       <input
                         type="checkbox"
-                        checked={settings.largeFontMode}
-                        onChange={(e) => updateSettings({ largeFontMode: e.target.checked })}
+                        checked={(settings.fontSizePx ?? (settings.largeFontMode ? 16 : 14)) > 14}
+                        onChange={(e) => {
+                          const nextFontSize = e.target.checked ? 16 : 14;
+                          updateSettings({
+                            largeFontMode: e.target.checked,
+                            fontSizePx: nextFontSize,
+                          });
+                        }}
                         style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                       />
                       <div style={{ flex: 1 }}>
@@ -1741,8 +1626,8 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     }}>
                       <input
                         type="checkbox"
-                        checked={!(settings.reduceAnimations)}
-                        onChange={(e) => updateSettings({ reduceAnimations: !e.target.checked })}
+                        checked={(settings as any).reduceAnimations}
+                        onChange={(e) => updateSettings({ reduceAnimations: e.target.checked })}
                         style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                       />
                       <div style={{ flex: 1 }}>
@@ -1859,8 +1744,8 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-                {/* Atalhos de Teclado */}
-                <div style={{
+                {/* Removido por solicitação: seção "Atalhos de Teclado" */}
+                {/* <div style={{
                   padding: '20px',
                   backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
                   border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
@@ -1896,7 +1781,10 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
                         borderRadius: '8px',
                       }}>
-                        <span style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                        <span style={{
+                          fontSize: '13px',
+                          color: isDark ? '#A0A0A0' : '#6B7280',
+                        }}>
                           {shortcut.desc}
                         </span>
                         <code style={{
@@ -1913,7 +1801,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       </div>
                     ))}
                   </div>
-                </div>
+                </div> */}
 
                 {/* Seção de Limpeza de Dados */}
                 <div style={{
@@ -2275,11 +2163,13 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
             {importExportModalOpen && (
               <ImportExportModal
                 open={importExportModalOpen}
-                onClose={() => setImportExportModalOpen(false)}
+                onClose={() => { setImportExportModalOpen(false); setInitialImportIntent(null); }}
                 mode={importExportMode}
                 onExport={handleImportExportExport}
                 onImportPreview={handleImportExportPreview}
                 onImportApply={handleImportExportApply}
+                initialImportIntent={initialImportIntent}
+                systemTagOptions={systemTags}
               />
             )}
           </div>

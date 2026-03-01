@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useCategories } from '../contexts/CategoriesContext';
+import { useSystemTags } from '../contexts/SystemTagsContext';
 import {
   Building2,
   Plus,
@@ -23,6 +24,7 @@ import {
   Share2,
   Pencil,
   Folder,
+  Flag,
 } from 'lucide-react';
 
 interface OrganizationsPanelProps {
@@ -59,6 +61,7 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
 
   const { user } = useAuth();
   const { categories, createCategory, updateCategory, deleteCategory } = useCategories();
+  const { tags: systemTags, createTag, updateTag, deactivateTag } = useSystemTags();
 
   const sharedCategories = categories.filter(c => c.is_shared);
 
@@ -79,6 +82,10 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
   const [catColor, setCatColor] = useState('#7B3FF2');
   const [catIcon, setCatIcon] = useState('Folder');
   const [showNewCat, setShowNewCat] = useState(false);
+  const [editingSystemTagId, setEditingSystemTagId] = useState<number | null>(null);
+  const [systemTagName, setSystemTagName] = useState('');
+  const [systemTagColor, setSystemTagColor] = useState('#00D4AA');
+  const [showSystemTagForm, setShowSystemTagForm] = useState(false);
 
   const catColorOptions = [
     { value: '#00D4AA', label: 'Teal' },
@@ -111,6 +118,49 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
       setShowNewCat(false);
     } catch (err) {
       showFeedback('error', err instanceof Error ? err.message : 'Erro ao salvar categoria');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const activeSystemTags = systemTags.filter((tag) => tag.is_active);
+
+  const handleEditSystemTag = (tag: { id: number; name: string; color: string }) => {
+    setEditingSystemTagId(tag.id);
+    setSystemTagName(tag.name);
+    setSystemTagColor(tag.color);
+    setShowSystemTagForm(true);
+  };
+
+  const handleSaveSystemTag = async () => {
+    if (!systemTagName.trim()) return;
+    setActionLoading(true);
+    try {
+      const ok = editingSystemTagId
+        ? await updateTag(editingSystemTagId, { name: systemTagName.trim(), color: systemTagColor })
+        : await createTag(systemTagName.trim(), systemTagColor);
+
+      if (ok) {
+        showFeedback('success', editingSystemTagId ? 'Tag de sistema atualizada' : 'Tag de sistema criada');
+        setEditingSystemTagId(null);
+        setSystemTagName('');
+        setSystemTagColor('#00D4AA');
+        setShowSystemTagForm(false);
+      } else {
+        showFeedback('error', 'Falha ao salvar tag de sistema');
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeactivateSystemTag = async (id: number) => {
+    if (!confirm('Desativar esta tag de sistema?')) return;
+    setActionLoading(true);
+    try {
+      const ok = await deactivateTag(id);
+      if (ok) showFeedback('success', 'Tag de sistema desativada');
+      else showFeedback('error', 'Falha ao desativar tag de sistema');
     } finally {
       setActionLoading(false);
     }
@@ -912,6 +962,90 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                         disabled={actionLoading || !catName.trim()}
                       >
                         <Check size={14} /> {editingCatId ? 'Salvar' : 'Criar'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {(myRole === 'owner' || myRole === 'admin') && (
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFF' : '#111', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Flag size={16} color="#00D4AA" /> Tags de Sistema ({activeSystemTags.length})
+                </div>
+                <button
+                  style={{ ...btnPrimary, padding: '6px 12px', fontSize: '12px' }}
+                  onClick={() => { setShowSystemTagForm(true); setEditingSystemTagId(null); setSystemTagName(''); setSystemTagColor('#00D4AA'); }}
+                >
+                  <Plus size={14} /> Nova
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: showSystemTagForm ? '14px' : '0' }}>
+                {activeSystemTags.length === 0 && !showSystemTagForm && (
+                  <div style={{ textAlign: 'center', padding: '16px', color: isDark ? '#666' : '#9CA3AF', fontSize: '13px' }}>
+                    Nenhuma tag de sistema criada.
+                  </div>
+                )}
+
+                {activeSystemTags.map((tag) => (
+                  <div
+                    key={tag.id}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px', borderRadius: '8px', backgroundColor: isDark ? '#111' : '#FFF' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: tag.color, flexShrink: 0 }} />
+                      <div style={{ fontWeight: 500, fontSize: '13px', color: isDark ? '#FFF' : '#111' }}>{tag.name}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }} onClick={() => handleEditSystemTag(tag)} title="Editar">
+                        <Pencil size={14} color={isDark ? '#888' : '#6B7280'} />
+                      </button>
+                      <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }} onClick={() => handleDeactivateSystemTag(tag.id)} title="Desativar">
+                        <Trash2 size={14} color="#EF4444" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {showSystemTagForm && (
+                <div style={{ padding: '14px', borderRadius: '8px', backgroundColor: isDark ? '#111' : '#FFF', border: `1px solid ${isDark ? '#333' : '#D1D5DB'}` }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: isDark ? '#FFF' : '#111', marginBottom: '12px' }}>
+                    {editingSystemTagId ? 'Editar Tag de Sistema' : 'Nova Tag de Sistema'}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <input style={inputStyle} placeholder="Nome da tag" value={systemTagName} onChange={(e) => setSystemTagName(e.target.value)} autoFocus />
+                    <div>
+                      <label style={{ fontSize: '12px', color: isDark ? '#AAA' : '#6B7280', marginBottom: '6px', display: 'block' }}>Cor</label>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {catColorOptions.map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setSystemTagColor(opt.value)}
+                            title={opt.label}
+                            style={{
+                              width: '24px',
+                              height: '24px',
+                              borderRadius: '50%',
+                              backgroundColor: opt.value,
+                              border: systemTagColor === opt.value ? '2px solid #FFF' : '2px solid transparent',
+                              cursor: 'pointer',
+                              boxShadow: systemTagColor === opt.value ? `0 0 0 2px ${opt.value}` : 'none',
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                      <button style={btnSecondary} onClick={() => { setShowSystemTagForm(false); setEditingSystemTagId(null); setSystemTagName(''); }}>
+                        Cancelar
+                      </button>
+                      <button style={{ ...btnPrimary, padding: '8px 16px', fontSize: '13px', opacity: actionLoading || !systemTagName.trim() ? 0.6 : 1 }} onClick={handleSaveSystemTag} disabled={actionLoading || !systemTagName.trim()}>
+                        <Check size={14} /> {editingSystemTagId ? 'Salvar' : 'Criar'}
                       </button>
                     </div>
                   </div>

@@ -3,6 +3,7 @@ import { useTasks } from '../contexts/TasksContext';
 import { useCategories } from '../contexts/CategoriesContext';
 import { useNotes } from '../contexts/NotesContext';
 import { useOrganization } from '../contexts/OrganizationContext';
+import { useSettings } from '../hooks/useSettings';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Task } from '../../shared/types/task';
@@ -35,6 +36,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const { createTask, updateTask, linkTaskToNote, unlinkTaskFromNote } = useTasks();
   const { categories, createCategory, reloadCategories } = useCategories();
   const { notes } = useNotes();
+  const { settings } = useSettings();
   const { members, activeOrg } = useOrganization();
   
   const [title, setTitle] = useState('');
@@ -191,16 +193,18 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         savedTask = newTask;
       }
 
-      // Handle note linking
-      if (linkedNoteId !== editingTask?.linkedNoteId) {
-        if (editingTask?.linkedNoteId) {
-          // Remove previous link
-          await unlinkTaskFromNote(editingTask.id);
-        }
-        
-        if (linkedNoteId) {
-          // Create new link
-          await linkTaskToNote(savedTask.id, linkedNoteId);
+      // Handle note linking (only when Dashboard is enabled)
+      if (settings.showDashboard) {
+        if (linkedNoteId !== editingTask?.linkedNoteId) {
+          if (editingTask?.linkedNoteId) {
+            // Remove previous link
+            await unlinkTaskFromNote(editingTask.id);
+          }
+          
+          if (linkedNoteId) {
+            // Create new link
+            await linkTaskToNote(savedTask.id, linkedNoteId);
+          }
         }
       }
 
@@ -291,80 +295,82 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           </div>
 
           {/* Nota Vinculada — dropdown com busca */}
-          <div ref={noteDropdownRef} style={{ position: 'relative' }}>
-            <label className="form-label">
-              <BookOpen size={16} />
-              Vincular à Nota (opcional)
-            </label>
-            <div
-              className="form-select"
-              style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-              onClick={() => setNoteDropdownOpen(!noteDropdownOpen)}
-            >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {linkedNoteId
-                  ? (() => { const n = notes.find(n => n.id === linkedNoteId); return n ? `#${n.sequential_id ?? ''} ${n.title}` : 'Nota não encontrada'; })()
-                  : 'Nenhuma nota'}
-              </span>
-              <Search size={14} style={{ flexShrink: 0, opacity: 0.5 }} />
-            </div>
-            {noteDropdownOpen && (
-              <div style={{
-                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-                background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-primary)',
-                borderRadius: '8px', marginTop: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-                maxHeight: '220px', display: 'flex', flexDirection: 'column',
-              }}>
-                <div style={{ padding: '8px', borderBottom: '1px solid var(--color-border-primary)' }}>
-                  <input
-                    type="text"
-                    placeholder="Buscar nota..."
-                    value={noteSearch}
-                    onChange={(e) => setNoteSearch(e.target.value)}
-                    autoFocus
-                    style={{
-                      width: '100%', padding: '6px 8px', fontSize: '13px', border: '1px solid var(--color-border-primary)',
-                      borderRadius: '6px', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)',
-                      outline: 'none',
-                    }}
-                  />
-                </div>
-                <div style={{ overflowY: 'auto', flex: 1 }}>
-                  <div
-                    style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: 'var(--color-text-muted)' }}
-                    onClick={() => { setLinkedNoteId(undefined); setNoteDropdownOpen(false); setNoteSearch(''); }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-bg-hover)'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                  >
-                    Nenhuma nota
-                  </div>
-                  {filteredNotes.map(note => (
-                    <div
-                      key={note.id}
-                      style={{
-                        padding: '8px 12px', cursor: 'pointer', fontSize: '13px',
-                        color: 'var(--color-text-primary)',
-                        background: linkedNoteId === note.id ? 'rgba(0, 212, 170, 0.1)' : 'transparent',
-                      }}
-                      onClick={() => { setLinkedNoteId(note.id); setNoteDropdownOpen(false); setNoteSearch(''); }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-bg-hover)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = linkedNoteId === note.id ? 'rgba(0, 212, 170, 0.1)' : 'transparent'}
-                    >
-                      <span style={{ color: 'var(--color-primary-teal)', marginRight: '6px', fontSize: '11px' }}>
-                        #{note.sequential_id ?? ''}
-                      </span>
-                      {note.title}
-                    </div>
-                  ))}
-                  {filteredNotes.length === 0 && (
-                    <div style={{ padding: '12px', fontSize: '12px', color: 'var(--color-text-muted)', textAlign: 'center' }}>
-                      Nenhuma nota encontrada
-                    </div>
-                  )}
-                </div>
+          {settings.showDashboard && (
+            <div ref={noteDropdownRef} style={{ position: 'relative' }}>
+              <label className="form-label">
+                <BookOpen size={16} />
+                Vincular à Nota (opcional)
+              </label>
+              <div
+                className="form-select"
+                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                onClick={() => setNoteDropdownOpen(!noteDropdownOpen)}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {linkedNoteId
+                    ? (() => { const n = notes.find(n => n.id === linkedNoteId); return n ? `#${n.sequential_id ?? ''} ${n.title}` : 'Nota não encontrada'; })()
+                    : 'Nenhuma nota'}
+                </span>
+                <Search size={14} style={{ flexShrink: 0, opacity: 0.5 }} />
               </div>
-            )}
-          </div>
+              {noteDropdownOpen && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                  background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-primary)',
+                  borderRadius: '8px', marginTop: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+                  maxHeight: '220px', display: 'flex', flexDirection: 'column',
+                }}>
+                  <div style={{ padding: '8px', borderBottom: '1px solid var(--color-border-primary)' }}>
+                    <input
+                      type="text"
+                      placeholder="Buscar nota..."
+                      value={noteSearch}
+                      onChange={(e) => setNoteSearch(e.target.value)}
+                      autoFocus
+                      style={{
+                        width: '100%', padding: '6px 8px', fontSize: '13px', border: '1px solid var(--color-border-primary)',
+                        borderRadius: '6px', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+                  <div style={{ overflowY: 'auto', flex: 1 }}>
+                    <div
+                      style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: 'var(--color-text-muted)' }}
+                      onClick={() => { setLinkedNoteId(undefined); setNoteDropdownOpen(false); setNoteSearch(''); }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-bg-hover)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      Nenhuma nota
+                    </div>
+                    {filteredNotes.map(note => (
+                      <div
+                        key={note.id}
+                        style={{
+                          padding: '8px 12px', cursor: 'pointer', fontSize: '13px',
+                          color: 'var(--color-text-primary)',
+                          background: linkedNoteId === note.id ? 'rgba(0, 212, 170, 0.1)' : 'transparent',
+                        }}
+                        onClick={() => { setLinkedNoteId(note.id); setNoteDropdownOpen(false); setNoteSearch(''); }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-bg-hover)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = linkedNoteId === note.id ? 'rgba(0, 212, 170, 0.1)' : 'transparent'}
+                      >
+                        <span style={{ color: 'var(--color-primary-teal)', marginRight: '6px', fontSize: '11px' }}>
+                          #{note.sequential_id ?? ''}
+                        </span>
+                        {note.title}
+                      </div>
+                    ))}
+                    {filteredNotes.length === 0 && (
+                      <div style={{ padding: '12px', fontSize: '12px', color: 'var(--color-text-muted)', textAlign: 'center' }}>
+                        Nenhuma nota encontrada
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Atribuir a membro da organização */}
           {activeOrg && members.length > 0 && (
@@ -520,8 +526,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                       </div>
                     </div>
                   </div>
-              </div>
-            )}
+                </div>
+              )}
             </div>
           </div>
           </div>
@@ -549,7 +555,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             <Save size={16} />
             {isLoading ? 'Salvando...' : (editingTask ? 'Atualizar' : 'Criar Tarefa')}
           </Button>
-          </div>
+        </div>
       </div>
     </div>
   );

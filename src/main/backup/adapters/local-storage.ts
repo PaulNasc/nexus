@@ -366,6 +366,46 @@ export class LocalStorageAdapter {
     return videosDir;
   }
 
+  private findVideosDir(rootDir: string): string | null {
+    const candidates = [
+      path.join(rootDir, 'nexus-videos'),
+      path.join(rootDir, 'data', 'nexus-videos'),
+    ];
+    for (const candidate of candidates) {
+      try {
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+          return candidate;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return null;
+  }
+
+  private copyVideosFromDir(sourceDir: string): number {
+    if (!fs.existsSync(sourceDir)) return 0;
+    const targetDir = this.ensureVideosDir();
+    let copied = 0;
+    const entries = fs.readdirSync(sourceDir);
+    for (const entry of entries) {
+      const src = path.join(sourceDir, entry);
+      let stat: fs.Stats;
+      try {
+        stat = fs.statSync(src);
+      } catch {
+        continue;
+      }
+      if (!stat.isFile()) continue;
+      const dest = path.join(targetDir, entry);
+      if (!fs.existsSync(dest)) {
+        fs.copyFileSync(src, dest);
+        copied += 1;
+      }
+    }
+    return copied;
+  }
+
   private uniqueVideoFileName(originalName: string): string {
     const base = path.basename(originalName, path.extname(originalName));
     const ext = path.extname(originalName) || '.mp4';
@@ -799,6 +839,8 @@ export class LocalStorageAdapter {
       const metadata = this.readJsonFile<{ version: string; lastUpdate: string; machineId: string }>(
         path.join(contentDir, 'metadata.json')
       ) || { version: '1.0.0', lastUpdate: new Date().toISOString(), machineId: '' };
+      const videosDir = this.findVideosDir(tempDir);
+      if (videosDir) this.copyVideosFromDir(videosDir);
       this.deleteFolderRecursive(tempDir);
       return { tasks, notes, categories, settings, metadata };
     }
@@ -810,6 +852,8 @@ export class LocalStorageAdapter {
     if (totalFiles > 0 || scan.videoFiles.length > 0 || scan.docFiles.length > 0) {
       const mixed = this.buildNotesFromMixedFiles(scan);
       const metadata = { version: '1.0.0', lastUpdate: new Date().toISOString(), machineId: '' };
+      const videosDir = this.findVideosDir(tempDir);
+      if (videosDir) this.copyVideosFromDir(videosDir);
       this.deleteFolderRecursive(tempDir);
       return {
         tasks: [],
@@ -856,6 +900,8 @@ export class LocalStorageAdapter {
       const metadata = this.readJsonFile<{ version: string; lastUpdate: string; machineId: string }>(
         path.join(contentDir, 'metadata.json')
       ) || { version: '1.0.0', lastUpdate: new Date().toISOString(), machineId: '' };
+      const videosDir = this.findVideosDir(folderPath);
+      if (videosDir) this.copyVideosFromDir(videosDir);
       return { tasks, notes, categories, settings, metadata };
     }
 
@@ -866,6 +912,8 @@ export class LocalStorageAdapter {
     if (totalFiles > 0 || scan.videoFiles.length > 0 || scan.docFiles.length > 0) {
       const mixed = this.buildNotesFromMixedFiles(scan);
       const metadata = { version: '1.0.0', lastUpdate: new Date().toISOString(), machineId: '' };
+      const videosDir = this.findVideosDir(folderPath);
+      if (videosDir) this.copyVideosFromDir(videosDir);
       return {
         tasks: [],
         notes: mixed.notes,
@@ -940,6 +988,11 @@ export class LocalStorageAdapter {
       const dataDir = path.join(this.dataFolder, 'data');
       if (fs.existsSync(dataDir)) {
         archive.directory(dataDir, false);
+      }
+
+      const videosDir = path.join(app.getPath('userData'), 'nexus-videos');
+      if (fs.existsSync(videosDir)) {
+        archive.directory(videosDir, 'nexus-videos');
       }
 
       archive.finalize();

@@ -4,6 +4,8 @@ import { Note } from '../../shared/types/note';
 import { ChevronLeft, CalendarDays, File, Pencil, Trash, BookOpen, Users, X, ExternalLink, Clock, Lock } from 'lucide-react';
 import { useCategories } from '../contexts/CategoriesContext';
 import { useNotes } from '../contexts/NotesContext';
+import { useSettings } from '../hooks/useSettings';
+
 import { useOrganization } from '../contexts/OrganizationContext';
 import { useAuth } from '../contexts/AuthContext';
 import { NoteViewerModal } from './NoteViewerModal';
@@ -30,6 +32,8 @@ export const TaskList: React.FC<TaskListProps> = ({
   const { categories } = useCategories();
   const { notes } = useNotes();
   const { members } = useOrganization();
+  const { settings } = useSettings();
+
   const { user } = useAuth();
 
   const isTaskLocked = (task: Task): boolean => {
@@ -526,10 +530,11 @@ export const TaskList: React.FC<TaskListProps> = ({
                     </div>
 
                     {/* Linked note button — opens preview modal */}
-                    {task.linkedNoteId && (
+                    {settings.showDashboard && task.linkedNoteId && (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleNoteClick(task.linkedNoteId); }}
                         title={`Nota vinculada: ${getLinkedNoteTitle(task.linkedNoteId)}`}
+
                         style={{
                           display: 'flex',
                           alignItems: 'center',

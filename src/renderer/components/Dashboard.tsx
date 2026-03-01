@@ -46,6 +46,7 @@ import { ImportExportModal } from './ImportExportModal';
 import { useTheme } from '../hooks/useTheme';
 import { useI18n } from '../hooks/useI18n';
 import { useSettings } from '../hooks/useSettings';
+import { useSystemTags } from '../contexts/SystemTagsContext';
 
 import { useTasks } from '../contexts/TasksContext';
 import { useCategories } from '../contexts/CategoriesContext';
@@ -140,6 +141,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const { createNote, fetchNotes } = useNotes();
   const { useCloud } = useStorageMode();
   const { activeOrg } = useOrganization();
+  const { tags: systemTags } = useSystemTags();
 
   const [statusTasks, setStatusTasks] = useState<Task[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
@@ -300,10 +302,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const handleImportExportApply = async (intent: ImportIntent, options?: { color?: string }): Promise<ImportResult | null> => {
+  const handleImportExportApply = async (
+    intent: ImportIntent,
+    options?: { color?: string; systemTagId?: number },
+  ): Promise<ImportResult | null> => {
     try {
       const electron = getElectron();
       let result: ImportResult | null = null;
+      const selectedSystemTag =
+        options?.systemTagId !== undefined
+          ? systemTags.find((tag) => tag.id === options.systemTagId && tag.is_active)
+          : undefined;
+
+      const mergeSystemTag = (tags: string[] | undefined, systemTagName?: string): string[] => {
+        const safe = Array.isArray(tags) ? tags : [];
+        if (!systemTagName) return safe;
+        const deduped = safe.filter((tag) => tag.toLowerCase() !== systemTagName.toLowerCase());
+        return [systemTagName, ...deduped];
+      };
+
       if (intent?.kind === 'zip') {
         result = await electron.backup.importZipApply({ source: 'external', filePath: intent.filePath });
       } else if (intent?.kind === 'zip-backup') {
@@ -333,30 +350,51 @@ export const Dashboard: React.FC<DashboardProps> = ({
         result.importedNotes = result.importedNotes.map(n => ({
           ...n,
           title: n.title ? n.title.charAt(0).toUpperCase() + n.title.slice(1) : n.title,
+          systemTagId: selectedSystemTag?.id ?? n.systemTagId,
+          systemTagName: selectedSystemTag?.name ?? n.systemTagName,
+          tags: mergeSystemTag(n.tags, selectedSystemTag?.name ?? n.systemTagName),
         }));
       }
 
       if (result?.success) {
+        console.log('[Import] Import successful, result:', result);
         // Sync imported data to cloud when storage mode uses cloud
         // IPC import already wrote to local MemoryDB, so only cloud sync is needed
         if (useCloud) {
+          console.log('[Import] useCloud=true, syncing to cloud');
           if (result.importedNotes && result.importedNotes.length > 0) {
-            for (const note of result.importedNotes) {
+            console.log('[Import] Syncing', result.importedNotes.length, 'notes to cloud');
+            // Import notes sequentially to avoid sequential_id collision
+            let successCount = 0;
+            for (let idx = 0; idx < result.importedNotes.length; idx++) {
+              const note = result.importedNotes[idx];
               try {
-                await createNote({
+                const created = await createNote({
                   title: note.title,
                   content: note.content,
                   format: note.format || 'text',
-                  tags: note.tags,
+                  tags: mergeSystemTag(note.tags, note.systemTagName),
                   attachedImages: note.attachedImages,
                   attachedVideos: note.attachedVideos,
                   color: options?.color || note.color,
+                  system_tag_id: note.systemTagId,
                 });
+                if (created) {
+                  successCount++;
+                  console.log(`[Import] Note ${idx + 1}/${result.importedNotes.length} synced:`, created.id);
+                } else {
+                  console.log(`[Import] Note ${idx + 1}/${result.importedNotes.length} returned null (likely duplicate)`);
+                }
               } catch (e) {
-                console.error('Failed to sync imported note to cloud:', e);
+                console.error(`[Import] Failed to sync note ${idx + 1}:`, e);
               }
             }
+            console.log('[Import] Synced notes count:', successCount, '/', result.importedNotes.length);
+            console.log('[Import] Fetching notes after sync...');
             await fetchNotes();
+            console.log('[Import] fetchNotes completed');
+          } else {
+            console.log('[Import] No notes to sync (useCloud but no importedNotes)');
           }
 
           if (result.importedTasks && result.importedTasks.length > 0) {
@@ -375,9 +413,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
           }
         }
 
+        console.log('[Import] Dispatching update events');
         window.dispatchEvent(new Event('tasksUpdated'));
         window.dispatchEvent(new Event('categoriesUpdated'));
         window.dispatchEvent(new Event('notesUpdated'));
+        console.log('[Import] Update events dispatched');
       }
 
       return result;
@@ -599,6 +639,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         onImportPreview={handleImportExportPreview}
         onImportApply={handleImportExportApply}
         initialImportIntent={initialImportIntent}
+        systemTagOptions={activeOrg ? systemTags : []}
       />
       {/* Header Section */}
       <header style={{ marginBottom: 'var(--space-4)' }}>

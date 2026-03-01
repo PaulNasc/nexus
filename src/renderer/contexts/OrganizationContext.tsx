@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Organization, OrgMember, OrgInvite, OrgJoinRequest, OrgRole } from '../../shared/types/organization';
+import { useNotifications } from '../hooks/useNotifications';
 
 interface OrganizationContextType {
   // State
@@ -45,6 +46,7 @@ const OrganizationContext = createContext<OrganizationContextType | null>(null);
 const ACTIVE_ORG_KEY = 'nexus-active-org-id';
 
 export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { showNotification } = useNotifications();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [activeOrg, setActiveOrgState] = useState<Organization | null>(null);
   const [members, setMembers] = useState<OrgMember[]>([]);
@@ -53,6 +55,9 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [myInvites, setMyInvites] = useState<OrgInvite[]>([]);
   const [myRole, setMyRole] = useState<OrgRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const initializedRef = useRef(false);
 
   // Generate slug from name
   const generateSlug = (name: string): string => {
@@ -208,10 +213,41 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, []);
 
+  const notifyOrgEvent = useCallback((title: string, body: string, tag: string) => {
+    showNotification({
+      title,
+      body,
+      tag,
+      requireInteraction: true,
+      force: true,
+    });
+  }, [showNotification]);
+
   // Init
   useEffect(() => {
-    loadOrganizations();
-    loadMyInvites();
+    let mounted = true;
+    const init = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (mounted) {
+        setCurrentUserId(user?.id || null);
+        setCurrentUserEmail(user?.email || null);
+      }
+
+      await Promise.all([loadOrganizations(), loadMyInvites()]);
+      if (mounted) initializedRef.current = true;
+    };
+
+    void init();
+
+    const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentUserId(session?.user?.id || null);
+      setCurrentUserEmail(session?.user?.email || null);
+    });
+
+    return () => {
+      mounted = false;
+      authSub.subscription.unsubscribe();
+    };
   }, [loadOrganizations, loadMyInvites]);
 
   // When active org changes, load its details
@@ -226,7 +262,7 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, [activeOrg, loadOrgDetails]);
 
-  // Realtime: org_members and org_invites changes
+  // Realtime: active org scope (members, invites, join requests, org settings)
   useEffect(() => {
     if (!activeOrg) return;
 
@@ -246,8 +282,66 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'org_invites', filter: `org_id=eq.${activeOrg.id}` },
-        () => {
+        (payload) => {
+          if (initializedRef.current && payload.eventType === 'INSERT') {
+            const inserted = payload.new as Record<string, unknown>;
+            const email = typeof inserted.invited_email === 'string' ? inserted.invited_email : 'novo membro';
+            const invitedBy = typeof inserted.invited_by === 'string' ? inserted.invited_by : '';
+            if (invitedBy && invitedBy !== currentUserId) {
+              notifyOrgEvent('Novo convite na organização', `Convite enviado para ${email}.`, `org-invite-${activeOrg.id}`);
+            }
+          }
           loadOrgDetails(activeOrg.id);
+          void loadMyInvites();
+        }
+      )
+      .subscribe();
+
+    const joinRequestsChannel = supabase
+      .channel(`org-join-requests-realtime-${activeOrg.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'org_join_requests', filter: `org_id=eq.${activeOrg.id}` },
+        (payload) => {
+          if (initializedRef.current && payload.eventType === 'INSERT') {
+            const inserted = payload.new as Record<string, unknown>;
+            const message = typeof inserted.message === 'string' ? inserted.message : '';
+            notifyOrgEvent('Nova solicitação de entrada', message || 'Uma nova solicitação foi enviada para sua organização.', `org-join-request-${activeOrg.id}`);
+          }
+
+          if (initializedRef.current && payload.eventType === 'UPDATE') {
+            const updated = payload.new as Record<string, unknown>;
+            const status = typeof updated.status === 'string' ? updated.status : '';
+            const requesterId = typeof updated.user_id === 'string' ? updated.user_id : '';
+            if (requesterId === currentUserId && (status === 'approved' || status === 'rejected')) {
+              notifyOrgEvent(
+                status === 'approved' ? 'Solicitação aprovada' : 'Solicitação rejeitada',
+                `Sua solicitação para entrar em ${activeOrg.name} foi ${status === 'approved' ? 'aprovada' : 'rejeitada'}.`,
+                `org-join-request-result-${activeOrg.id}`,
+              );
+            }
+          }
+
+          loadOrgDetails(activeOrg.id);
+        }
+      )
+      .subscribe();
+
+    const orgChannel = supabase
+      .channel(`organization-realtime-${activeOrg.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'organizations', filter: `id=eq.${activeOrg.id}` },
+        (payload) => {
+          if (payload.eventType === 'UPDATE') {
+            const updated = payload.new as Organization;
+            setOrganizations(prev => prev.map(o => o.id === activeOrg.id ? { ...o, ...updated } : o));
+            setActiveOrgState(prev => prev && prev.id === activeOrg.id ? { ...prev, ...updated } : prev);
+
+            if (initializedRef.current) {
+              notifyOrgEvent('Configurações da organização atualizadas', `A organização ${updated.name || activeOrg.name} foi atualizada em outro dispositivo.`, `org-updated-${activeOrg.id}`);
+            }
+          }
         }
       )
       .subscribe();
@@ -255,8 +349,61 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     return () => {
       supabase.removeChannel(membersChannel);
       supabase.removeChannel(invitesChannel);
+      supabase.removeChannel(joinRequestsChannel);
+      supabase.removeChannel(orgChannel);
     };
-  }, [activeOrg, loadOrgDetails]);
+  }, [activeOrg, currentUserId, loadMyInvites, loadOrgDetails, notifyOrgEvent]);
+
+  // Realtime: user-scoped org membership/invites across all orgs (works even when no active org)
+  useEffect(() => {
+    if (!currentUserId && !currentUserEmail) return;
+
+    const channels: ReturnType<typeof supabase.channel>[] = [];
+
+    if (currentUserId) {
+      const membershipChannel = supabase
+        .channel(`org-membership-self-${currentUserId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'org_members', filter: `user_id=eq.${currentUserId}` },
+          () => {
+            void loadOrganizations();
+          }
+        )
+        .subscribe();
+      channels.push(membershipChannel);
+    }
+
+    if (currentUserEmail) {
+      const inviteChannel = supabase
+        .channel(`org-my-invites-${currentUserEmail}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'org_invites', filter: `invited_email=eq.${currentUserEmail}` },
+          (payload) => {
+            if (initializedRef.current) {
+              const inserted = payload.new as Record<string, unknown>;
+              const status = typeof inserted.status === 'string' ? inserted.status : 'pending';
+
+              if (payload.eventType === 'INSERT' || (payload.eventType === 'UPDATE' && status === 'pending')) {
+                notifyOrgEvent('Você recebeu um convite', 'Há um novo convite de organização aguardando sua ação.', 'org-my-invite');
+              }
+            }
+
+            void loadMyInvites();
+            void loadOrganizations();
+          }
+        )
+        .subscribe();
+      channels.push(inviteChannel);
+    }
+
+    return () => {
+      channels.forEach((channel) => {
+        supabase.removeChannel(channel);
+      });
+    };
+  }, [currentUserEmail, currentUserId, loadMyInvites, loadOrganizations, notifyOrgEvent]);
 
   const setActiveOrg = useCallback((org: Organization | null) => {
     // Skip if already the same org (avoid unnecessary re-renders)
@@ -578,23 +725,48 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       if (!user) return false;
 
       // Get request details
-      const { data: request } = await supabase
+      const { data: request, error: requestError } = await supabase
         .from('org_join_requests')
         .select('*')
         .eq('id', requestId)
         .single();
 
+      if (requestError) throw requestError;
+
       if (!request) return false;
 
-      // Add user as member
-      await supabase.from('org_members').insert({
+      // Idempotency: if already approved, just refresh local state
+      if (request.status === 'approved') {
+        setJoinRequests(prev => prev.filter(r => r.id !== requestId));
+        if (activeOrg) await loadOrgDetails(activeOrg.id);
+        return true;
+      }
+
+      // Add user as member (idempotent to avoid UNIQUE(org_id, user_id) conflicts)
+      const { error: upsertMemberError } = await supabase.from('org_members').upsert({
         org_id: request.org_id,
         user_id: request.user_id,
         role: 'member',
+      }, {
+        onConflict: 'org_id,user_id',
+        ignoreDuplicates: true,
       });
 
+      if (upsertMemberError) throw upsertMemberError;
+
+      // Keep only one approved row per (org_id, user_id) to satisfy UNIQUE(org_id, user_id, status)
+      const { error: cleanupApprovedError } = await supabase
+        .from('org_join_requests')
+        .delete()
+        .eq('org_id', request.org_id)
+        .eq('user_id', request.user_id)
+        .eq('status', 'approved')
+        .neq('id', requestId);
+
+      if (cleanupApprovedError) throw cleanupApprovedError;
+
       // Update request status
-      await supabase
+      const { error: updateRequestError } = await supabase
         .from('org_join_requests')
         .update({
           status: 'approved',
@@ -602,6 +774,8 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           reviewed_at: new Date().toISOString(),
         })
         .eq('id', requestId);
+
+      if (updateRequestError) throw updateRequestError;
 
       setJoinRequests(prev => prev.filter(r => r.id !== requestId));
       if (activeOrg) await loadOrgDetails(activeOrg.id);
