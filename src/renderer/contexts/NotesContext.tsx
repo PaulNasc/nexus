@@ -705,6 +705,16 @@ return null;
           const { eventType, new: newRow, old: oldRow } = payload;
           const rowOrgId = (newRow as Record<string, unknown>)?.organization_id ?? (oldRow as Record<string, unknown>)?.organization_id ?? null;
           const currentOrgId = activeOrg?.id ?? null;
+
+          // DELETE pode vir sem organization_id no old row dependendo do REPLICA IDENTITY.
+          // Nesses casos, removemos por id localmente (no-op se o id não existir nesta visão).
+          if (eventType === 'DELETE') {
+            const deletedId = (oldRow as Record<string, unknown>)?.id as number;
+            if (!deletedId) return;
+            setNotes(prev => prev.filter(n => n.id !== deletedId));
+            return;
+          }
+
           if (rowOrgId !== currentOrgId) return;
 
           if (eventType === 'INSERT') {
@@ -716,9 +726,6 @@ return null;
           } else if (eventType === 'UPDATE') {
             const note = dbRowToNote(newRow as unknown as SupabaseNoteRow);
             setNotes(prev => prev.map(n => n.id === note.id ? { ...n, ...note } : n));
-          } else if (eventType === 'DELETE') {
-            const deletedId = (oldRow as Record<string, unknown>)?.id as number;
-            if (deletedId) setNotes(prev => prev.filter(n => n.id !== deletedId));
           }
         }
       )

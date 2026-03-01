@@ -118,7 +118,8 @@ interface QuickActionCard {
 
 interface DashboardProps {
   onViewTaskList: (status: string) => void;
-  onOpenTaskModal: () => void;
+  // Hotfix: ação rápida de "Nova Tarefa" desativada por solicitação do usuário.
+  // onOpenTaskModal: () => void;
   onOpenTimer?: () => void;
   onOpenReports?: () => void;
   showQuickActions?: boolean;
@@ -127,7 +128,7 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({
   onViewTaskList,
-  onOpenTaskModal,
+  // onOpenTaskModal,
   onOpenTimer,
   onOpenReports,
   showQuickActions = true,
@@ -463,14 +464,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
       gradient: 'linear-gradient(135deg, #ffb199 0%, #ff0844 100%)',
       onClick: onOpenReports
     },
-    newTask: {
-      key: 'newTask',
-      title: 'Nova Tarefa',
-      desc: 'Criar tarefa',
-      icon: <Plus size={16} strokeWidth={1.5} />,
-      gradient: 'linear-gradient(135deg, #7B3FF2 0%, #00D4AA 100%)',
-      onClick: onOpenTaskModal
-    },
+    // Hotfix: ação rápida "Nova Tarefa" desativada por solicitação do usuário.
+    // newTask: {
+    //   key: 'newTask',
+    //   title: 'Nova Tarefa',
+    //   desc: 'Criar tarefa',
+    //   icon: <Plus size={16} strokeWidth={1.5} />,
+    //   gradient: 'linear-gradient(135deg, #7B3FF2 0%, #00D4AA 100%)',
+    //   onClick: onOpenTaskModal
+    // },
     categories: {
       key: 'categories',
       title: 'Categorias',

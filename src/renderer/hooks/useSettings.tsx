@@ -160,7 +160,8 @@ const DEFAULT_TASK_CARDS: TaskStatusCard[] = [
 const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
   { key: 'timer', enabled: true, order: 1 },
   { key: 'reports', enabled: true, order: 2 },
-  { key: 'newTask', enabled: true, order: 3 },
+  // Hotfix: ação rápida "Nova Tarefa" desativada por solicitação do usuário.
+  // { key: 'newTask', enabled: true, order: 3 },
   { key: 'categories', enabled: false, order: 4 },
   { key: 'backup', enabled: false, order: 5 },
   { key: 'import', enabled: false, order: 6 },
@@ -364,10 +365,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // Merge: remote wins for non-empty values
         setSettings(prev => {
           const merged = enforceModuleSettings({ ...prev, ...remoteSettings });
+          merged.quickActions = migrateQuickActions(merged.quickActions || []);
           // If userName is empty, use the display_name from auth profile
           if (!merged.userName && profileName) {
             merged.userName = profileName;
           }
+
           localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged));
           return merged;
         });
@@ -480,10 +483,11 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Função para migrar ações rápidas
   const migrateQuickActions = (existingActions: QuickAction[]): QuickAction[] => {
     const allNewActions = DEFAULT_QUICK_ACTIONS;
-    const existingKeys = existingActions.map(action => action.key);
+    const filteredExisting = existingActions.filter(action => action.key !== 'newTask');
+    const existingKeys = filteredExisting.map(action => action.key);
 
     // Manter ações existentes
-    const migratedActions = [...existingActions];
+    const migratedActions = [...filteredExisting];
 
     // Adicionar novas ações que não existem
     allNewActions.forEach(newAction => {
@@ -493,7 +497,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
 
     // Reordenar para manter consistência
-    return migratedActions.sort((a, b) => a.order - b.order);
+    return migratedActions
+      .sort((a, b) => a.order - b.order)
+      .map((action, index) => ({ ...action, order: index + 1 }));
   };
 
   const loadSystemInfo = async () => {

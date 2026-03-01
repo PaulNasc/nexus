@@ -20,7 +20,7 @@ import { Task, TaskStatus } from '../shared/types/task';
 import { Screen } from '../shared/types/navigation';
 import { ThemeConfig } from './types/theme';
 import { UserSettings } from './hooks/useSettings';
-import { Settings as SettingsIcon, LogOut, StickyNote, ListTodo } from 'lucide-react';
+import { Settings as SettingsIcon, LogOut, StickyNote } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import ProactiveSuggestionsWidget from './components/ProactiveSuggestionsWidget';
 import UpdateNotification from './components/UpdateNotification';
@@ -60,7 +60,7 @@ interface AppHeaderProps {
   openReports: () => void;
   openNotes: () => void;
   handleOpenSettings: () => void;
-  handleOpenTaskModal: () => void;
+  // handleOpenTaskModal: () => void;
   handleOpenNoteModal: () => void;
   onSignOut: () => void;
 }
@@ -75,7 +75,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   openReports,
   openNotes,
   handleOpenSettings,
-  handleOpenTaskModal,
+  // handleOpenTaskModal,
   handleOpenNoteModal,
   onSignOut
 }) => {
@@ -130,6 +130,11 @@ const AppHeader: React.FC<AppHeaderProps> = ({
             </button>
           </div>
           <div className="header-action-group">
+            {/*
+              Hotfix: botão "Nova Tarefa" removido por solicitação do usuário.
+              Mantemos o bloco comentado para rastreabilidade do rollback.
+            */}
+            {/**
             <button
               className="header-action-btn header-action-btn--task"
               onClick={handleOpenTaskModal}
@@ -138,6 +143,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
               <ListTodo size={16} />
               <span className="header-tooltip">Nova Tarefa</span>
             </button>
+            */}
             <button
               className="header-action-btn header-action-btn--note"
               onClick={handleOpenNoteModal}
@@ -338,10 +344,11 @@ const App: React.FC<AppProps> = () => {
   }, [navigation.currentScreen, settings.showDashboard]);
 
   // Modal functions
-  const handleOpenTaskModal = () => {
-    setEditingTask(undefined);
-    setIsTaskModalOpen(true);
-  };
+  // Hotfix: abertura direta de "Nova Tarefa" desativada por solicitação do usuário.
+  // const handleOpenTaskModal = () => {
+  //   setEditingTask(undefined);
+  //   setIsTaskModalOpen(true);
+  // };
 
   const handleEditTask = (task: Task) => {
     setEditingTask(task);
@@ -490,7 +497,7 @@ const App: React.FC<AppProps> = () => {
           openReports={openReports}
           openNotes={openNotes}
           handleOpenSettings={handleOpenSettings}
-          handleOpenTaskModal={handleOpenTaskModal}
+          // handleOpenTaskModal={handleOpenTaskModal}
           handleOpenNoteModal={() => setIsNoteModalOpen(true)}
           onSignOut={signOut}
         />
@@ -540,7 +547,7 @@ const App: React.FC<AppProps> = () => {
         openReports={openReports}
         openNotes={openNotes}
         handleOpenSettings={handleOpenSettings}
-        handleOpenTaskModal={handleOpenTaskModal}
+        // handleOpenTaskModal={handleOpenTaskModal}
         handleOpenNoteModal={() => setIsNoteModalOpen(true)}
         onSignOut={signOut}
       />
@@ -550,7 +557,7 @@ const App: React.FC<AppProps> = () => {
           <Dashboard
             key={settingsVersion}
             onViewTaskList={viewTaskList}
-            onOpenTaskModal={handleOpenTaskModal}
+            // onOpenTaskModal={handleOpenTaskModal}
             onOpenTimer={settings.showTimer ? openTimer : undefined}
             onOpenReports={settings.showReports ? openReports : undefined}
             showQuickActions={settings.showQuickActions}
