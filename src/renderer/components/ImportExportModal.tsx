@@ -111,6 +111,8 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   const [isRetryingFailed, setIsRetryingFailed] = useState(false);
   const syncUpdateQueueRef = useRef<Map<string, ImportSyncItem>>(new Map());
   const syncFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onImportPreviewRef = useRef(onImportPreview);
+  const autoPreviewKeyRef = useRef<string | null>(null);
 
   const syncStats = useMemo(() => {
     let success = 0;
@@ -128,6 +130,10 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   }, [showAllSyncItems, syncItems]);
 
   const hiddenSyncItemsCount = Math.max(0, syncItems.length - visibleSyncItems.length);
+
+  useEffect(() => {
+    onImportPreviewRef.current = onImportPreview;
+  }, [onImportPreview]);
 
   const flushSyncUpdates = useCallback(() => {
     if (syncFlushTimerRef.current) {
@@ -193,6 +199,10 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     if (mode !== 'import') return;
     if (!initialImportIntent) return;
 
+    const intentKey = JSON.stringify(initialImportIntent);
+    if (autoPreviewKeyRef.current === intentKey) return;
+    autoPreviewKeyRef.current = intentKey;
+
     let cancelled = false;
     const run = async () => {
       setIsBusy(true);
@@ -202,7 +212,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       setIntent(initialImportIntent);
       startProgress('Analisando arquivo...');
       try {
-        const p = await onImportPreview(initialImportIntent);
+        const p = await onImportPreviewRef.current(initialImportIntent);
         if (cancelled) return;
         setPreview(p);
       } finally {
@@ -217,7 +227,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [open, mode, initialImportIntent, onImportPreview]);
+  }, [open, mode, initialImportIntent]);
 
   const reset = () => {
     setPreview(null);
@@ -232,6 +242,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     setSyncModalOpen(false);
     setSyncItems([]);
     setShowAllSyncItems(false);
+    autoPreviewKeyRef.current = null;
     setIsRetryingFailed(false);
     syncUpdateQueueRef.current.clear();
     if (syncFlushTimerRef.current) clearTimeout(syncFlushTimerRef.current);

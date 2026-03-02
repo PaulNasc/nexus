@@ -872,7 +872,7 @@ export class LocalStorageAdapter {
     return { tasks, notes, categories, settings, metadata };
   }
 
-  async readDataFromZip(zipPath: string): Promise<LocalStorageData> {
+  async readDataFromZip(zipPath: string, options?: { previewOnly?: boolean }): Promise<LocalStorageData> {
     if (!zipPath || typeof zipPath !== 'string') {
       throw new Error('Invalid zipPath');
     }
@@ -896,8 +896,10 @@ export class LocalStorageAdapter {
       const metadata = this.readJsonFile<{ version: string; lastUpdate: string; machineId: string }>(
         path.join(contentDir, 'metadata.json')
       ) || { version: '1.0.0', lastUpdate: new Date().toISOString(), machineId: '' };
-      const videosDir = this.findVideosDir(tempDir);
-      if (videosDir) this.copyVideosFromDir(videosDir);
+      if (!options?.previewOnly) {
+        const videosDir = this.findVideosDir(tempDir);
+        if (videosDir) this.copyVideosFromDir(videosDir);
+      }
       this.deleteFolderRecursive(tempDir);
       return { tasks, notes, categories, settings, metadata };
     }
@@ -909,8 +911,10 @@ export class LocalStorageAdapter {
     if (totalFiles > 0 || scan.videoFiles.length > 0 || scan.docFiles.length > 0) {
       const mixed = this.buildNotesFromMixedFiles(scan);
       const metadata = { version: '1.0.0', lastUpdate: new Date().toISOString(), machineId: '' };
-      const videosDir = this.findVideosDir(tempDir);
-      if (videosDir) this.copyVideosFromDir(videosDir);
+      if (!options?.previewOnly) {
+        const videosDir = this.findVideosDir(tempDir);
+        if (videosDir) this.copyVideosFromDir(videosDir);
+      }
       this.deleteFolderRecursive(tempDir);
       return {
         tasks: [],
@@ -933,7 +937,7 @@ export class LocalStorageAdapter {
     );
   }
 
-  async readDataFromFolder(folderPath: string): Promise<LocalStorageData> {
+  async readDataFromFolder(folderPath: string, options?: { previewOnly?: boolean }): Promise<LocalStorageData> {
     if (!folderPath || typeof folderPath !== 'string') {
       throw new Error('Invalid folderPath');
     }
@@ -957,8 +961,10 @@ export class LocalStorageAdapter {
       const metadata = this.readJsonFile<{ version: string; lastUpdate: string; machineId: string }>(
         path.join(contentDir, 'metadata.json')
       ) || { version: '1.0.0', lastUpdate: new Date().toISOString(), machineId: '' };
-      const videosDir = this.findVideosDir(folderPath);
-      if (videosDir) this.copyVideosFromDir(videosDir);
+      if (!options?.previewOnly) {
+        const videosDir = this.findVideosDir(folderPath);
+        if (videosDir) this.copyVideosFromDir(videosDir);
+      }
       return { tasks, notes, categories, settings, metadata };
     }
 
@@ -969,8 +975,10 @@ export class LocalStorageAdapter {
     if (totalFiles > 0 || scan.videoFiles.length > 0 || scan.docFiles.length > 0) {
       const mixed = this.buildNotesFromMixedFiles(scan);
       const metadata = { version: '1.0.0', lastUpdate: new Date().toISOString(), machineId: '' };
-      const videosDir = this.findVideosDir(folderPath);
-      if (videosDir) this.copyVideosFromDir(videosDir);
+      if (!options?.previewOnly) {
+        const videosDir = this.findVideosDir(folderPath);
+        if (videosDir) this.copyVideosFromDir(videosDir);
+      }
       return {
         tasks: [],
         notes: mixed.notes,

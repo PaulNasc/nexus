@@ -268,7 +268,7 @@ export class BackupManager {
     }
 
     const zipPath = await this.resolveZipPath(source);
-    const data = await this.adapter.readDataFromZip(zipPath);
+    const data = await this.adapter.readDataFromZip(zipPath, { previewOnly: true });
 
     const db = MemoryDatabase.getInstance();
     const currentTasks = await db.getAllTasks();
@@ -339,7 +339,7 @@ export class BackupManager {
       throw new Error('BackupManager not initialized');
     }
 
-    const data = await this.adapter.readDataFromFolder(folderPath);
+    const data = await this.adapter.readDataFromFolder(folderPath, { previewOnly: true });
 
     const db = MemoryDatabase.getInstance();
     const currentTasks = await db.getAllTasks();
