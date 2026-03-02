@@ -5,6 +5,7 @@ import type { ImportResult, RestorePreview } from '../../shared/types/backup';
 import type { ElectronAPI, ImportSourceSelectionResult } from '../../main/preload';
 
 type ExportFormat = 'zip' | 'json' | 'csv';
+const SYNC_ITEMS_RENDER_LIMIT = 200;
 
 type SyncItemStatus = 'pending' | 'processing' | 'success' | 'error' | 'skipped';
 type SyncItemType = 'note' | 'task';
@@ -106,9 +107,27 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncItems, setSyncItems] = useState<ImportSyncItem[]>([]);
+  const [showAllSyncItems, setShowAllSyncItems] = useState(false);
   const [isRetryingFailed, setIsRetryingFailed] = useState(false);
   const syncUpdateQueueRef = useRef<Map<string, ImportSyncItem>>(new Map());
   const syncFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const syncStats = useMemo(() => {
+    let success = 0;
+    let error = 0;
+    for (const item of syncItems) {
+      if (item.status === 'success') success += 1;
+      if (item.status === 'error') error += 1;
+    }
+    return { success, error };
+  }, [syncItems]);
+
+  const visibleSyncItems = useMemo(() => {
+    if (showAllSyncItems) return syncItems;
+    return syncItems.slice(-SYNC_ITEMS_RENDER_LIMIT);
+  }, [showAllSyncItems, syncItems]);
+
+  const hiddenSyncItemsCount = Math.max(0, syncItems.length - visibleSyncItems.length);
 
   const flushSyncUpdates = useCallback(() => {
     if (syncFlushTimerRef.current) {
@@ -212,6 +231,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     setImportSystemTagId('');
     setSyncModalOpen(false);
     setSyncItems([]);
+    setShowAllSyncItems(false);
     setIsRetryingFailed(false);
     syncUpdateQueueRef.current.clear();
     if (syncFlushTimerRef.current) clearTimeout(syncFlushTimerRef.current);
@@ -441,6 +461,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       }, {
         onSyncStart: (items) => {
           setSyncItems(items);
+          setShowAllSyncItems(false);
           if (items.length > 0) {
             setSyncModalOpen(true);
           }
@@ -806,34 +827,48 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
               <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontWeight: 700 }}>Sincronização das notas/tarefas</div>
                 <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-                  {syncItems.filter((item) => item.status === 'success').length} sucesso • {syncItems.filter((item) => item.status === 'error').length} erro
+                  {syncStats.success} sucesso • {syncStats.error} erro
                 </div>
               </div>
 
               <div style={{ padding: '12px 16px', overflow: 'auto', display: 'grid', gap: '6px' }}>
                 {syncItems.length === 0 ? (
                   <div style={{ color: 'var(--color-text-secondary)', fontSize: '13px' }}>Aguardando processamento...</div>
-                ) : syncItems.map((item) => (
-                  <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '68px 54px 1fr', gap: '8px', fontSize: '12px', alignItems: 'start' }}>
-                    <span style={{ color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: '11px' }}>{item.type}</span>
-                    <span style={{
-                      fontWeight: 700,
-                      color: item.status === 'success'
-                        ? 'var(--success-color)'
-                        : item.status === 'error'
-                          ? 'var(--error-color)'
-                          : item.status === 'processing'
-                            ? 'var(--color-primary-teal)'
-                            : 'var(--color-text-secondary)',
-                    }}>
-                      {item.status === 'success' ? 'OK' : item.status === 'error' ? 'ERRO' : item.status === 'processing' ? 'SUBINDO' : item.status === 'skipped' ? 'PULADO' : 'PEND.'}
-                    </span>
-                    <span>{item.title}{item.message ? ` — ${item.message}` : ''}</span>
-                  </div>
-                ))}
+                ) : (
+                  <>
+                    {!showAllSyncItems && hiddenSyncItemsCount > 0 && (
+                      <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+                        Exibindo os {visibleSyncItems.length} itens mais recentes ({hiddenSyncItemsCount} ocultos para manter desempenho).
+                      </div>
+                    )}
+                    {visibleSyncItems.map((item) => (
+                      <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '68px 54px 1fr', gap: '8px', fontSize: '12px', alignItems: 'start' }}>
+                        <span style={{ color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: '11px' }}>{item.type}</span>
+                        <span style={{
+                          fontWeight: 700,
+                          color: item.status === 'success'
+                            ? 'var(--success-color)'
+                            : item.status === 'error'
+                              ? 'var(--error-color)'
+                              : item.status === 'processing'
+                                ? 'var(--color-primary-teal)'
+                                : 'var(--color-text-secondary)',
+                        }}>
+                          {item.status === 'success' ? 'OK' : item.status === 'error' ? 'ERRO' : item.status === 'processing' ? 'SUBINDO' : item.status === 'skipped' ? 'PULADO' : 'PEND.'}
+                        </span>
+                        <span>{item.title}{item.message ? ` — ${item.message}` : ''}</span>
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
 
               <div style={{ padding: '12px 16px', borderTop: '1px solid var(--color-border-primary)', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                {hiddenSyncItemsCount > 0 && !showAllSyncItems && (
+                  <Button variant="ghost" onClick={() => setShowAllSyncItems(true)}>
+                    Mostrar lista completa
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   onClick={handleRetryFailed}
