@@ -487,29 +487,52 @@ foreach ($root in $roots) {
   }
 }
 
+$updatedCount = 0
+
 foreach ($shortcutPath in $shortcutPaths) {
   if (-not (Test-Path $shortcutPath)) { continue }
   try {
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $currentTarget = [string]$shortcut.TargetPath
-    if ($currentTarget -and $currentTarget -match 'Nexus(-[0-9.]+-x64)?\\.exe$') {
+    $currentTargetFile = if ($currentTarget) { [System.IO.Path]::GetFileName($currentTarget) } else { '' }
+    $currentIcon = [string]$shortcut.IconLocation
+    $shortcutName = [System.IO.Path]::GetFileNameWithoutExtension($shortcutPath)
+
+    $looksLikeNexusShortcut = (
+      ($currentTargetFile -match '^Nexus(-[0-9.]+-x64)?\\.exe$') -or
+      ($currentIcon -match 'Nexus(-[0-9.]+-x64)?\\.exe') -or
+      ($shortcutName -match '^(?i)nexus')
+    )
+
+    if ($looksLikeNexusShortcut) {
       $shortcut.TargetPath = $target
       $shortcut.WorkingDirectory = Split-Path $target
       $shortcut.IconLocation = "$target,0"
       $shortcut.Save()
+      $updatedCount++
     }
   } catch {}
 }
+
+Write-Output $updatedCount
 `;
 
     const result = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
       windowsHide: true,
-      stdio: 'ignore',
+      encoding: 'utf-8',
     });
 
     if (result.status !== 0) {
       logger.warn('Portable shortcut retargeting failed (non-blocking)', 'updater', {
         status: result.status,
+      });
+      return;
+    }
+
+    const updatedShortcuts = Number.parseInt((result.stdout ?? '').trim(), 10);
+    if (Number.isFinite(updatedShortcuts)) {
+      logger.info('Portable shortcut retargeting finished', 'updater', {
+        updatedShortcuts,
       });
     }
   }

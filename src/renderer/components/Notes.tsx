@@ -405,20 +405,42 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
   }, [showUtilitiesPanel, activeOrg, loadUtilityFiles]);
 
   const handleUtilityUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !activeOrg) return;
+    const selectedFiles = Array.from(event.target.files || []);
+    if (selectedFiles.length === 0 || !activeOrg) return;
 
     setUploadingUtility(true);
-    setUploadingUtilityName(file.name);
-    setUtilityActionMessage(`Enviando ${file.name}...`);
+    setUploadingUtilityName(selectedFiles.length === 1 ? selectedFiles[0]?.name || '' : `${selectedFiles.length} arquivos`);
+    setUtilityActionMessage(`Enviando 0/${selectedFiles.length} arquivos...`);
     try {
       const pathPrefix = currentUtilityPath ? `${currentUtilityPath}/` : '';
-      const objectKey = `org/${activeOrg.id}/utilities/${pathPrefix}${file.name}`;
-      await uploadUtilityBlobToR2Signed(objectKey, file, file.type || 'application/octet-stream');
+      const concurrency = 4;
+      let uploadedCount = 0;
+      let failedCount = 0;
+
+      for (let i = 0; i < selectedFiles.length; i += concurrency) {
+        const chunk = selectedFiles.slice(i, i + concurrency);
+        await Promise.all(
+          chunk.map(async (file) => {
+            try {
+              const objectKey = `org/${activeOrg.id}/utilities/${pathPrefix}${file.name}`;
+              await uploadUtilityBlobToR2Signed(objectKey, file, file.type || 'application/octet-stream');
+              uploadedCount += 1;
+              setUtilityActionMessage(`Enviando ${uploadedCount}/${selectedFiles.length} arquivos...`);
+            } catch (error) {
+              failedCount += 1;
+              console.error('Erro ao fazer upload do arquivo:', file.name, error);
+            }
+          }),
+        );
+      }
+
       await loadUtilityFiles();
+      if (failedCount > 0) {
+        alert(`${failedCount} arquivo(s) não puderam ser enviados. Verifique se já existem com o mesmo nome.`);
+      }
     } catch (error) {
-      console.error('Erro ao fazer upload do arquivo:', error);
-      alert('Erro ao fazer upload. Verifique se o arquivo já existe.');
+      console.error('Erro ao processar upload de utilitários:', error);
+      alert('Erro ao fazer upload dos arquivos.');
     } finally {
       setUploadingUtility(false);
       setUploadingUtilityName('');
@@ -958,6 +980,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
               <input
                 id="utility-upload-input"
                 type="file"
+                multiple
                 onChange={handleUtilityUpload}
                 disabled={isUtilityBusy}
                 style={{ display: 'none' }}

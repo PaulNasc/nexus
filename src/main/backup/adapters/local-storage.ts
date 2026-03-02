@@ -260,11 +260,41 @@ export class LocalStorageAdapter {
     });
   }
 
+  private isLikelyTextFile(filePath: string): boolean {
+    try {
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) return false;
+      const sampleSize = Math.min(stat.size, 4096);
+      if (sampleSize <= 0) return false;
+
+      const fd = fs.openSync(filePath, 'r');
+      try {
+        const buffer = Buffer.alloc(sampleSize);
+        const bytesRead = fs.readSync(fd, buffer, 0, sampleSize, 0);
+        if (bytesRead <= 0) return false;
+
+        let suspiciousBinaryBytes = 0;
+        for (let i = 0; i < bytesRead; i += 1) {
+          const byte = buffer[i] ?? 0;
+          if (byte === 0) return false;
+          const isControl = byte < 9 || (byte > 13 && byte < 32);
+          if (isControl) suspiciousBinaryBytes += 1;
+        }
+
+        return suspiciousBinaryBytes / bytesRead < 0.1;
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Escaneia recursivamente um diretório e classifica todos os arquivos por tipo.
    */
   private scanAllFiles(rootDir: string): {
-    textFiles: string[];      // .txt, .sql, .md
+    textFiles: string[];      // texto e código fonte
     imageFiles: string[];     // .png, .jpg, .jpeg, .jfif, .gif, .bmp, .webp
     videoFiles: string[];     // .mp4, .webm, .ogg, .mov, .avi, .mkv
     docFiles: string[];       // .doc, .docx, .rtf, .odt
@@ -272,7 +302,16 @@ export class LocalStorageAdapter {
     htmlFiles: string[];      // .html, .htm
     otherFiles: string[];
   } {
-    const textExts = new Set(['.txt', '.sql', '.md', '.markdown', '.log', '.cfg', '.ini', '.csv']);
+    const textExts = new Set([
+      '.txt', '.sql', '.md', '.markdown', '.log', '.cfg', '.ini', '.csv',
+      '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs',
+      '.py', '.java', '.c', '.cc', '.cpp', '.h', '.hpp',
+      '.cs', '.go', '.rs', '.php', '.rb', '.swift', '.kt', '.kts', '.scala',
+      '.sh', '.bash', '.zsh', '.bat', '.ps1',
+      '.css', '.scss', '.less', '.sass', '.styl',
+      '.json', '.jsonc', '.yaml', '.yml', '.xml', '.toml', '.env',
+      '.vue', '.svelte', '.graphql', '.gql', '.prisma',
+    ]);
     const imageExts = new Set(['.png', '.jpg', '.jpeg', '.jfif', '.gif', '.bmp', '.webp', '.svg', '.tiff', '.ico']);
     const videoExts = new Set(['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv']);
     const docExts = new Set(['.doc', '.docx', '.rtf', '.odt', '.xls', '.xlsx', '.ppt', '.pptx']);
@@ -291,7 +330,7 @@ export class LocalStorageAdapter {
 
     const visited = new Set<string>();
     const queue: Array<{ dir: string; depth: number }> = [{ dir: rootDir, depth: 0 }];
-    const maxDepth = 8;
+    const maxDepth = 16;
 
     while (queue.length > 0) {
       const item = queue.shift()!;
@@ -318,6 +357,7 @@ export class LocalStorageAdapter {
         const ext = path.extname(e.name).toLowerCase();
 
         if (textExts.has(ext)) result.textFiles.push(fullPath);
+        else if (!ext && this.isLikelyTextFile(fullPath)) result.textFiles.push(fullPath);
         else if (imageExts.has(ext)) result.imageFiles.push(fullPath);
         else if (videoExts.has(ext)) result.videoFiles.push(fullPath);
         else if (docExts.has(ext)) result.docFiles.push(fullPath);
@@ -468,18 +508,35 @@ export class LocalStorageAdapter {
       }
     }
 
-    // 2. Processar arquivos de texto (.txt, .sql, .md)
+    const codeLanguageByExt = new Map<string, string>([
+      ['.js', 'javascript'], ['.jsx', 'jsx'], ['.ts', 'typescript'], ['.tsx', 'tsx'], ['.mjs', 'javascript'], ['.cjs', 'javascript'],
+      ['.py', 'python'], ['.java', 'java'], ['.c', 'c'], ['.cc', 'cpp'], ['.cpp', 'cpp'], ['.h', 'c'], ['.hpp', 'cpp'],
+      ['.cs', 'csharp'], ['.go', 'go'], ['.rs', 'rust'], ['.php', 'php'], ['.rb', 'ruby'], ['.swift', 'swift'], ['.kt', 'kotlin'], ['.kts', 'kotlin'], ['.scala', 'scala'],
+      ['.sh', 'bash'], ['.bash', 'bash'], ['.zsh', 'zsh'], ['.bat', 'bat'], ['.ps1', 'powershell'],
+      ['.css', 'css'], ['.scss', 'scss'], ['.less', 'less'], ['.sass', 'sass'], ['.styl', 'stylus'],
+      ['.json', 'json'], ['.jsonc', 'jsonc'], ['.yaml', 'yaml'], ['.yml', 'yaml'], ['.xml', 'xml'], ['.toml', 'toml'], ['.env', 'dotenv'],
+      ['.vue', 'vue'], ['.svelte', 'svelte'], ['.graphql', 'graphql'], ['.gql', 'graphql'], ['.prisma', 'prisma'],
+    ]);
+
+    // 2. Processar arquivos de texto/código
     for (const txtPath of scan.textFiles) {
       try {
-        const content = this.readTextFileSmart(txtPath);
+        const rawContent = this.readTextFileSmart(txtPath);
         const baseName = path.basename(txtPath);
         const title = baseName.slice(0, baseName.length - path.extname(baseName).length);
+        const ext = path.extname(txtPath).toLowerCase();
+        const language = codeLanguageByExt.get(ext);
+        const isMarkdown = ext === '.md' || ext === '.markdown';
+        const isCode = Boolean(language);
+        const content = isCode
+          ? `\`\`\`${language}\n${rawContent}\n\`\`\``
+          : rawContent;
         const note: Note = {
           id: baseId + noteIdx++,
           title,
           content,
-          format: path.extname(txtPath).toLowerCase() === '.md' ? 'markdown' : 'text',
-          tags: [],
+          format: isMarkdown || isCode ? 'markdown' : 'text',
+          tags: isCode ? ['codigo-importado'] : [],
           created_at: now,
           updated_at: now,
         };
