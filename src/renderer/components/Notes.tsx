@@ -61,6 +61,8 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
   const [utilityFiles, setUtilityFiles] = useState<Array<{ name: string; size: number; created_at: string; url: string }>>([]);
   const [utilityLoading, setUtilityLoading] = useState(false);
   const [uploadingUtility, setUploadingUtility] = useState(false);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
 
   // Sort state
   type SortOption = 'date_desc' | 'date_asc' | 'alpha_asc' | 'alpha_desc' | 'id_asc' | 'id_desc';
@@ -356,8 +358,8 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     }
   };
 
-  const handleCreateFolder = async () => {
-    const folderName = prompt('Nome da pasta:');
+  const handleCreateFolder = async (folderNameParam?: string) => {
+    const folderName = (folderNameParam ?? newFolderName).trim();
     if (!folderName || !activeOrg) return;
     
     try {
@@ -370,6 +372,8 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
       
       if (error) throw error;
       await loadUtilityFiles();
+      setNewFolderName('');
+      setIsCreatingFolder(false);
     } catch (error) {
       console.error('Erro ao criar pasta:', error);
       alert('Erro ao criar pasta.');
@@ -684,20 +688,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
               <button
                 onClick={() => setShowUtilitiesPanel(false)}
                 title="Fechar utilitários"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '32px',
-                  height: '32px',
-                  padding: 0,
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid var(--color-accent-rose)',
-                  borderRadius: '6px',
-                  color: 'var(--color-accent-rose)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                }}
+                className="notes-utilities-close"
               >
                 <X size={16} />
               </button>
@@ -711,49 +702,29 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                 onChange={(e) => setUtilitySearch(e.target.value)}
                 placeholder="Buscar arquivo..."
               />
-              <button
-                onClick={handleCreateFolder}
-                title="Nova pasta"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '32px',
-                  height: '32px',
-                  padding: 0,
-                  background: 'rgba(123, 63, 242, 0.15)',
-                  border: '1px solid var(--color-primary-purple)',
-                  borderRadius: '6px',
-                  color: 'var(--color-primary-purple)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  flexShrink: 0,
+              <Button
+                variant="ghost"
+                size="sm"
+                className="notes-utilities-icon-btn"
+                onClick={() => {
+                  if (isCreatingFolder) {
+                    void handleCreateFolder();
+                    return;
+                  }
+                  setIsCreatingFolder(true);
                 }}
+                title={isCreatingFolder ? 'Confirmar pasta' : 'Nova pasta'}
               >
                 <FolderPlus size={16} />
-              </button>
+              </Button>
               <label
                 htmlFor="utility-upload-input"
                 title={uploadingUtility ? 'Enviando...' : 'Upload de arquivo'}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '32px',
-                  height: '32px',
-                  padding: 0,
-                  background: uploadingUtility ? 'rgba(0, 212, 170, 0.1)' : 'linear-gradient(135deg, #00D4AA, #7B3FF2)',
-                  border: 'none',
-                  borderRadius: '6px',
-                  color: '#fff',
-                  cursor: uploadingUtility ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.2s ease',
-                  opacity: uploadingUtility ? 0.6 : 1,
-                  flexShrink: 0,
-                }}
+                className="btn btn-primary btn-sm notes-utilities-icon-btn notes-utilities-upload-btn"
               >
                 <Upload size={16} />
               </label>
+
               <input
                 id="utility-upload-input"
                 type="file"
@@ -762,6 +733,47 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                 style={{ display: 'none' }}
               />
             </div>
+
+            {isCreatingFolder && (
+              <div className="notes-utilities-folder-form">
+                <Input
+                  className="notes-utilities-search"
+                  type="text"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  placeholder="Nome da pasta..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void handleCreateFolder();
+                    }
+                    if (e.key === 'Escape') {
+                      setIsCreatingFolder(false);
+                      setNewFolderName('');
+                    }
+                  }}
+                  autoFocus
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void handleCreateFolder()}
+                  disabled={!newFolderName.trim()}
+                >
+                  Criar
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setIsCreatingFolder(false);
+                    setNewFolderName('');
+                  }}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            )}
 
             <div className="notes-utilities-list">
               {utilityLoading ? (
