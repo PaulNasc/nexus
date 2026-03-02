@@ -293,7 +293,7 @@ export class LocalStorageAdapter {
   /**
    * Escaneia recursivamente um diretório e classifica todos os arquivos por tipo.
    */
-  private scanAllFiles(rootDir: string): {
+  private scanAllFiles(rootDir: string, options?: { previewOnly?: boolean }): {
     textFiles: string[];      // texto e código fonte
     imageFiles: string[];     // .png, .jpg, .jpeg, .jfif, .gif, .bmp, .webp
     videoFiles: string[];     // .mp4, .webm, .ogg, .mov, .avi, .mkv
@@ -318,6 +318,8 @@ export class LocalStorageAdapter {
     const archiveExts = new Set(['.rar', '.zip', '.7z', '.tar', '.gz']);
     const htmlExts = new Set(['.html', '.htm']);
 
+    const previewOnly = options?.previewOnly === true;
+
     const result = {
       textFiles: [] as string[],
       imageFiles: [] as string[],
@@ -330,7 +332,7 @@ export class LocalStorageAdapter {
 
     const visited = new Set<string>();
     const queue: Array<{ dir: string; depth: number }> = [{ dir: rootDir, depth: 0 }];
-    const maxDepth = 16;
+    const maxDepth = previewOnly ? 10 : 16;
 
     while (queue.length > 0) {
       const item = queue.shift()!;
@@ -357,7 +359,7 @@ export class LocalStorageAdapter {
         const ext = path.extname(e.name).toLowerCase();
 
         if (textExts.has(ext)) result.textFiles.push(fullPath);
-        else if (!ext && this.isLikelyTextFile(fullPath)) result.textFiles.push(fullPath);
+        else if (!ext && !previewOnly && this.isLikelyTextFile(fullPath)) result.textFiles.push(fullPath);
         else if (imageExts.has(ext)) result.imageFiles.push(fullPath);
         else if (videoExts.has(ext)) result.videoFiles.push(fullPath);
         else if (docExts.has(ext)) result.docFiles.push(fullPath);
@@ -469,11 +471,15 @@ export class LocalStorageAdapter {
    * 4. Cada vídeo vira uma nota própria com vídeo anexado.
    * 5. .doc/.docx, .rar aninhados são listados como warnings.
    */
-  buildNotesFromMixedFiles(scan: ReturnType<LocalStorageAdapter['scanAllFiles']>): {
+  buildNotesFromMixedFiles(
+    scan: ReturnType<LocalStorageAdapter['scanAllFiles']>,
+    options?: { previewOnly?: boolean },
+  ): {
     notes: Note[];
     warnings: string[];
     skippedFiles: string[];
   } {
+    const previewOnly = options?.previewOnly === true;
     const now = new Date().toISOString();
     const baseId = Date.now() * 1000;
     const notes: Note[] = [];
@@ -487,10 +493,14 @@ export class LocalStorageAdapter {
     // 1. Processar HTML primeiro (já tem lógica existente)
     for (const htmlPath of scan.htmlFiles) {
       try {
-        const html = this.readTextFileSmart(htmlPath);
-        const title = this.deriveHtmlTitle(html, htmlPath);
-        const content = this.htmlToTextPreserveLines(html);
-        const attachedImages = this.extractHtmlImagesAsDataUrls(html, htmlPath);
+        const html = previewOnly ? '' : this.readTextFileSmart(htmlPath);
+        const title = previewOnly
+          ? path.basename(htmlPath, path.extname(htmlPath))
+          : this.deriveHtmlTitle(html, htmlPath);
+        const content = previewOnly
+          ? `[Pré-visualização] HTML: ${path.basename(htmlPath)}`
+          : this.htmlToTextPreserveLines(html);
+        const attachedImages = previewOnly ? [] : this.extractHtmlImagesAsDataUrls(html, htmlPath);
         const note: Note = {
           id: baseId + noteIdx++,
           title,
@@ -521,13 +531,15 @@ export class LocalStorageAdapter {
     // 2. Processar arquivos de texto/código
     for (const txtPath of scan.textFiles) {
       try {
-        const rawContent = this.readTextFileSmart(txtPath);
         const baseName = path.basename(txtPath);
         const title = baseName.slice(0, baseName.length - path.extname(baseName).length);
         const ext = path.extname(txtPath).toLowerCase();
         const language = codeLanguageByExt.get(ext);
         const isMarkdown = ext === '.md' || ext === '.markdown';
         const isCode = Boolean(language);
+        const rawContent = previewOnly
+          ? `[Pré-visualização] Arquivo: ${baseName}`
+          : this.readTextFileSmart(txtPath);
         const content = isCode
           ? `\`\`\`${language}\n${rawContent}\n\`\`\``
           : rawContent;
@@ -557,11 +569,13 @@ export class LocalStorageAdapter {
       // Busca exata por nome
       if (notesByName.has(imgName)) {
         const noteIndex = notesByName.get(imgName)!;
-        const dataUrl = this.imageFileToDataUrl(imgPath);
-        if (dataUrl) {
+        const dataUrl = previewOnly ? null : this.imageFileToDataUrl(imgPath);
+        if (previewOnly || dataUrl) {
           const note = notes[noteIndex]!;
-          if (!note.attachedImages) note.attachedImages = [];
-          note.attachedImages.push(dataUrl);
+          if (!previewOnly) {
+            if (!note.attachedImages) note.attachedImages = [];
+            note.attachedImages.push(dataUrl!);
+          }
           matched = true;
         }
       }
@@ -570,11 +584,13 @@ export class LocalStorageAdapter {
       if (!matched) {
         for (const [noteName, noteIndex] of notesByName.entries()) {
           if (imgName.includes(noteName) || noteName.includes(imgName)) {
-            const dataUrl = this.imageFileToDataUrl(imgPath);
-            if (dataUrl) {
+            const dataUrl = previewOnly ? null : this.imageFileToDataUrl(imgPath);
+            if (previewOnly || dataUrl) {
               const note = notes[noteIndex]!;
-              if (!note.attachedImages) note.attachedImages = [];
-              note.attachedImages.push(dataUrl);
+              if (!previewOnly) {
+                if (!note.attachedImages) note.attachedImages = [];
+                note.attachedImages.push(dataUrl!);
+              }
               matched = true;
               break;
             }
@@ -598,15 +614,17 @@ export class LocalStorageAdapter {
         .filter((idx): idx is number => idx !== undefined);
       const targetIdx = htmlNoteIndices.length > 0 ? htmlNoteIndices[0]! : 0;
       const targetNote = notes[targetIdx]!;
-      if (!targetNote.attachedImages) targetNote.attachedImages = [];
-      for (const imgPath of unmatchedImages) {
-        const dataUrl = this.imageFileToDataUrl(imgPath);
-        if (dataUrl) targetNote.attachedImages.push(dataUrl);
+      if (!previewOnly) {
+        if (!targetNote.attachedImages) targetNote.attachedImages = [];
+        for (const imgPath of unmatchedImages) {
+          const dataUrl = this.imageFileToDataUrl(imgPath);
+          if (dataUrl) targetNote.attachedImages.push(dataUrl);
+        }
       }
     } else {
       for (const imgPath of unmatchedImages) {
-        const dataUrl = this.imageFileToDataUrl(imgPath);
-        if (!dataUrl) continue;
+        const dataUrl = previewOnly ? null : this.imageFileToDataUrl(imgPath);
+        if (!previewOnly && !dataUrl) continue;
         const baseName = path.basename(imgPath);
         const title = baseName.slice(0, baseName.length - path.extname(baseName).length);
         const note: Note = {
@@ -614,7 +632,7 @@ export class LocalStorageAdapter {
           title,
           content: `Imagem importada: ${baseName}`,
           format: 'text',
-          attachedImages: [dataUrl],
+          attachedImages: previewOnly ? undefined : [dataUrl!],
           tags: ['imagem-importada'],
           created_at: now,
           updated_at: now,
@@ -626,10 +644,14 @@ export class LocalStorageAdapter {
     // 5. Processar vídeos — cada vídeo vira uma nota
     for (const vidPath of scan.videoFiles) {
       try {
-        const videoFileName = this.uniqueVideoFileName(path.basename(vidPath));
-        const videosDir = this.ensureVideosDir();
-        const destPath = path.join(videosDir, videoFileName);
-        fs.copyFileSync(vidPath, destPath);
+        const videoFileName = previewOnly
+          ? path.basename(vidPath)
+          : this.uniqueVideoFileName(path.basename(vidPath));
+        if (!previewOnly) {
+          const videosDir = this.ensureVideosDir();
+          const destPath = path.join(videosDir, videoFileName);
+          fs.copyFileSync(vidPath, destPath);
+        }
 
         const titleBase = path.basename(vidPath, path.extname(vidPath));
         const note: Note = {
@@ -905,11 +927,11 @@ export class LocalStorageAdapter {
     }
 
     // Fallback: detecção inteligente de arquivos mistos (txt, sql, imagens, html, etc.)
-    const scan = this.scanAllFiles(tempDir);
+    const scan = this.scanAllFiles(tempDir, { previewOnly: options?.previewOnly });
     const totalFiles = scan.textFiles.length + scan.imageFiles.length + scan.htmlFiles.length;
 
     if (totalFiles > 0 || scan.videoFiles.length > 0 || scan.docFiles.length > 0) {
-      const mixed = this.buildNotesFromMixedFiles(scan);
+      const mixed = this.buildNotesFromMixedFiles(scan, { previewOnly: options?.previewOnly });
       const metadata = { version: '1.0.0', lastUpdate: new Date().toISOString(), machineId: '' };
       if (!options?.previewOnly) {
         const videosDir = this.findVideosDir(tempDir);
@@ -969,11 +991,11 @@ export class LocalStorageAdapter {
     }
 
     // Fallback: detecção inteligente de arquivos mistos
-    const scan = this.scanAllFiles(folderPath);
+    const scan = this.scanAllFiles(folderPath, { previewOnly: options?.previewOnly });
     const totalFiles = scan.textFiles.length + scan.imageFiles.length + scan.htmlFiles.length;
 
     if (totalFiles > 0 || scan.videoFiles.length > 0 || scan.docFiles.length > 0) {
-      const mixed = this.buildNotesFromMixedFiles(scan);
+      const mixed = this.buildNotesFromMixedFiles(scan, { previewOnly: options?.previewOnly });
       const metadata = { version: '1.0.0', lastUpdate: new Date().toISOString(), machineId: '' };
       if (!options?.previewOnly) {
         const videosDir = this.findVideosDir(folderPath);

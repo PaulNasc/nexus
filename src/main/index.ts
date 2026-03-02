@@ -1159,16 +1159,32 @@ class MainApplication {
       const currentTasks = await db.getAllTasks();
       const currentNotes = await db.getAllNotes();
 
+      const MAX_PREVIEW_CONFLICTS = 200;
+
       const taskIds = new Set(currentTasks.map((t) => t.id));
       const noteIds = new Set(currentNotes.map((n) => n.id));
       const conflicts: string[] = [];
       const warnings: string[] = [];
+      let overflowConflicts = 0;
 
       for (const t of incoming.tasks || []) {
-        if (taskIds.has(t.id)) conflicts.push(`Tarefa ID ${t.id} já existe`);
+        if (!taskIds.has(t.id)) continue;
+        if (conflicts.length < MAX_PREVIEW_CONFLICTS) {
+          conflicts.push(`Tarefa ID ${t.id} já existe`);
+        } else {
+          overflowConflicts += 1;
+        }
       }
       for (const n of incoming.notes || []) {
-        if (noteIds.has(n.id)) conflicts.push(`Nota ID ${n.id} já existe`);
+        if (!noteIds.has(n.id)) continue;
+        if (conflicts.length < MAX_PREVIEW_CONFLICTS) {
+          conflicts.push(`Nota ID ${n.id} já existe`);
+        } else {
+          overflowConflicts += 1;
+        }
+      }
+      if (overflowConflicts > 0) {
+        warnings.push(`+${overflowConflicts} conflitos adicionais omitidos na pré-visualização para manter desempenho.`);
       }
       if (currentTasks.length > 0 || currentNotes.length > 0) {
         warnings.push('Dados existentes serão mantidos (modo mesclar)');

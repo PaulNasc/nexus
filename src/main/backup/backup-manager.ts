@@ -6,6 +6,9 @@ import { LocalStorageAdapter, LocalStorageData } from './adapters/local-storage'
 import { BackupConfig, BackupFile, ImportResult, RestorePreview } from '../../shared/types/backup';
 import MemoryDatabase from '../../shared/database/memory-db';
 
+const MAX_PREVIEW_CONFLICTS = 200;
+const MAX_PREVIEW_WARNINGS = 120;
+
 export class BackupManager {
   private static instance: BackupManager;
   private adapter: LocalStorageAdapter | null = null;
@@ -183,22 +186,33 @@ export class BackupManager {
 
     const conflicts: string[] = [];
     const warnings: string[] = [];
+    let overflowConflicts = 0;
 
     // Verificar conflitos de IDs
-    const taskIds = new Set(currentTasks.map(t => t.id));
-    const noteIds = new Set(currentNotes.map(n => n.id));
+    const taskIds = new Set(currentTasks.map((t) => t.id));
+    const noteIds = new Set(currentNotes.map((n) => n.id));
 
-    data.tasks.forEach(task => {
-      if (taskIds.has(task.id)) {
+    for (const task of data.tasks) {
+      if (!taskIds.has(task.id)) continue;
+      if (conflicts.length < MAX_PREVIEW_CONFLICTS) {
         conflicts.push(`Tarefa ID ${task.id} já existe`);
+      } else {
+        overflowConflicts += 1;
       }
-    });
+    }
 
-    data.notes.forEach(note => {
-      if (noteIds.has(note.id)) {
+    for (const note of data.notes) {
+      if (!noteIds.has(note.id)) continue;
+      if (conflicts.length < MAX_PREVIEW_CONFLICTS) {
         conflicts.push(`Nota ID ${note.id} já existe`);
+      } else {
+        overflowConflicts += 1;
       }
-    });
+    }
+
+    if (overflowConflicts > 0 && warnings.length < MAX_PREVIEW_WARNINGS) {
+      warnings.push(`+${overflowConflicts} conflitos adicionais omitidos na pré-visualização para manter desempenho.`);
+    }
 
     if (currentTasks.length > 0 || currentNotes.length > 0) {
       warnings.push('Dados existentes serão sobrescritos');
@@ -276,23 +290,41 @@ export class BackupManager {
 
     const conflicts: string[] = [];
     const warnings: string[] = [];
+    let overflowConflicts = 0;
 
     // Propagar warnings da detecção inteligente de arquivos mistos
     const importWarnings = (data.settings as Record<string, unknown>)?._importWarnings;
     if (Array.isArray(importWarnings)) {
-      warnings.push(...(importWarnings as string[]));
+      for (const warning of importWarnings as string[]) {
+        if (warnings.length >= MAX_PREVIEW_WARNINGS) break;
+        warnings.push(warning);
+      }
     }
 
     const taskIds = new Set(currentTasks.map((t) => t.id));
     const noteIds = new Set(currentNotes.map((n) => n.id));
 
-    data.tasks.forEach((task) => {
-      if (taskIds.has(task.id)) conflicts.push(`Tarefa ID ${task.id} já existe`);
-    });
+    for (const task of data.tasks) {
+      if (!taskIds.has(task.id)) continue;
+      if (conflicts.length < MAX_PREVIEW_CONFLICTS) {
+        conflicts.push(`Tarefa ID ${task.id} já existe`);
+      } else {
+        overflowConflicts += 1;
+      }
+    }
 
-    data.notes.forEach((note) => {
-      if (noteIds.has(note.id)) conflicts.push(`Nota ID ${note.id} já existe`);
-    });
+    for (const note of data.notes) {
+      if (!noteIds.has(note.id)) continue;
+      if (conflicts.length < MAX_PREVIEW_CONFLICTS) {
+        conflicts.push(`Nota ID ${note.id} já existe`);
+      } else {
+        overflowConflicts += 1;
+      }
+    }
+
+    if (overflowConflicts > 0 && warnings.length < MAX_PREVIEW_WARNINGS) {
+      warnings.push(`+${overflowConflicts} conflitos adicionais omitidos na pré-visualização para manter desempenho.`);
+    }
 
     if (currentTasks.length > 0 || currentNotes.length > 0) {
       warnings.push('Dados existentes serão mantidos (modo mesclar)');
@@ -347,23 +379,41 @@ export class BackupManager {
 
     const conflicts: string[] = [];
     const warnings: string[] = [];
+    let overflowConflicts = 0;
 
     // Propagar warnings da detecção inteligente de arquivos mistos
     const importWarnings = (data.settings as Record<string, unknown>)?._importWarnings;
     if (Array.isArray(importWarnings)) {
-      warnings.push(...(importWarnings as string[]));
+      for (const warning of importWarnings as string[]) {
+        if (warnings.length >= MAX_PREVIEW_WARNINGS) break;
+        warnings.push(warning);
+      }
     }
 
     const taskIds = new Set(currentTasks.map((t) => t.id));
     const noteIds = new Set(currentNotes.map((n) => n.id));
 
-    data.tasks.forEach((task) => {
-      if (taskIds.has(task.id)) conflicts.push(`Tarefa ID ${task.id} já existe`);
-    });
+    for (const task of data.tasks) {
+      if (!taskIds.has(task.id)) continue;
+      if (conflicts.length < MAX_PREVIEW_CONFLICTS) {
+        conflicts.push(`Tarefa ID ${task.id} já existe`);
+      } else {
+        overflowConflicts += 1;
+      }
+    }
 
-    data.notes.forEach((note) => {
-      if (noteIds.has(note.id)) conflicts.push(`Nota ID ${note.id} já existe`);
-    });
+    for (const note of data.notes) {
+      if (!noteIds.has(note.id)) continue;
+      if (conflicts.length < MAX_PREVIEW_CONFLICTS) {
+        conflicts.push(`Nota ID ${note.id} já existe`);
+      } else {
+        overflowConflicts += 1;
+      }
+    }
+
+    if (overflowConflicts > 0 && warnings.length < MAX_PREVIEW_WARNINGS) {
+      warnings.push(`+${overflowConflicts} conflitos adicionais omitidos na pré-visualização para manter desempenho.`);
+    }
 
     if (currentTasks.length > 0 || currentNotes.length > 0) {
       warnings.push('Dados existentes serão mantidos (modo mesclar)');
