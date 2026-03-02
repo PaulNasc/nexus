@@ -1,10 +1,32 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from './ui/Button';
 import { Download, Upload } from 'lucide-react';
 import type { ImportResult, RestorePreview } from '../../shared/types/backup';
 import type { ElectronAPI, ImportSourceSelectionResult } from '../../main/preload';
 
 type ExportFormat = 'zip' | 'json' | 'csv';
+
+type SyncItemStatus = 'pending' | 'processing' | 'success' | 'error' | 'skipped';
+type SyncItemType = 'note' | 'task';
+
+type SyncRetryPayload =
+  | { type: 'note'; note: NonNullable<ImportResult['importedNotes']>[number] }
+  | { type: 'task'; task: NonNullable<ImportResult['importedTasks']>[number] };
+
+export interface ImportSyncItem {
+  id: string;
+  type: SyncItemType;
+  title: string;
+  status: SyncItemStatus;
+  message?: string;
+  retryPayload?: SyncRetryPayload;
+}
+
+export interface ImportApplyProgressHandlers {
+  onSyncStart?: (items: ImportSyncItem[]) => void;
+  onSyncUpdate?: (item: ImportSyncItem) => void;
+  onSyncComplete?: () => void;
+}
 
 type ImportIntent = {
   kind: 'zip';
@@ -52,7 +74,8 @@ export interface ImportExportModalProps {
   onClose: () => void;
   onExport: (format: ExportFormat) => Promise<void>;
   onImportPreview: (intent: ImportIntent) => Promise<RestorePreview | null>;
-  onImportApply: (intent: ImportIntent, options?: { color?: string; systemTagId?: number }) => Promise<ImportResult | null>;
+  onImportApply: (intent: ImportIntent, options?: { color?: string; systemTagId?: number }, progressHandlers?: ImportApplyProgressHandlers) => Promise<ImportResult | null>;
+  onRetryImportSync?: (items: ImportSyncItem[]) => Promise<ImportSyncItem[]>;
   initialImportIntent?: ImportIntent | null;
   systemTagOptions?: Array<{ id: number; name: string; color: string; is_active?: boolean }>;
 }
@@ -64,6 +87,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   onExport,
   onImportPreview,
   onImportApply,
+  onRetryImportSync,
   initialImportIntent,
   systemTagOptions = [],
 }) => {
@@ -80,6 +104,19 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncItems, setSyncItems] = useState<ImportSyncItem[]>([]);
+  const [isRetryingFailed, setIsRetryingFailed] = useState(false);
+
+  const updateSyncItem = useCallback((item: ImportSyncItem) => {
+    setSyncItems((prev) => {
+      const index = prev.findIndex((candidate) => candidate.id === item.id);
+      if (index === -1) return [...prev, item];
+      const copy = [...prev];
+      copy[index] = item;
+      return copy;
+    });
+  }, []);
 
   const startProgress = (label: string) => {
     setProgress(0);
@@ -157,6 +194,9 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     setProgress(0);
     setProgressLabel('');
     setImportSystemTagId('');
+    setSyncModalOpen(false);
+    setSyncItems([]);
+    setIsRetryingFailed(false);
     if (progressTimerRef.current) clearInterval(progressTimerRef.current);
     progressTimerRef.current = null;
   };
@@ -372,6 +412,19 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       const r = await onImportApply(intent, {
         color: importColor,
         systemTagId: importSystemTagId === '' ? undefined : importSystemTagId,
+      }, {
+        onSyncStart: (items) => {
+          setSyncItems(items);
+          if (items.length > 0) {
+            setSyncModalOpen(true);
+          }
+        },
+        onSyncUpdate: (item) => {
+          updateSyncItem(item);
+        },
+        onSyncComplete: () => {
+          // Modal permanece aberto para inspeção/reenvio
+        },
       });
       setResult(r);
       if (r?.success) {
@@ -384,6 +437,25 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       finishProgress();
       setIsBusy(false);
       applyInFlightRef.current = false;
+    }
+  };
+
+  const handleRetryFailed = async () => {
+    if (!onRetryImportSync) return;
+    const failedItems = syncItems.filter((item) => item.status === 'error' && item.retryPayload);
+    if (failedItems.length === 0) return;
+
+    setIsRetryingFailed(true);
+    try {
+      for (const item of failedItems) {
+        updateSyncItem({ ...item, status: 'processing', message: 'Reenviando...' });
+      }
+      const retried = await onRetryImportSync(failedItems);
+      for (const item of retried) {
+        updateSyncItem(item);
+      }
+    } finally {
+      setIsRetryingFailed(false);
     }
   };
 
@@ -613,6 +685,60 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                 <div>
                   Importados: {result.imported.tasks} tarefas • {result.imported.notes} notas
                 </div>
+
+                {result.syncResults && (
+                  <div style={{ display: 'grid', gap: '10px', marginTop: '10px' }}>
+                    {result.syncResults.notes.length > 0 && (
+                      <div>
+                        <div style={{ fontWeight: 600, marginBottom: '4px', fontSize: '13px' }}>Notas ({result.syncResults.notes.length})</div>
+                        <div style={{ maxHeight: '180px', overflow: 'auto', display: 'grid', gap: '4px', fontSize: '12px' }}>
+                          {result.syncResults.notes.map((item, index) => (
+                            <div key={`sync-note-${index}`} style={{ display: 'grid', gridTemplateColumns: '76px 1fr', gap: '8px' }}>
+                              <span style={{
+                                fontWeight: 600,
+                                color: item.status === 'success'
+                                  ? 'var(--success-color)'
+                                  : item.status === 'error'
+                                    ? 'var(--error-color)'
+                                    : 'var(--color-text-secondary)',
+                              }}>
+                                {item.status === 'success' ? 'Sucesso' : item.status === 'error' ? 'Erro' : 'Pulado'}
+                              </span>
+                              <span>
+                                {item.title}{item.message ? ` — ${item.message}` : ''}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {result.syncResults.tasks.length > 0 && (
+                      <div>
+                        <div style={{ fontWeight: 600, marginBottom: '4px', fontSize: '13px' }}>Tarefas ({result.syncResults.tasks.length})</div>
+                        <div style={{ maxHeight: '140px', overflow: 'auto', display: 'grid', gap: '4px', fontSize: '12px' }}>
+                          {result.syncResults.tasks.map((item, index) => (
+                            <div key={`sync-task-${index}`} style={{ display: 'grid', gridTemplateColumns: '76px 1fr', gap: '8px' }}>
+                              <span style={{
+                                fontWeight: 600,
+                                color: item.status === 'success'
+                                  ? 'var(--success-color)'
+                                  : item.status === 'error'
+                                    ? 'var(--error-color)'
+                                    : 'var(--color-text-secondary)',
+                              }}>
+                                {item.status === 'success' ? 'Sucesso' : item.status === 'error' ? 'Erro' : 'Pulado'}
+                              </span>
+                              <span>
+                                {item.title}{item.message ? ` — ${item.message}` : ''}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -621,6 +747,77 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
               <Button variant="primary" onClick={handleApply} disabled={isBusy || !preview || hasApplied} leftIcon={<Upload size={16} />}>
                 Aplicar (Mesclar)
               </Button>
+            </div>
+          </div>
+        )}
+
+        {syncModalOpen && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.55)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1200,
+            }}
+          >
+            <div
+              style={{
+                width: 'min(880px, 94vw)',
+                maxHeight: '80vh',
+                overflow: 'hidden',
+                borderRadius: '12px',
+                border: '1px solid var(--color-border-primary)',
+                backgroundColor: 'var(--color-bg-card)',
+                display: 'grid',
+                gridTemplateRows: 'auto 1fr auto',
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontWeight: 700 }}>Sincronização das notas/tarefas</div>
+                <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+                  {syncItems.filter((item) => item.status === 'success').length} sucesso • {syncItems.filter((item) => item.status === 'error').length} erro
+                </div>
+              </div>
+
+              <div style={{ padding: '12px 16px', overflow: 'auto', display: 'grid', gap: '6px' }}>
+                {syncItems.length === 0 ? (
+                  <div style={{ color: 'var(--color-text-secondary)', fontSize: '13px' }}>Aguardando processamento...</div>
+                ) : syncItems.map((item) => (
+                  <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '68px 54px 1fr', gap: '8px', fontSize: '12px', alignItems: 'start' }}>
+                    <span style={{ color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: '11px' }}>{item.type}</span>
+                    <span style={{
+                      fontWeight: 700,
+                      color: item.status === 'success'
+                        ? 'var(--success-color)'
+                        : item.status === 'error'
+                          ? 'var(--error-color)'
+                          : item.status === 'processing'
+                            ? 'var(--color-primary-teal)'
+                            : 'var(--color-text-secondary)',
+                    }}>
+                      {item.status === 'success' ? 'OK' : item.status === 'error' ? 'ERRO' : item.status === 'processing' ? 'SUBINDO' : item.status === 'skipped' ? 'PULADO' : 'PEND.'}
+                    </span>
+                    <span>{item.title}{item.message ? ` — ${item.message}` : ''}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ padding: '12px 16px', borderTop: '1px solid var(--color-border-primary)', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <Button
+                  variant="secondary"
+                  onClick={handleRetryFailed}
+                  disabled={!onRetryImportSync || isRetryingFailed || syncItems.every((item) => item.status !== 'error')}
+                >
+                  {isRetryingFailed ? 'Reenviando...' : 'Tentar reenviar falhas'}
+                </Button>
+                <Button variant="ghost" onClick={() => setSyncModalOpen(false)} disabled={isBusy || isRetryingFailed}>
+                  Fechar lista
+                </Button>
+              </div>
             </div>
           </div>
         )}

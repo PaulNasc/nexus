@@ -365,25 +365,35 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     // Generate sequential_id per organization (conflict-safe with retry)
-    let sequentialId = 1;
-    const { data: maxRow } = await supabase
-      .from('notes')
-      .select('sequential_id')
-      .eq('organization_id', orgId ?? '')
-      .order('sequential_id', { ascending: false })
-      .limit(1);
-    if (!orgId) {
-      // For personal notes (no org), use a simpler approach
-      const { data: maxPersonal } = await supabase
+    const getNextSequentialId = async (): Promise<number> => {
+      if (!orgId) {
+        const { data: maxPersonal } = await supabase
+          .from('notes')
+          .select('sequential_id')
+          .is('organization_id', null)
+          .order('sequential_id', { ascending: false })
+          .limit(1);
+        return (maxPersonal?.[0]?.sequential_id ?? 0) + 1;
+      }
+
+      const { data: maxRow } = await supabase
         .from('notes')
         .select('sequential_id')
-        .is('organization_id', null)
+        .eq('organization_id', orgId)
         .order('sequential_id', { ascending: false })
         .limit(1);
-      sequentialId = (maxPersonal?.[0]?.sequential_id ?? 0) + 1;
-    } else {
-      sequentialId = (maxRow?.[0]?.sequential_id ?? 0) + 1;
-    }
+      return (maxRow?.[0]?.sequential_id ?? 0) + 1;
+    };
+
+    const isSequentialConstraintError = (err: unknown): boolean => {
+      if (!err || typeof err !== 'object') return false;
+      const e = err as { code?: unknown; message?: unknown };
+      const code = String(e.code || '');
+      const message = String(e.message || '').toLowerCase();
+      return code === '23505' && message.includes('notes_org_sequential_id_unique');
+    };
+
+    const sequentialId = await getNextSequentialId();
 
     const syncedVideos = await syncAttachedVideosToCloud(noteData.attachedVideos, userId, orgId);
 
@@ -412,7 +422,18 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       .single();
 
     let retryCount = 0;
-    while (insertError && retryCount < 4) {
+    while (insertError && retryCount < 6) {
+      if (isSequentialConstraintError(insertError) && 'sequential_id' in fallbackPayload) {
+        fallbackPayload.sequential_id = await getNextSequentialId();
+        ({ data, error: insertError } = await supabase
+          .from('notes')
+          .insert(fallbackPayload)
+          .select()
+          .single());
+        retryCount += 1;
+        continue;
+      }
+
       const removableColumns = getRemovableNotesColumnsFromError(insertError, fallbackPayload);
 
       if (removableColumns.length === 0 && isNotesSystemTagWriteError(insertError) && 'system_tag_id' in fallbackPayload) {

@@ -377,6 +377,9 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   type ImportExportModalPropsType = React.ComponentProps<typeof ImportExportModal>;
   type ImportIntent = Parameters<ImportExportModalPropsType['onImportPreview']>[0];
   type ExportFormat = Parameters<ImportExportModalPropsType['onExport']>[0];
+  type ImportApplyProgressHandlers = Parameters<ImportExportModalPropsType['onImportApply']>[2];
+  type RetrySyncHandler = NonNullable<ImportExportModalPropsType['onRetryImportSync']>;
+  type RetrySyncItems = Parameters<RetrySyncHandler>[0];
   const [initialImportIntent, setInitialImportIntent] = useState<ImportIntent | null>(null);
 
   const resolvedMode: 'light' | 'dark' =
@@ -639,7 +642,11 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleImportExportApply = async (intent: ImportIntent, options?: { color?: string; systemTagId?: number }): Promise<ImportResult | null> => {
+  const handleImportExportApply = async (
+    intent: ImportIntent,
+    options?: { color?: string; systemTagId?: number },
+    progressHandlers?: ImportApplyProgressHandlers,
+  ): Promise<ImportResult | null> => {
     try {
       const electron = getElectron();
       let result: ImportResult | null = null;
@@ -653,6 +660,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
         const deduped = safe.filter((tag) => tag.toLowerCase() !== systemTagName.toLowerCase());
         return [systemTagName, ...deduped];
       };
+
       if (intent?.kind === 'zip') result = await electron.backup.importZipApply({ source: 'external', filePath: intent.filePath });
       else if (intent?.kind === 'zip-backup') result = await electron.backup.importZipApply({ source: 'backupId', backupId: intent.backupId });
       else if (intent?.kind === 'json') result = await electron.backup.importJsonApply({ filePath: intent.filePath });
@@ -665,7 +673,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       else if (intent?.kind === 'mp4-file') result = await electron.invoke('import:mp4-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
       else if (intent?.kind === 'folder') result = await electron.invoke('import:folder-apply', { folderPath: intent.folderPath }) as ImportResult;
 
-      // Capitalize first letter of all imported note titles
       if (result?.importedNotes) {
         result.importedNotes = result.importedNotes.map(n => ({
           ...n,
@@ -675,19 +682,48 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
           tags: mergeSystemTag(n.tags, selectedSystemTag?.name ?? n.systemTagName),
         }));
       }
+
       if (result?.success) {
         if (useCloud) {
           let syncedNotes = 0;
           let syncedTasks = 0;
+          const noteSyncResults: NonNullable<ImportResult['syncResults']>['notes'] = [];
+          const taskSyncResults: NonNullable<ImportResult['syncResults']>['tasks'] = [];
+
+          const initialSyncItems: RetrySyncItems = [
+            ...(result.importedNotes || []).map((note, index) => ({
+              id: `note-${index}`,
+              type: 'note' as const,
+              title: note.title,
+              status: 'pending' as const,
+              retryPayload: { type: 'note' as const, note },
+            })),
+            ...(result.importedTasks || []).map((task, index) => ({
+              id: `task-${index}`,
+              type: 'task' as const,
+              title: task.title,
+              status: 'pending' as const,
+              retryPayload: { type: 'task' as const, task },
+            })),
+          ];
+          progressHandlers?.onSyncStart?.(initialSyncItems);
 
           if (result.importedNotes && result.importedNotes.length > 0) {
-            // Processar em lotes de 10 notas por vez para evitar travamento
-            const batchSize = 10;
-            for (let i = 0; i < result.importedNotes.length; i += batchSize) {
-              const batch = result.importedNotes.slice(i, i + batchSize);
-              const promises = batch.map(note => 
-                createNote({
+            for (const [index, note] of result.importedNotes.entries()) {
+              const itemId = `note-${index}`;
+              progressHandlers?.onSyncUpdate?.({
+                id: itemId,
+                type: 'note',
+                title: note.title,
+                status: 'processing',
+                message: 'Enviando...',
+                retryPayload: { type: 'note', note },
+              });
+
+              try {
+                const created = await createNote({
                   title: note.title,
+
                   content: note.content,
                   format: note.format || 'text',
                   tags: mergeSystemTag(note.tags, note.systemTagName),
@@ -696,42 +732,115 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   linkedTaskIds: note.linkedTaskIds,
                   color: options?.color || note.color,
                   system_tag_id: note.systemTagId,
-                })
-              );
-              
-              const results = await Promise.allSettled(promises);
-              syncedNotes += results.filter(r => r.status === 'fulfilled' && r.value).length;
-              
-              // Pequeno delay entre lotes para não sobrecarregar
-              if (i + batchSize < result.importedNotes.length) {
-                await new Promise(resolve => setTimeout(resolve, 50));
+                });
+
+                if (created) {
+                  syncedNotes += 1;
+                  noteSyncResults.push({ title: note.title, status: 'success' });
+                  progressHandlers?.onSyncUpdate?.({
+                    id: itemId,
+                    type: 'note',
+                    title: note.title,
+                    status: 'success',
+                    retryPayload: { type: 'note', note },
+                  });
+                } else {
+                  noteSyncResults.push({
+                    title: note.title,
+                    status: 'skipped',
+                    message: 'Nota duplicada (já existente).',
+                  });
+                  progressHandlers?.onSyncUpdate?.({
+                    id: itemId,
+                    type: 'note',
+                    title: note.title,
+                    status: 'skipped',
+                    message: 'Nota duplicada (já existente).',
+                    retryPayload: { type: 'note', note },
+                  });
+                }
+              } catch (error) {
+                const message = error instanceof Error ? error.message : 'Falha ao sincronizar nota';
+                noteSyncResults.push({ title: note.title, status: 'error', message });
+                result.errors.push({ type: 'note', message, item: { title: note.title } });
+                progressHandlers?.onSyncUpdate?.({
+                  id: itemId,
+                  type: 'note',
+                  title: note.title,
+                  status: 'error',
+                  message,
+                  retryPayload: { type: 'note', note },
+                });
               }
             }
           }
 
           if (result.importedTasks && result.importedTasks.length > 0) {
-            // Processar em lotes de 10 tarefas por vez
-            const batchSize = 10;
-            for (let i = 0; i <result.importedTasks.length; i += batchSize) {
-              const batch = result.importedTasks.slice(i, i + batchSize);
-              const promises = batch.map(task =>
-                createTask({
+            for (const [index, task] of result.importedTasks.entries()) {
+              const itemId = `task-${index}`;
+              progressHandlers?.onSyncUpdate?.({
+                id: itemId,
+                type: 'task',
+                title: task.title,
+                status: 'processing',
+                message: 'Enviando...',
+                retryPayload: { type: 'task', task },
+              });
+
+              try {
+                const createdTask = await createTask({
                   title: task.title,
+
                   description: task.description,
                   status: (task.status as 'backlog' | 'esta_semana' | 'hoje' | 'concluido') || 'backlog',
                   priority: (task.priority as 'low' | 'medium' | 'high') || 'medium',
-                })
-              );
-              
-              const results = await Promise.allSettled(promises);
-              syncedTasks += results.filter(r => r.status === 'fulfilled' && r.value).length;
-              
-              // Pequeno delay entre lotes
-              if (i + batchSize < result.importedTasks.length) {
-                await new Promise(resolve => setTimeout(resolve, 50));
+                });
+
+                if (createdTask) {
+                  syncedTasks += 1;
+                  taskSyncResults.push({ title: task.title, status: 'success' });
+                  progressHandlers?.onSyncUpdate?.({
+                    id: itemId,
+                    type: 'task',
+                    title: task.title,
+                    status: 'success',
+                    retryPayload: { type: 'task', task },
+                  });
+                } else {
+                  taskSyncResults.push({
+                    title: task.title,
+                    status: 'skipped',
+                    message: 'Tarefa duplicada (já existente).',
+                  });
+                  progressHandlers?.onSyncUpdate?.({
+                    id: itemId,
+                    type: 'task',
+                    title: task.title,
+                    status: 'skipped',
+                    message: 'Tarefa duplicada (já existente).',
+                    retryPayload: { type: 'task', task },
+                  });
+                }
+              } catch (error) {
+                const message = error instanceof Error ? error.message : 'Falha ao sincronizar tarefa';
+                taskSyncResults.push({ title: task.title, status: 'error', message });
+                result.errors.push({ type: 'task', message, item: { title: task.title } });
+                progressHandlers?.onSyncUpdate?.({
+                  id: itemId,
+                  type: 'task',
+                  title: task.title,
+                  status: 'error',
+                  message,
+                  retryPayload: { type: 'task', task },
+                });
               }
             }
           }
+
+          result.syncResults = {
+            notes: noteSyncResults,
+            tasks: taskSyncResults,
+          };
 
           if (result.imported.notes > syncedNotes) {
             result.warnings.push({
@@ -749,12 +858,8 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
           result.imported.notes = syncedNotes;
           result.imported.tasks = syncedTasks;
+          progressHandlers?.onSyncComplete?.();
         }
-
-        window.dispatchEvent(new Event('tasksUpdated'));
-        window.dispatchEvent(new Event('categoriesUpdated'));
-        window.dispatchEvent(new Event('notesUpdated'));
-        await fetchNotes();
       }
       return result;
     } catch (err) {
@@ -802,6 +907,66 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     { id: 'atualizacoes', label: 'Atualizações', icon: <RefreshCw size={16} strokeWidth={1.7} /> },
     { id: 'sobre', label: t('settings.about'), icon: <Info size={16} strokeWidth={1.7} /> },
   ];
+
+  const handleRetryImportSync: RetrySyncHandler = async (items) => {
+    const updatedItems: RetrySyncItems = [];
+
+    for (const item of items) {
+      if (!item.retryPayload) {
+        updatedItems.push({ ...item, status: 'error', message: 'Dados de reenvio não disponíveis.' });
+        continue;
+      }
+
+      if (item.retryPayload.type === 'note') {
+        const note = item.retryPayload.note;
+        try {
+          const created = await createNote({
+            title: note.title,
+            content: note.content,
+            format: note.format || 'text',
+            tags: note.tags,
+            attachedImages: note.attachedImages,
+            attachedVideos: note.attachedVideos,
+            linkedTaskIds: note.linkedTaskIds,
+            color: note.color,
+            system_tag_id: note.systemTagId,
+          });
+
+          updatedItems.push({
+            ...item,
+            status: created ? 'success' : 'skipped',
+            message: created ? undefined : 'Nota duplicada (já existente).',
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Falha ao reenviar nota';
+          updatedItems.push({ ...item, status: 'error', message });
+        }
+        continue;
+      }
+
+      const task = item.retryPayload.task;
+      try {
+        const createdTask = await createTask({
+          title: task.title,
+          description: task.description,
+          status: (task.status as 'backlog' | 'esta_semana' | 'hoje' | 'concluido') || 'backlog',
+          priority: (task.priority as 'low' | 'medium' | 'high') || 'medium',
+        });
+
+        updatedItems.push({
+          ...item,
+          status: createdTask ? 'success' : 'skipped',
+          message: createdTask ? undefined : 'Tarefa duplicada (já existente).',
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Falha ao reenviar tarefa';
+        updatedItems.push({ ...item, status: 'error', message });
+      }
+    }
+
+    await fetchNotes();
+    return updatedItems;
+  };
 
   return (
     <div style={{
@@ -2341,6 +2506,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                 onExport={handleImportExportExport}
                 onImportPreview={handleImportExportPreview}
                 onImportApply={handleImportExportApply}
+                onRetryImportSync={handleRetryImportSync}
                 initialImportIntent={initialImportIntent}
                 systemTagOptions={systemTags}
               />

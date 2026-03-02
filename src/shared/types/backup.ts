@@ -76,6 +76,18 @@ export interface ImportResult {
     status?: string;
     priority?: string;
   }>;
+  syncResults?: {
+    notes: Array<{
+      title: string;
+      status: 'success' | 'error' | 'skipped';
+      message?: string;
+    }>;
+    tasks: Array<{
+      title: string;
+      status: 'success' | 'error' | 'skipped';
+      message?: string;
+    }>;
+  };
 }
 
 export interface ImportProgress {
