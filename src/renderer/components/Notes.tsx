@@ -12,7 +12,7 @@ import { Badge } from './ui/Badge';
 import { Input } from './ui/Input';
 import { NoteEditor } from './NoteEditor';
 import { LinkedTasksModal } from './LinkedTasksModal';
-import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, Pencil, CheckSquare, Square, Filter, X, ArrowUpDown, Users, FolderOpen, FileText, Upload, Download } from 'lucide-react';
+import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, Pencil, CheckSquare, Square, Filter, X, ArrowUpDown, Users, FolderOpen, FileText, Upload, Download, FolderPlus } from 'lucide-react';
 
 import { NoteViewerModal } from './NoteViewerModal';
 
@@ -356,6 +356,26 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     }
   };
 
+  const handleCreateFolder = async () => {
+    const folderName = prompt('Nome da pasta:');
+    if (!folderName || !activeOrg) return;
+    
+    try {
+      const placeholderPath = `${activeOrg.id}/${folderName}/.placeholder`;
+      const { error } = await supabase.storage.from('utilities').upload(
+        placeholderPath,
+        new Blob([''], { type: 'text/plain' }),
+        { cacheControl: '3600', upsert: false }
+      );
+      
+      if (error) throw error;
+      await loadUtilityFiles();
+    } catch (error) {
+      console.error('Erro ao criar pasta:', error);
+      alert('Erro ao criar pasta.');
+    }
+  };
+
   const handleUtilityDownload = (url: string, filename: string) => {
     const link = document.createElement('a');
     link.href = url;
@@ -661,15 +681,26 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                 <FolderOpen size={16} />
                 <h3 className="notes-utilities-title">Utilitários</h3>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="notes-utilities-close"
+              <button
                 onClick={() => setShowUtilitiesPanel(false)}
                 title="Fechar utilitários"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '32px',
+                  height: '32px',
+                  padding: 0,
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid var(--color-accent-rose)',
+                  borderRadius: '6px',
+                  color: 'var(--color-accent-rose)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                }}
               >
-                <X size={14} />
-              </Button>
+                <X size={16} />
+              </button>
             </div>
 
             <div className="notes-utilities-toolbar">
@@ -680,25 +711,48 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                 onChange={(e) => setUtilitySearch(e.target.value)}
                 placeholder="Buscar arquivo..."
               />
-              <label
-                htmlFor="utility-upload-input"
+              <button
+                onClick={handleCreateFolder}
+                title="Nova pasta"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 12px',
+                  justifyContent: 'center',
+                  width: '32px',
+                  height: '32px',
+                  padding: 0,
+                  background: 'rgba(123, 63, 242, 0.15)',
+                  border: '1px solid var(--color-primary-purple)',
+                  borderRadius: '6px',
+                  color: 'var(--color-primary-purple)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  flexShrink: 0,
+                }}
+              >
+                <FolderPlus size={16} />
+              </button>
+              <label
+                htmlFor="utility-upload-input"
+                title={uploadingUtility ? 'Enviando...' : 'Upload de arquivo'}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '32px',
+                  height: '32px',
+                  padding: 0,
                   background: uploadingUtility ? 'rgba(0, 212, 170, 0.1)' : 'linear-gradient(135deg, #00D4AA, #7B3FF2)',
                   border: 'none',
                   borderRadius: '6px',
                   color: '#fff',
                   cursor: uploadingUtility ? 'not-allowed' : 'pointer',
-                  fontSize: '12px',
-                  fontWeight: 500,
+                  transition: 'all 0.2s ease',
                   opacity: uploadingUtility ? 0.6 : 1,
+                  flexShrink: 0,
                 }}
               >
-                <Upload size={14} />
-                {uploadingUtility ? 'Enviando...' : 'Upload'}
+                <Upload size={16} />
               </label>
               <input
                 id="utility-upload-input"
