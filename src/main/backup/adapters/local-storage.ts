@@ -402,6 +402,20 @@ export class LocalStorageAdapter {
     return base.slice(0, base.length - ext.length).toLowerCase().trim();
   }
 
+  private normalizeAssociationKey(value: string): string {
+    return String(value || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[\s_\-.]+/g, ' ')
+      .replace(/\s+/g, ' ');
+  }
+
+  private associationBaseKey(filePath: string): string {
+    const normalized = this.normalizeAssociationKey(this.normalizeFileName(filePath));
+    const stripped = normalized.replace(/(?:\s*(?:\(|\[)?(?:img|image|foto|photo|scan|pagina|page)?\s*\d+(?:\)|\])?)$/i, '').trim();
+    return stripped || normalized;
+  }
+
   private ensureVideosDir(): string {
     const videosDir = path.join(app.getPath('userData'), 'nexus-videos');
     if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
@@ -487,8 +501,9 @@ export class LocalStorageAdapter {
     const skippedFiles: string[] = [];
     let noteIdx = 0;
 
-    // Mapa de nome normalizado → nota (para associar imagens)
-    const notesByName = new Map<string, number>(); // nome → índice no array notes
+    // Mapas de associação imagem->nota
+    const notesByName = new Map<string, number>();
+    const notesByBaseName = new Map<string, number>();
 
     // 1. Processar HTML primeiro (já tem lógica existente)
     for (const htmlPath of scan.htmlFiles) {
@@ -512,7 +527,8 @@ export class LocalStorageAdapter {
         };
         const idx = notes.length;
         notes.push(note);
-        notesByName.set(this.normalizeFileName(htmlPath), idx);
+        notesByName.set(this.normalizeAssociationKey(this.normalizeFileName(htmlPath)), idx);
+        notesByBaseName.set(this.associationBaseKey(htmlPath), idx);
       } catch {
         warnings.push(`Erro ao processar HTML: ${path.basename(htmlPath)}`);
       }
@@ -554,7 +570,8 @@ export class LocalStorageAdapter {
         };
         const idx = notes.length;
         notes.push(note);
-        notesByName.set(this.normalizeFileName(txtPath), idx);
+        notesByName.set(this.normalizeAssociationKey(this.normalizeFileName(txtPath)), idx);
+        notesByBaseName.set(this.associationBaseKey(txtPath), idx);
       } catch {
         warnings.push(`Erro ao ler arquivo: ${path.basename(txtPath)}`);
       }
@@ -563,11 +580,27 @@ export class LocalStorageAdapter {
     // 3. Processar imagens — tentar associar a nota com nome similar
     const unmatchedImages: string[] = [];
     for (const imgPath of scan.imageFiles) {
-      const imgName = this.normalizeFileName(imgPath);
+      const imgName = this.normalizeAssociationKey(this.normalizeFileName(imgPath));
+      const imgBase = this.associationBaseKey(imgPath);
+      const parentFolderKey = this.normalizeAssociationKey(path.basename(path.dirname(imgPath)));
       let matched = false;
 
-      // Busca exata por nome
-      if (notesByName.has(imgName)) {
+      // Prioridade 1: pasta da imagem com mesmo nome da nota
+      if (parentFolderKey && notesByName.has(parentFolderKey)) {
+        const noteIndex = notesByName.get(parentFolderKey)!;
+        const dataUrl = previewOnly ? null : this.imageFileToDataUrl(imgPath);
+        if (previewOnly || dataUrl) {
+          const note = notes[noteIndex]!;
+          if (!previewOnly) {
+            if (!note.attachedImages) note.attachedImages = [];
+            note.attachedImages.push(dataUrl!);
+          }
+          matched = true;
+        }
+      }
+
+      // Prioridade 2: busca exata por nome
+      if (!matched && notesByName.has(imgName)) {
         const noteIndex = notesByName.get(imgName)!;
         const dataUrl = previewOnly ? null : this.imageFileToDataUrl(imgPath);
         if (previewOnly || dataUrl) {
@@ -580,21 +613,17 @@ export class LocalStorageAdapter {
         }
       }
 
-      // Busca parcial: imagem contém nome da nota ou vice-versa
-      if (!matched) {
-        for (const [noteName, noteIndex] of notesByName.entries()) {
-          if (imgName.includes(noteName) || noteName.includes(imgName)) {
-            const dataUrl = previewOnly ? null : this.imageFileToDataUrl(imgPath);
-            if (previewOnly || dataUrl) {
-              const note = notes[noteIndex]!;
-              if (!previewOnly) {
-                if (!note.attachedImages) note.attachedImages = [];
-                note.attachedImages.push(dataUrl!);
-              }
-              matched = true;
-              break;
-            }
+      // Prioridade 3: nome base sem sufixos numéricos (ex.: "nota 1", "nota (2)")
+      if (!matched && notesByBaseName.has(imgBase)) {
+        const noteIndex = notesByBaseName.get(imgBase)!;
+        const dataUrl = previewOnly ? null : this.imageFileToDataUrl(imgPath);
+        if (previewOnly || dataUrl) {
+          const note = notes[noteIndex]!;
+          if (!previewOnly) {
+            if (!note.attachedImages) note.attachedImages = [];
+            note.attachedImages.push(dataUrl!);
           }
+          matched = true;
         }
       }
 
@@ -603,42 +632,23 @@ export class LocalStorageAdapter {
       }
     }
 
-    // 4. Imagens sem nota correspondente:
-    //    - Se existem notas (HTML ou texto), anexar à primeira nota existente
-    //      (prioridade para notas HTML, pois geralmente a imagem pertence ao HTML)
-    //    - Somente criar nota separada se não existir nenhuma nota para associar
-    if (unmatchedImages.length > 0 && notes.length > 0) {
-      // Priorizar notas HTML (criadas a partir de scan.htmlFiles)
-      const htmlNoteIndices = scan.htmlFiles
-        .map(hp => notesByName.get(this.normalizeFileName(hp)))
-        .filter((idx): idx is number => idx !== undefined);
-      const targetIdx = htmlNoteIndices.length > 0 ? htmlNoteIndices[0]! : 0;
-      const targetNote = notes[targetIdx]!;
-      if (!previewOnly) {
-        if (!targetNote.attachedImages) targetNote.attachedImages = [];
-        for (const imgPath of unmatchedImages) {
-          const dataUrl = this.imageFileToDataUrl(imgPath);
-          if (dataUrl) targetNote.attachedImages.push(dataUrl);
-        }
-      }
-    } else {
-      for (const imgPath of unmatchedImages) {
-        const dataUrl = previewOnly ? null : this.imageFileToDataUrl(imgPath);
-        if (!previewOnly && !dataUrl) continue;
-        const baseName = path.basename(imgPath);
-        const title = baseName.slice(0, baseName.length - path.extname(baseName).length);
-        const note: Note = {
-          id: baseId + noteIdx++,
-          title,
-          content: `Imagem importada: ${baseName}`,
-          format: 'text',
-          attachedImages: previewOnly ? undefined : [dataUrl!],
-          tags: ['imagem-importada'],
-          created_at: now,
-          updated_at: now,
-        };
-        notes.push(note);
-      }
+    // 4. Imagens sem correspondência viram notas próprias para não contaminar outras notas
+    for (const imgPath of unmatchedImages) {
+      const dataUrl = previewOnly ? null : this.imageFileToDataUrl(imgPath);
+      if (!previewOnly && !dataUrl) continue;
+      const baseName = path.basename(imgPath);
+      const title = baseName.slice(0, baseName.length - path.extname(baseName).length);
+      const note: Note = {
+        id: baseId + noteIdx++,
+        title,
+        content: `Imagem importada: ${baseName}`,
+        format: 'text',
+        attachedImages: previewOnly ? undefined : [dataUrl!],
+        tags: ['imagem-importada'],
+        created_at: now,
+        updated_at: now,
+      };
+      notes.push(note);
     }
 
     // 5. Processar vídeos — cada vídeo vira uma nota

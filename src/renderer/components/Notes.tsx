@@ -250,9 +250,10 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     }
   }, []);
 
-  const truncateContent = useCallback((content: string, maxLength: number = 100) => {
-    if (content.length <= maxLength) return content;
-    return content.slice(0, maxLength) + '...';
+  const truncateContent = useCallback((content?: string | null, maxLength: number = 100) => {
+    const safeContent = typeof content === 'string' ? content : '';
+    if (safeContent.length <= maxLength) return safeContent;
+    return safeContent.slice(0, maxLength) + '...';
   }, []);
 
   const filteredNotes = useMemo(() => {
