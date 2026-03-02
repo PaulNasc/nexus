@@ -8,6 +8,7 @@ import {
   deleteUtilityObjectFromR2,
   downloadUtilityBlobFromR2Signed,
   listUtilityObjectsFromR2,
+  moveUtilityObjectInR2,
   uploadUtilityBlobToR2Signed,
 } from '../lib/r2Utilities';
 
@@ -17,7 +18,7 @@ import { Badge } from './ui/Badge';
 import { Input } from './ui/Input';
 import { NoteEditor } from './NoteEditor';
 import { LinkedTasksModal } from './LinkedTasksModal';
-import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, Pencil, CheckSquare, Square, Filter, X, ArrowUpDown, Users, FolderOpen, FileText, Upload, Download, FolderPlus } from 'lucide-react';
+import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, Pencil, CheckSquare, Square, Filter, X, ArrowUpDown, Users, FolderOpen, FileText, Upload, Download, FolderPlus, Folder, ArrowLeft, ChevronRight, Check, Loader2 } from 'lucide-react';
 
 import { NoteViewerModal } from './NoteViewerModal';
 
@@ -63,11 +64,24 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
   // Utilities panel state
   const [showUtilitiesPanel, setShowUtilitiesPanel] = useState(false);
   const [utilitySearch, setUtilitySearch] = useState('');
-  const [utilityFiles, setUtilityFiles] = useState<Array<{ name: string; size: number; created_at: string; objectKey: string }>>([]);
+  const [utilityFiles, setUtilityFiles] = useState<Array<{ name: string; size: number; created_at: string; objectKey: string; isPlaceholder: boolean }>>([]);
   const [utilityLoading, setUtilityLoading] = useState(false);
   const [uploadingUtility, setUploadingUtility] = useState(false);
+  const [uploadingUtilityName, setUploadingUtilityName] = useState('');
+  const [utilityActionMessage, setUtilityActionMessage] = useState<string | null>(null);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [currentUtilityPath, setCurrentUtilityPath] = useState('');
+  const [draggingUtilityObjectKey, setDraggingUtilityObjectKey] = useState<string | null>(null);
+  const [editingFolderPath, setEditingFolderPath] = useState<string | null>(null);
+  const [editingFolderName, setEditingFolderName] = useState('');
+  const [utilityConfirmLoading, setUtilityConfirmLoading] = useState(false);
+  const [utilityConfirmState, setUtilityConfirmState] = useState<
+    | { type: 'download-file'; objectKey: string; filename: string }
+    | { type: 'delete-file'; objectKey: string; filename: string }
+    | { type: 'delete-folder'; folderPath: string; folderName: string }
+    | null
+  >(null);
 
   // Sort state
   type SortOption = 'date_desc' | 'date_asc' | 'alpha_asc' | 'alpha_desc' | 'id_asc' | 'id_desc';
@@ -298,10 +312,64 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
   }, [notes, systemTagByName]);
 
   const utilityItems = useMemo(() => {
+    const currentPrefix = currentUtilityPath ? `${currentUtilityPath}/` : '';
     const term = utilitySearch.toLowerCase().trim();
-    if (!term) return utilityFiles;
-    return utilityFiles.filter((file) => file.name.toLowerCase().includes(term));
-  }, [utilityFiles, utilitySearch]);
+
+    const folders = new Map<string, { path: string; name: string }>();
+    const files: Array<{ name: string; size: number; created_at: string; objectKey: string }> = [];
+
+    for (const file of utilityFiles) {
+      if (!file.name) continue;
+
+      if (file.isPlaceholder) {
+        const folderPath = file.name.replace(/\/\.placeholder$/, '');
+        if (!folderPath || !folderPath.startsWith(currentPrefix)) continue;
+        const rest = folderPath.slice(currentPrefix.length);
+        if (!rest) continue;
+        const [firstSegment] = rest.split('/');
+        if (!firstSegment) continue;
+        if (term && !firstSegment.toLowerCase().includes(term)) continue;
+
+        const path = `${currentPrefix}${firstSegment}`;
+        folders.set(path, { path, name: firstSegment });
+        continue;
+      }
+
+      if (!file.name.startsWith(currentPrefix)) continue;
+      const rest = file.name.slice(currentPrefix.length);
+      if (!rest) continue;
+
+      const slashIndex = rest.indexOf('/');
+      if (slashIndex >= 0) {
+        const folderName = rest.slice(0, slashIndex);
+        if (!folderName) continue;
+        if (term && !folderName.toLowerCase().includes(term)) continue;
+
+        const path = `${currentPrefix}${folderName}`;
+        folders.set(path, { path, name: folderName });
+      } else {
+        if (term && !rest.toLowerCase().includes(term)) continue;
+        files.push({
+          name: rest,
+          size: file.size,
+          created_at: file.created_at,
+          objectKey: file.objectKey,
+        });
+      }
+    }
+
+    const folderItems = Array.from(folders.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    const fileItems = files.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return { folders: folderItems, files: fileItems };
+  }, [utilityFiles, utilitySearch, currentUtilityPath]);
+
+  const utilityPathSegments = useMemo(() => {
+    if (!currentUtilityPath) return [] as string[];
+    return currentUtilityPath.split('/').filter(Boolean);
+  }, [currentUtilityPath]);
+
+  const isUtilityBusy = uploadingUtility || !!utilityActionMessage;
 
   const loadUtilityFiles = useCallback(async () => {
     if (!activeOrg) return;
@@ -312,12 +380,12 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
 
       const files = items
         .filter((item) => item.objectKey.startsWith(prefix))
-        .filter((item) => !item.objectKey.endsWith('/.placeholder'))
         .map((item) => ({
           name: item.objectKey.slice(prefix.length),
           size: item.size,
           created_at: item.lastModified || '',
           objectKey: item.objectKey,
+          isPlaceholder: item.objectKey.endsWith('/.placeholder'),
         }))
         .filter((item) => !!item.name)
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -339,10 +407,13 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
   const handleUtilityUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !activeOrg) return;
-    
+
     setUploadingUtility(true);
+    setUploadingUtilityName(file.name);
+    setUtilityActionMessage(`Enviando ${file.name}...`);
     try {
-      const objectKey = `org/${activeOrg.id}/utilities/${file.name}`;
+      const pathPrefix = currentUtilityPath ? `${currentUtilityPath}/` : '';
+      const objectKey = `org/${activeOrg.id}/utilities/${pathPrefix}${file.name}`;
       await uploadUtilityBlobToR2Signed(objectKey, file, file.type || 'application/octet-stream');
       await loadUtilityFiles();
     } catch (error) {
@@ -350,6 +421,8 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
       alert('Erro ao fazer upload. Verifique se o arquivo já existe.');
     } finally {
       setUploadingUtility(false);
+      setUploadingUtilityName('');
+      setUtilityActionMessage(null);
       event.target.value = '';
     }
   };
@@ -357,9 +430,11 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
   const handleCreateFolder = async (folderNameParam?: string) => {
     const folderName = (folderNameParam ?? newFolderName).trim();
     if (!folderName || !activeOrg) return;
-    
+
     try {
-      const objectKey = `org/${activeOrg.id}/utilities/${folderName}/.placeholder`;
+      setUtilityActionMessage('Criando pasta...');
+      const pathPrefix = currentUtilityPath ? `${currentUtilityPath}/` : '';
+      const objectKey = `org/${activeOrg.id}/utilities/${pathPrefix}${folderName}/.placeholder`;
       await uploadUtilityBlobToR2Signed(objectKey, new Blob([''], { type: 'text/plain' }), 'text/plain');
       await loadUtilityFiles();
       setNewFolderName('');
@@ -367,28 +442,194 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     } catch (error) {
       console.error('Erro ao criar pasta:', error);
       alert('Erro ao criar pasta.');
+    } finally {
+      setUtilityActionMessage(null);
     }
   };
 
-  const handleUtilityDownload = async (objectKey: string, filename: string) => {
-    const blob = await downloadUtilityBlobFromR2Signed(objectKey);
-    const objectUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = objectUrl;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(objectUrl);
+  const handleMoveUtilityObject = async (sourceObjectKey: string, destinationFolderPath: string) => {
+    if (!activeOrg || !sourceObjectKey) return;
+
+    const basePrefix = `org/${activeOrg.id}/utilities/`;
+    if (!sourceObjectKey.startsWith(basePrefix)) return;
+
+    const fileName = sourceObjectKey.slice(basePrefix.length).split('/').pop();
+    if (!fileName) return;
+
+    const destinationPathPrefix = destinationFolderPath ? `${destinationFolderPath}/` : '';
+    const destinationObjectKey = `${basePrefix}${destinationPathPrefix}${fileName}`;
+    if (destinationObjectKey === sourceObjectKey) return;
+
+    try {
+      setUtilityActionMessage('Movendo arquivo...');
+      await moveUtilityObjectInR2(sourceObjectKey, destinationObjectKey);
+      await loadUtilityFiles();
+    } catch (error) {
+      console.error('Erro ao mover arquivo:', error);
+      alert('Erro ao mover arquivo.');
+    } finally {
+      setUtilityActionMessage(null);
+    }
   };
 
-  const handleUtilityDelete = async (objectKey: string, filename: string) => {
-    if (!activeOrg || !confirm(`Deseja excluir ${filename}?`)) return;
-    
+  const executeUtilityDownload = async (objectKey: string, filename: string) => {
+    try {
+      const blob = await downloadUtilityBlobFromR2Signed(objectKey);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error('Erro ao baixar arquivo:', error);
+      alert('Erro ao baixar arquivo.');
+    }
+  };
+
+  const handleUtilityDelete = async (objectKey: string) => {
+    if (!activeOrg) return;
+
     try {
       await deleteUtilityObjectFromR2(objectKey);
       await loadUtilityFiles();
     } catch (error) {
       console.error('Erro ao excluir arquivo:', error);
+      alert('Erro ao excluir arquivo.');
     }
+  };
+
+  const handleUtilityDeleteFolder = async (folderPath: string) => {
+    if (!activeOrg || !folderPath) return;
+
+    const prefix = `org/${activeOrg.id}/utilities/${folderPath}/`;
+    const objectKeys = utilityFiles
+      .filter((item) => item.objectKey.startsWith(prefix))
+      .map((item) => item.objectKey);
+
+    try {
+      setUtilityActionMessage(`Excluindo pasta ${folderPath.split('/').pop() || folderPath}...`);
+      for (const objectKey of objectKeys) {
+        await deleteUtilityObjectFromR2(objectKey);
+      }
+
+      if (currentUtilityPath === folderPath || currentUtilityPath.startsWith(`${folderPath}/`)) {
+        const parentPath = folderPath.split('/').slice(0, -1).join('/');
+        setCurrentUtilityPath(parentPath);
+      }
+
+      await loadUtilityFiles();
+    } catch (error) {
+      console.error('Erro ao excluir pasta:', error);
+      alert('Erro ao excluir pasta.');
+    } finally {
+      setUtilityActionMessage(null);
+    }
+  };
+
+  const handleUtilityRenameFolder = async (folderPath: string, targetFolderNameParam?: string) => {
+    if (!activeOrg || !folderPath) return;
+
+    const targetFolderName = (targetFolderNameParam ?? editingFolderName).trim();
+    if (!targetFolderName || targetFolderName.includes('/') || targetFolderName.includes('\\')) {
+      alert('Nome de pasta invalido.');
+      return;
+    }
+
+    const pathSegments = folderPath.split('/').filter(Boolean);
+    const currentFolderName = pathSegments[pathSegments.length - 1] || '';
+    if (!currentFolderName) return;
+    if (targetFolderName === currentFolderName) {
+      setEditingFolderPath(null);
+      setEditingFolderName('');
+      return;
+    }
+
+    const parentPath = pathSegments.slice(0, -1).join('/');
+    const destinationFolderPath = parentPath ? `${parentPath}/${targetFolderName}` : targetFolderName;
+    const sourcePrefix = `org/${activeOrg.id}/utilities/${folderPath}/`;
+    const destinationPrefix = `org/${activeOrg.id}/utilities/${destinationFolderPath}/`;
+
+    const objectKeys = utilityFiles
+      .filter((item) => item.objectKey.startsWith(sourcePrefix))
+      .map((item) => item.objectKey);
+
+    try {
+      setUtilityActionMessage(`Renomeando pasta para ${targetFolderName}...`);
+      for (const sourceObjectKey of objectKeys) {
+        const suffix = sourceObjectKey.slice(sourcePrefix.length);
+        const destinationObjectKey = `${destinationPrefix}${suffix}`;
+        await moveUtilityObjectInR2(sourceObjectKey, destinationObjectKey);
+      }
+
+      if (currentUtilityPath === folderPath || currentUtilityPath.startsWith(`${folderPath}/`)) {
+        const suffix = currentUtilityPath.slice(folderPath.length);
+        setCurrentUtilityPath(`${destinationFolderPath}${suffix}`);
+      }
+
+      setEditingFolderPath(null);
+      setEditingFolderName('');
+      await loadUtilityFiles();
+    } catch (error) {
+      console.error('Erro ao renomear pasta:', error);
+      alert('Erro ao renomear pasta.');
+    } finally {
+      setUtilityActionMessage(null);
+    }
+  };
+
+  const handleUtilityConfirm = async () => {
+    if (!utilityConfirmState || utilityConfirmLoading) return;
+
+    setUtilityConfirmLoading(true);
+    try {
+      if (utilityConfirmState.type === 'download-file') {
+        setUtilityActionMessage(`Preparando download de ${utilityConfirmState.filename}...`);
+        await executeUtilityDownload(utilityConfirmState.objectKey, utilityConfirmState.filename);
+      }
+
+      if (utilityConfirmState.type === 'delete-file') {
+        await handleUtilityDelete(utilityConfirmState.objectKey);
+      }
+
+      if (utilityConfirmState.type === 'delete-folder') {
+        await handleUtilityDeleteFolder(utilityConfirmState.folderPath);
+      }
+
+      setUtilityConfirmState(null);
+    } finally {
+      setUtilityConfirmLoading(false);
+      setUtilityActionMessage(null);
+    }
+  };
+
+  const getUtilityConfirmContent = () => {
+    if (!utilityConfirmState) return null;
+
+    if (utilityConfirmState.type === 'download-file') {
+      return {
+        title: 'Confirmar download',
+        description: `Deseja baixar o arquivo ${utilityConfirmState.filename}?`,
+        confirmLabel: 'Baixar',
+        confirmVariant: 'primary' as const,
+      };
+    }
+
+    if (utilityConfirmState.type === 'delete-folder') {
+      return {
+        title: 'Excluir pasta',
+        description: `Deseja excluir a pasta ${utilityConfirmState.folderName} e todo o seu conteudo?`,
+        confirmLabel: 'Excluir',
+        confirmVariant: 'danger' as const,
+      };
+    }
+
+    return {
+      title: 'Excluir arquivo',
+      description: `Deseja excluir o arquivo ${utilityConfirmState.filename}?`,
+      confirmLabel: 'Excluir',
+      confirmVariant: 'danger' as const,
+    };
   };
 
   const formatFileSize = (bytes: number) => {
@@ -708,19 +949,62 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
               </Button>
               <label
                 htmlFor="utility-upload-input"
-                title={uploadingUtility ? 'Enviando...' : 'Upload de arquivo'}
-                className="btn btn-primary btn-sm notes-utilities-icon-btn notes-utilities-upload-btn"
+                title={uploadingUtility ? 'Enviando...' : `Upload de arquivo${currentUtilityPath ? ` em ${currentUtilityPath}` : ' na raiz'}`}
+                className={`btn btn-primary btn-sm notes-utilities-icon-btn notes-utilities-upload-btn${uploadingUtility ? ' is-uploading' : ''}`}
               >
-                <Upload size={16} />
+                {uploadingUtility ? <Loader2 size={16} className="notes-utilities-spin" /> : <Upload size={16} />}
               </label>
 
               <input
                 id="utility-upload-input"
                 type="file"
                 onChange={handleUtilityUpload}
-                disabled={uploadingUtility}
+                disabled={isUtilityBusy}
                 style={{ display: 'none' }}
               />
+            </div>
+
+            {isUtilityBusy && (
+              <div className="notes-utilities-status" role="status" aria-live="polite">
+                <Loader2 size={13} className="notes-utilities-spin" />
+                <span>{utilityActionMessage || (uploadingUtilityName ? `Enviando ${uploadingUtilityName}...` : 'Processando...')}</span>
+              </div>
+            )}
+
+            <div className="notes-utilities-path">
+              <button
+                className="notes-utilities-path-back"
+                onClick={() => {
+                  if (!currentUtilityPath) return;
+                  const parts = currentUtilityPath.split('/').filter(Boolean);
+                  setCurrentUtilityPath(parts.slice(0, -1).join('/'));
+                }}
+                disabled={!currentUtilityPath}
+                title="Voltar nível"
+              >
+                <ArrowLeft size={14} />
+              </button>
+              <button
+                className={`notes-utilities-path-segment${currentUtilityPath ? '' : ' active'}`}
+                onClick={() => setCurrentUtilityPath('')}
+              >
+                raiz
+              </button>
+              {utilityPathSegments.map((segment, index) => {
+                const path = utilityPathSegments.slice(0, index + 1).join('/');
+                const active = path === currentUtilityPath;
+                return (
+                  <React.Fragment key={`path-${path}`}>
+                    <ChevronRight size={12} className="notes-utilities-path-separator" />
+                    <button
+                      className={`notes-utilities-path-segment${active ? ' active' : ''}`}
+                      onClick={() => setCurrentUtilityPath(path)}
+                    >
+                      {segment}
+                    </button>
+                  </React.Fragment>
+                );
+              })}
             </div>
 
             {isCreatingFolder && (
@@ -747,7 +1031,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                   variant="secondary"
                   size="sm"
                   onClick={() => void handleCreateFolder()}
-                  disabled={!newFolderName.trim()}
+                  disabled={!newFolderName.trim() || isUtilityBusy}
                 >
                   Criar
                 </Button>
@@ -758,6 +1042,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                     setIsCreatingFolder(false);
                     setNewFolderName('');
                   }}
+                  disabled={isUtilityBusy}
                 >
                   Cancelar
                 </Button>
@@ -765,86 +1050,232 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
             )}
 
             <div className="notes-utilities-list">
+              {draggingUtilityObjectKey && currentUtilityPath && (
+                <div
+                  className="notes-utilities-drop-root"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (draggingUtilityObjectKey) {
+                      void handleMoveUtilityObject(draggingUtilityObjectKey, '');
+                    }
+                    setDraggingUtilityObjectKey(null);
+                  }}
+                >
+                  Solte aqui para mover para a raiz
+                </div>
+              )}
+
               {utilityLoading ? (
                 <div className="notes-utilities-empty">
                   <FileText size={18} />
                   <span>Carregando arquivos...</span>
                 </div>
-              ) : utilityItems.length === 0 ? (
+              ) : utilityItems.folders.length === 0 && utilityItems.files.length === 0 ? (
                 <div className="notes-utilities-empty">
                   <FileText size={18} />
                   <span>Nenhum arquivo encontrado.</span>
                 </div>
               ) : (
-                utilityItems.map((file) => (
-                  <div key={`util-${file.name}`} className="notes-utility-item">
+                <>
+                  {utilityItems.folders.map((folderItem) => (
                     <div
-                      className="notes-utility-item-main"
-                      style={{ cursor: 'default' }}
+                      key={`folder-${folderItem.path}`}
+                      className="notes-utility-item notes-utility-item--folder"
                       role="button"
                       tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          setShowUtilitiesPanel(false);
-                          void handleUtilityDownload(file.objectKey, file.name);
+                      onClick={() => {
+                        if (editingFolderPath === folderItem.path) return;
+                        setCurrentUtilityPath(folderItem.path);
+                      }}
+                      onKeyDown={(event) => {
+                        if (editingFolderPath === folderItem.path) return;
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          setCurrentUtilityPath(folderItem.path);
                         }
                       }}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        if (draggingUtilityObjectKey) {
+                          void handleMoveUtilityObject(draggingUtilityObjectKey, folderItem.path);
+                        }
+                        setDraggingUtilityObjectKey(null);
+                      }}
                     >
-                      <FileText size={14} className="notes-utility-item-icon" />
-                      <div className="notes-utility-item-meta">
-                        <span className="notes-utility-item-name">{file.name}</span>
-                        <span className="notes-utility-item-size">{formatFileSize(file.size)}</span>
+                      <div className="notes-utility-item-main">
+                        <Folder size={14} className="notes-utility-item-icon" />
+                        <div className="notes-utility-item-meta">
+                          {editingFolderPath === folderItem.path ? (
+                            <input
+                              className="notes-utility-folder-rename-input"
+                              value={editingFolderName}
+                              onChange={(event) => setEditingFolderName(event.target.value)}
+                              onClick={(event) => event.stopPropagation()}
+                              onKeyDown={(event) => {
+                                event.stopPropagation();
+                                if (event.key === 'Enter') {
+                                  event.preventDefault();
+                                  void handleUtilityRenameFolder(folderItem.path);
+                                }
+                                if (event.key === 'Escape') {
+                                  setEditingFolderPath(null);
+                                  setEditingFolderName('');
+                                }
+                              }}
+                              autoFocus
+                            />
+                          ) : (
+                            <>
+                              <span className="notes-utility-item-name">{folderItem.name}</span>
+                              <span className="notes-utility-item-size">Pasta</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="notes-utility-item-actions">
+                        {editingFolderPath === folderItem.path ? (
+                          <>
+                            <button
+                              className="notes-utility-action-btn"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleUtilityRenameFolder(folderItem.path);
+                              }}
+                              title="Salvar nome"
+                              disabled={!editingFolderName.trim() || isUtilityBusy}
+                            >
+                              <Check size={13} />
+                            </button>
+                            <button
+                              className="notes-utility-action-btn"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setEditingFolderPath(null);
+                                setEditingFolderName('');
+                              }}
+                              title="Cancelar edição"
+                              disabled={isUtilityBusy}
+                            >
+                              <X size={13} />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              className="notes-utility-action-btn"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setEditingFolderPath(folderItem.path);
+                                setEditingFolderName(folderItem.name);
+                              }}
+                              title="Renomear pasta"
+                              disabled={isUtilityBusy}
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              className="notes-utility-action-btn notes-utility-action-btn--danger"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setUtilityConfirmState({
+                                  type: 'delete-folder',
+                                  folderPath: folderItem.path,
+                                  folderName: folderItem.name,
+                                });
+                              }}
+                              title="Excluir pasta"
+                              disabled={isUtilityBusy}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void handleUtilityDownload(file.objectKey, file.name);
-                        }}
-                        title="Baixar arquivo"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: '6px',
-                          background: 'rgba(0, 212, 170, 0.1)',
-                          border: '1px solid var(--color-primary-teal)',
-                          borderRadius: '6px',
-                          color: 'var(--color-primary-teal)',
-                          cursor: 'pointer',
-                          fontSize: '11px',
-                        }}
-                      >
-                        <Download size={14} />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void handleUtilityDelete(file.objectKey, file.name);
-                        }}
-                        title="Excluir arquivo"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: '6px',
-                          background: 'rgba(239, 68, 68, 0.1)',
-                          border: '1px solid var(--color-accent-rose)',
-                          borderRadius: '6px',
-                          color: 'var(--color-accent-rose)',
-                          cursor: 'pointer',
-                          fontSize: '11px',
+                  ))}
+                  {utilityItems.files.map((file) => (
+                    <div
+                      key={`util-${file.objectKey}`}
+                      className="notes-utility-item"
+                      draggable
+                      onDragStart={() => setDraggingUtilityObjectKey(file.objectKey)}
+                      onDragEnd={() => setDraggingUtilityObjectKey(null)}
+                    >
+                      <div
+                        className="notes-utility-item-main"
+                        style={{ cursor: 'default' }}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            setUtilityConfirmState({ type: 'download-file', objectKey: file.objectKey, filename: file.name });
+                          }
                         }}
                       >
-                        <Trash2 size={14} />
-                      </button>
+                        <FileText size={14} className="notes-utility-item-icon" />
+                        <div className="notes-utility-item-meta">
+                          <span className="notes-utility-item-name">{file.name}</span>
+                          <span className="notes-utility-item-size">{formatFileSize(file.size)}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        <button
+                          className="notes-utility-action-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setUtilityConfirmState({ type: 'download-file', objectKey: file.objectKey, filename: file.name });
+                          }}
+                          title="Baixar arquivo"
+                          disabled={isUtilityBusy}
+                        >
+                          <Download size={14} />
+                        </button>
+                        <button
+                          className="notes-utility-action-btn notes-utility-action-btn--danger"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setUtilityConfirmState({ type: 'delete-file', objectKey: file.objectKey, filename: file.name });
+                          }}
+                          title="Excluir arquivo"
+                          disabled={isUtilityBusy}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                </>
               )}
             </div>
           </aside>
+        )}
+
+        {utilityConfirmState && (
+          <div className="notes-utilities-confirm-backdrop" onClick={() => !utilityConfirmLoading && setUtilityConfirmState(null)}>
+            <div className="notes-utilities-confirm-modal" onClick={(event) => event.stopPropagation()}>
+              <h4 className="notes-utilities-confirm-title">{getUtilityConfirmContent()?.title}</h4>
+              <p className="notes-utilities-confirm-description">{getUtilityConfirmContent()?.description}</p>
+              <div className="notes-utilities-confirm-actions">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setUtilityConfirmState(null)}
+                  disabled={utilityConfirmLoading}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant={getUtilityConfirmContent()?.confirmVariant || 'primary'}
+                  size="sm"
+                  onClick={() => void handleUtilityConfirm()}
+                  disabled={utilityConfirmLoading}
+                >
+                  {utilityConfirmLoading ? <Loader2 size={14} className="notes-utilities-spin" /> : getUtilityConfirmContent()?.confirmLabel}
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
 
         {isLoading ? (

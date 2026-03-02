@@ -3,6 +3,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   ListObjectsV2Command,
@@ -11,13 +12,15 @@ import {
 } from 'npm:@aws-sdk/client-s3@3.726.1';
 import { getSignedUrl } from 'npm:@aws-sdk/s3-request-presigner@3.726.1';
 
-type Action = 'upload' | 'download' | 'delete' | 'list';
+type Action = 'upload' | 'download' | 'delete' | 'list' | 'move';
 
 interface SignedUrlRequest {
   action: Action;
   objectKey: string;
   contentType?: string;
   maxKeys?: number;
+  sourceObjectKey?: string;
+  destinationObjectKey?: string;
 }
 
 const CORS_HEADERS = {
@@ -110,19 +113,36 @@ Deno.serve(async (req: Request) => {
     const body = (await req.json()) as SignedUrlRequest;
     const action = body?.action;
     const objectKey = String(body?.objectKey || '').trim();
-    const contentType = String(body?.contentType || 'video/mp4').trim();
+    const sourceObjectKey = String(body?.sourceObjectKey || '').trim();
+    const destinationObjectKey = String(body?.destinationObjectKey || '').trim();
+    const contentType = typeof body?.contentType === 'string' ? body.contentType.trim() : '';
 
-    if (!action || !['upload', 'download', 'delete', 'list'].includes(action)) {
+    if (!action || !['upload', 'download', 'delete', 'list', 'move'].includes(action)) {
       return json(400, { error: 'Invalid action' });
     }
 
-    if (!isAllowedObjectKey(objectKey)) {
-      return json(400, { error: 'Invalid objectKey' });
-    }
+    if (action === 'move') {
+      if (!isAllowedObjectKey(sourceObjectKey) || !isAllowedObjectKey(destinationObjectKey)) {
+        return json(400, { error: 'Invalid sourceObjectKey/destinationObjectKey' });
+      }
 
-    const canAccess = await canAccessObjectKey(objectKey, userData.user.id, adminClient);
-    if (!canAccess) {
-      return json(403, { error: 'Forbidden objectKey scope' });
+      const [canAccessSource, canAccessDestination] = await Promise.all([
+        canAccessObjectKey(sourceObjectKey, userData.user.id, adminClient),
+        canAccessObjectKey(destinationObjectKey, userData.user.id, adminClient),
+      ]);
+
+      if (!canAccessSource || !canAccessDestination) {
+        return json(403, { error: 'Forbidden move scope' });
+      }
+    } else {
+      if (!isAllowedObjectKey(objectKey)) {
+        return json(400, { error: 'Invalid objectKey' });
+      }
+
+      const canAccess = await canAccessObjectKey(objectKey, userData.user.id, adminClient);
+      if (!canAccess) {
+        return json(403, { error: 'Forbidden objectKey scope' });
+      }
     }
 
     const bucket = getRequiredEnv('R2_BUCKET').toLowerCase();
@@ -171,11 +191,27 @@ Deno.serve(async (req: Request) => {
       return json(200, { success: true, deleted: true, objectKey });
     }
 
+    if (action === 'move') {
+      await s3.send(new CopyObjectCommand({
+        Bucket: bucket,
+        Key: destinationObjectKey,
+        CopySource: `/${bucket}/${sourceObjectKey}`,
+      }));
+      await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: sourceObjectKey }));
+
+      return json(200, {
+        success: true,
+        moved: true,
+        sourceObjectKey,
+        destinationObjectKey,
+      });
+    }
+
     if (action === 'upload') {
       const command = new PutObjectCommand({
         Bucket: bucket,
         Key: objectKey,
-        ContentType: contentType || 'video/mp4',
+        ...(contentType ? { ContentType: contentType } : {}),
       });
       const signedUrl = await getSignedUrl(s3, command, { expiresIn });
 

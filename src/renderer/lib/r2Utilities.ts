@@ -18,23 +18,62 @@ interface R2ListResponse {
   items: R2ListItem[];
 }
 
-type R2UtilitiesAction = 'upload' | 'download' | 'delete' | 'list';
+type R2UtilitiesAction = 'upload' | 'download' | 'delete' | 'list' | 'move';
 
 interface R2UtilitiesRequest {
   action: R2UtilitiesAction;
   objectKey: string;
   contentType?: string;
   maxKeys?: number;
+  sourceObjectKey?: string;
+  destinationObjectKey?: string;
 }
 
 const FUNCTION_NAME = 'r2-signed-url';
 const FUNCTION_ENDPOINT = `${SUPABASE_URL}/functions/v1/${FUNCTION_NAME}`;
 
+const callR2FunctionViaFetch = async (
+  payload: R2UtilitiesRequest,
+  accessToken: string,
+): Promise<unknown> => {
+  const response = await fetch(FUNCTION_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  let body: unknown = null;
+  let raw = '';
+  try {
+    body = await response.json();
+  } catch {
+    try {
+      raw = await response.text();
+    } catch {
+      raw = '';
+    }
+  }
+
+  if (!response.ok) {
+    const msg = typeof body === 'object' && body && 'error' in body
+      ? String((body as { error?: unknown }).error || '')
+      : raw.trim();
+    throw new Error(msg || `Edge Function returned ${response.status}`);
+  }
+
+  return body;
+};
+
 const getValidAccessToken = async (forceRefresh = false): Promise<string> => {
   if (forceRefresh) {
     const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
     const refreshedToken = refreshData.session?.access_token;
-    if (refreshError || !refreshedToken) {
+    const refreshedUserId = refreshData.session?.user?.id;
+    if (refreshError || !refreshedToken || !refreshedUserId) {
       throw new Error('Sessao expirada. Faca login novamente.');
     }
     return refreshedToken;
@@ -42,7 +81,8 @@ const getValidAccessToken = async (forceRefresh = false): Promise<string> => {
 
   const { data: sessionData } = await supabase.auth.getSession();
   const currentToken = sessionData.session?.access_token;
-  if (!currentToken) {
+  const currentUserId = sessionData.session?.user?.id;
+  if (!currentToken || !currentUserId) {
     return getValidAccessToken(true);
   }
 
@@ -54,56 +94,47 @@ const getValidAccessToken = async (forceRefresh = false): Promise<string> => {
   return currentToken;
 };
 
-const getAuthHeader = async (forceRefresh = false): Promise<Record<string, string>> => {
-  const accessToken = await getValidAccessToken(forceRefresh);
-
-  return {
-    apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${accessToken}`,
-  };
-};
-
 const callR2Function = async (
   payload: R2UtilitiesRequest,
   retryOn401 = true,
   forceRefreshToken = false,
 ): Promise<unknown> => {
-  const headers = await getAuthHeader(forceRefreshToken);
-  const response = await fetch(FUNCTION_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      ...headers,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
+  const accessToken = await getValidAccessToken(forceRefreshToken);
+  supabase.functions.setAuth(accessToken);
+
+  const { data, error } = await supabase.functions.invoke(FUNCTION_NAME, {
+    body: payload,
   });
 
-  let responseBody: unknown = null;
-  let rawBody = '';
-  try {
-    responseBody = await response.json();
-  } catch {
-    try {
-      rawBody = await response.text();
-    } catch {
-      rawBody = '';
-    }
-    responseBody = null;
-  }
+  if (error) {
+    const status = Number(
+      (error as { context?: { status?: number } })?.context?.status
+      ?? (error as { status?: number })?.status
+      ?? 0,
+    );
 
-  if (!response.ok) {
-    if (response.status === 401 && retryOn401) {
+    if (status === 401) {
+      try {
+        return await callR2FunctionViaFetch(payload, accessToken);
+      } catch {
+        // fallback failed; continue with refresh/retry flow below
+      }
+    }
+
+    if (status === 401 && retryOn401) {
       await supabase.auth.refreshSession();
       return callR2Function(payload, false, true);
     }
 
-    const message = typeof responseBody === 'object' && responseBody && 'error' in responseBody
-      ? String((responseBody as { error?: unknown }).error || '')
-      : rawBody.trim();
-    throw new Error(message || `Edge Function returned ${response.status}`);
+    const message = String(
+      (error as { message?: string })?.message
+      || (error as { context?: { statusText?: string } })?.context?.statusText
+      || (status ? `Edge Function returned ${status}` : 'Falha ao chamar Edge Function r2-signed-url'),
+    );
+    throw new Error(message);
   }
 
-  return responseBody;
+  return data;
 };
 
 const requestSignedUrl = async (
@@ -184,5 +215,17 @@ export const deleteUtilityObjectFromR2 = async (objectKey: string): Promise<void
   await callR2Function({
     action: 'delete',
     objectKey,
+  });
+};
+
+export const moveUtilityObjectInR2 = async (
+  sourceObjectKey: string,
+  destinationObjectKey: string,
+): Promise<void> => {
+  await callR2Function({
+    action: 'move',
+    objectKey: sourceObjectKey,
+    sourceObjectKey,
+    destinationObjectKey,
   });
 };
