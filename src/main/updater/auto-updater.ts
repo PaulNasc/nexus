@@ -14,7 +14,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
 import { IncomingMessage } from 'http';
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 
 // GitHub repo info — must match package.json build.publish
 const GH_OWNER = 'PaulNasc';
@@ -62,6 +62,7 @@ export class AppUpdater {
   private status: UpdateStatus = { state: 'idle' };
   private _isPortable: boolean;
   private portableDownloadPath: string | null = null;
+  private nsisDownloadedInstallerPath: string | null = null;
 
   private constructor() {
     this._isPortable = this.detectPortableMode();
@@ -172,6 +173,39 @@ export class AppUpdater {
         });
         this.setStatus({ state: 'error', error: err instanceof Error ? err.message : String(err) });
       });
+    }
+  }
+
+  private tryLaunchDownloadedNsisInstaller(): boolean {
+    if (process.platform !== 'win32') return false;
+    if (!this.nsisDownloadedInstallerPath) return false;
+    if (!fs.existsSync(this.nsisDownloadedInstallerPath)) {
+      logger.warn('Stored NSIS installer path does not exist', 'updater', {
+        nsisDownloadedInstallerPath: this.nsisDownloadedInstallerPath,
+      });
+      return false;
+    }
+
+    try {
+      const child = spawn(this.nsisDownloadedInstallerPath, ['--updated'], {
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.unref();
+
+      logger.info('Launched NSIS installer manually', 'updater', {
+        nsisDownloadedInstallerPath: this.nsisDownloadedInstallerPath,
+      });
+
+      app.exit(0);
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('Manual NSIS installer launch failed', 'updater', {
+        error: msg,
+        nsisDownloadedInstallerPath: this.nsisDownloadedInstallerPath,
+      });
+      return false;
     }
   }
 
@@ -400,7 +434,12 @@ export class AppUpdater {
       logger.info('Applying NSIS update (quitAndInstall)', 'updater', {
         version: this.status.version,
         isPortable: this._isPortable,
+        nsisDownloadedInstallerPath: this.nsisDownloadedInstallerPath,
       });
+
+      if (this.tryLaunchDownloadedNsisInstaller()) {
+        return;
+      }
 
       try {
         // Use non-silent mode for better compatibility with NSIS launcher on some Windows setups.
@@ -636,8 +675,15 @@ Write-Output $updatedCount
       });
     });
 
-    autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
-      logger.info('Update downloaded', 'updater', { version: info.version });
+    autoUpdater.on('update-downloaded', (info: UpdateInfo & { downloadedFile?: string }) => {
+      if (typeof info.downloadedFile === 'string' && info.downloadedFile.trim().length > 0) {
+        this.nsisDownloadedInstallerPath = info.downloadedFile;
+      }
+
+      logger.info('Update downloaded', 'updater', {
+        version: info.version,
+        downloadedFile: info.downloadedFile,
+      });
       const rawNotes = typeof info.releaseNotes === 'string'
         ? info.releaseNotes
         : Array.isArray(info.releaseNotes)
