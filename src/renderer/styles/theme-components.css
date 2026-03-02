@@ -76,8 +76,8 @@
 }
 
 .form-input:focus {
-  border-color: var(--color-border-focus);
-  box-shadow: 0 0 0 3px var(--color-primary-teal)20;
+  border-color: var(--color-border-hover);
+  box-shadow: none;
 }
 
 .form-input::placeholder {
@@ -121,8 +121,8 @@
 }
 
 .form-textarea:focus {
-  border-color: var(--color-border-focus);
-  box-shadow: 0 0 0 3px var(--color-primary-teal)20;
+  border-color: var(--color-border-hover);
+  box-shadow: none;
 }
 
 .form-textarea::placeholder {

@@ -13,6 +13,7 @@ import MemoryDatabase, { type Task as DbTask } from '../shared/database/memory-d
 import { parseEnexToNotes } from './backup/enex-importer';
 import type { Note } from '../shared/types/note';
 import { CloudSyncManager } from './cloud/cloud-sync-manager';
+import { createHash } from 'crypto';
 
 class MainApplication {
   private mainWindow: BrowserWindow | null = null;
@@ -973,6 +974,149 @@ class MainApplication {
         fileName: path.basename(filePath),
         size: stats.size,
       };
+    });
+
+    // === UTILITY FILES IPC HANDLERS ===
+    const utilityFilesDir = path.join(app.getPath('userData'), 'nexus-utility-files');
+    const safeUtilityName = (fileName: string): string => path.basename(String(fileName || ''));
+    const mimeFromUtilityName = (fileName: string): string => {
+      const ext = path.extname(fileName).toLowerCase();
+      if (ext === '.exe') return 'application/vnd.microsoft.portable-executable';
+      if (ext === '.msi') return 'application/x-msi';
+      if (ext === '.zip') return 'application/zip';
+      if (ext === '.rar') return 'application/vnd.rar';
+      if (ext === '.7z') return 'application/x-7z-compressed';
+      if (ext === '.pdf') return 'application/pdf';
+      if (ext === '.txt') return 'text/plain';
+      if (ext === '.json') return 'application/json';
+      if (ext === '.csv') return 'text/csv';
+      if (ext === '.png') return 'image/png';
+      if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+      if (ext === '.webp') return 'image/webp';
+      if (ext === '.gif') return 'image/gif';
+      return 'application/octet-stream';
+    };
+
+    ipcMain.handle('utility:importFromPath', async (_event, sourcePath: string) => {
+      try {
+        if (!sourcePath || typeof sourcePath !== 'string') {
+          return { success: false, error: 'Caminho de arquivo inválido' };
+        }
+
+        if (!fs.existsSync(sourcePath)) {
+          return { success: false, error: 'Arquivo não encontrado' };
+        }
+
+        const stat = await fs.promises.stat(sourcePath);
+        if (!stat.isFile()) {
+          return { success: false, error: 'O caminho selecionado não é um arquivo' };
+        }
+
+        if (!fs.existsSync(utilityFilesDir)) fs.mkdirSync(utilityFilesDir, { recursive: true });
+
+        const originalName = safeUtilityName(path.basename(sourcePath));
+        const ext = path.extname(originalName).toLowerCase();
+        const fileBuffer = await fs.promises.readFile(sourcePath);
+        const hash = createHash('sha1').update(fileBuffer).digest('hex');
+        const localFileName = `${hash.slice(0, 12)}-${originalName}`;
+        const localPath = path.join(utilityFilesDir, localFileName);
+
+        if (!fs.existsSync(localPath)) {
+          await fs.promises.writeFile(localPath, fileBuffer);
+        }
+
+        return {
+          success: true,
+          item: {
+            originalName,
+            localFileName,
+            extension: ext,
+            size: stat.size,
+            mimeType: mimeFromUtilityName(originalName),
+            hash,
+          },
+        };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    ipcMain.handle('utility:readLocalAsBase64', async (_event, fileName: string) => {
+      try {
+        const safeName = safeUtilityName(fileName);
+        const localPath = path.join(utilityFilesDir, safeName);
+        if (!fs.existsSync(localPath)) return { success: false, error: 'Arquivo não encontrado' };
+        const buf = await fs.promises.readFile(localPath);
+        return {
+          success: true,
+          base64: buf.toString('base64'),
+          mimeType: mimeFromUtilityName(safeName),
+          fileName: safeName,
+        };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    ipcMain.handle('utility:writeBase64ToLocal', async (_event, fileName: string, base64: string) => {
+      try {
+        if (!fs.existsSync(utilityFilesDir)) fs.mkdirSync(utilityFilesDir, { recursive: true });
+        const safeName = safeUtilityName(fileName);
+        const localPath = path.join(utilityFilesDir, safeName);
+        const buf = Buffer.from(String(base64 || ''), 'base64');
+        await fs.promises.writeFile(localPath, buf);
+        return { success: true, localPath };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    ipcMain.handle('utility:openExternal', async (_event, fileName: string) => {
+      try {
+        const localPath = path.join(utilityFilesDir, safeUtilityName(fileName));
+        if (!fs.existsSync(localPath)) return { success: false, error: 'Arquivo não encontrado' };
+        const openResult = await shell.openPath(localPath);
+        if (openResult) {
+          return { success: false, error: openResult };
+        }
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    ipcMain.handle('utility:saveAs', async (_event, fileName: string) => {
+      try {
+        const safeName = safeUtilityName(fileName);
+        const localPath = path.join(utilityFilesDir, safeName);
+        if (!fs.existsSync(localPath)) return { success: false, error: 'Arquivo não encontrado' };
+
+        const ext = path.extname(safeName).replace('.', '');
+        const save = await dialog.showSaveDialog(this.mainWindow!, {
+          title: 'Salvar arquivo utilitário',
+          buttonLabel: 'Salvar',
+          defaultPath: safeName.replace(/^[a-f0-9]{12}-/, ''),
+          filters: [{ name: 'Arquivo', extensions: [ext || '*'] }],
+        });
+
+        if (save.canceled || !save.filePath) return { success: false, canceled: true };
+        await fs.promises.copyFile(localPath, save.filePath);
+        return { success: true, savedPath: save.filePath };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    ipcMain.handle('utility:deleteLocal', async (_event, fileName: string) => {
+      try {
+        const localPath = path.join(utilityFilesDir, safeUtilityName(fileName));
+        if (fs.existsSync(localPath)) {
+          await fs.promises.unlink(localPath);
+        }
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
     });
 
     ipcMain.handle('settings:get', async (event, key: string) => {

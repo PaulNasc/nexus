@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNotifications } from './hooks/useNotifications';
+
 import { useTheme } from './hooks/useTheme';
 import { useTasks } from './contexts/TasksContext';
 import { useI18n } from './hooks/useI18n';
@@ -14,6 +15,7 @@ import { Dashboard } from './components/Dashboard';
 import { Settings } from './components/Settings';
 import { Notes } from './components/Notes';
 import { NoteModal } from './components/NoteModal';
+import { NotesMetricsPanel } from './components/NotesMetricsPanel';
 import { useToast } from './components/Toast';
 import { useAppearance } from './hooks/useAppearance';
 import { Task, TaskStatus } from '../shared/types/task';
@@ -21,6 +23,7 @@ import { Screen } from '../shared/types/navigation';
 import { UserSettings } from './hooks/useSettings';
 import { Settings as SettingsIcon, LogOut, StickyNote, Sun, Moon, ChevronUp, ChevronDown } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
+import { useOrganization } from './contexts/OrganizationContext';
 import ProactiveSuggestionsWidget from './components/ProactiveSuggestionsWidget';
 import UpdateNotification from './components/UpdateNotification';
 
@@ -31,8 +34,9 @@ import './styles/variables.css';
 import './styles/global.css';
 import './styles/components.css';
 import './styles/animations.css';
+import './styles/navigation-title.css';
 
-type AppScreen = Screen | 'timer' | 'reports' | 'notes';
+type AppScreen = Screen | 'timer' | 'reports' | 'notes' | 'metrics';
 
 interface AppNavigationState {
   currentScreen: AppScreen;
@@ -57,10 +61,11 @@ interface AppHeaderProps {
   openTimer: () => void;
   openReports: () => void;
   openNotes: () => void;
+  openMetrics: () => void;
+  canViewMetrics: boolean;
   effectiveMode: 'light' | 'dark';
   onToggleTheme: () => void;
   handleOpenSettings: () => void;
-  // handleOpenTaskModal: () => void;
   handleOpenNoteModal: () => void;
   onSignOut: () => void;
 }
@@ -74,10 +79,11 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   openTimer,
   openReports,
   openNotes,
+  openMetrics,
+  canViewMetrics,
   effectiveMode,
   onToggleTheme,
   handleOpenSettings,
-  // handleOpenTaskModal,
   handleOpenNoteModal,
   onSignOut
 }) => {
@@ -86,9 +92,10 @@ const AppHeader: React.FC<AppHeaderProps> = ({
     : (systemInfo?.version ? String(systemInfo.version) : '');
 
   const tabs = [
+    { key: 'notes', label: 'Notas', onClick: openNotes },
+    ...(canViewMetrics ? [{ key: 'metrics', label: 'Métricas', onClick: openMetrics }] : []),
     ...(settings.showDashboard ? [{ key: 'dashboard', label: 'Dashboard', onClick: goToDashboard }] : []),
     ...(settings.showTimer ? [{ key: 'timer', label: 'Timer', onClick: openTimer }] : []),
-    ...(settings.showNotes ? [{ key: 'notes', label: 'Notas', onClick: openNotes }] : []),
     ...(settings.showReports ? [{ key: 'reports', label: 'Relatórios', onClick: openReports }] : [])
   ];
 
@@ -182,6 +189,8 @@ const App: React.FC<AppProps> = () => {
 
   // Hooks centralizados via Context (instância única)
   const { signOut } = useAuth();
+  const { myRole } = useOrganization();
+  const canViewMetrics = myRole === 'admin' || myRole === 'owner';
   const {
     tasks,
     stats,
@@ -335,11 +344,18 @@ const App: React.FC<AppProps> = () => {
     setNavigation({ currentScreen: 'notes', selectedNoteId: noteId });
   };
 
+  const openMetrics = () => {
+    navigateTo('metrics');
+  };
+
   useEffect(() => {
     if (navigation.currentScreen === 'dashboard' && !settings.showDashboard) {
       openNotes();
     }
-  }, [navigation.currentScreen, settings.showDashboard]);
+    if (navigation.currentScreen === 'metrics' && !canViewMetrics) {
+      openNotes();
+    }
+  }, [navigation.currentScreen, settings.showDashboard, canViewMetrics]);
 
   // Modal functions
   // Hotfix: abertura direta de "Nova Tarefa" desativada por solicitação do usuário.
@@ -486,10 +502,11 @@ const App: React.FC<AppProps> = () => {
         openTimer={openTimer}
         openReports={openReports}
         openNotes={openNotes}
+        openMetrics={openMetrics}
+        canViewMetrics={canViewMetrics}
         effectiveMode={effectiveMode}
         onToggleTheme={toggleMode}
         handleOpenSettings={handleOpenSettings}
-        // handleOpenTaskModal={handleOpenTaskModal}
         handleOpenNoteModal={() => setIsNoteModalOpen(true)}
         onSignOut={signOut}
       />
@@ -624,6 +641,11 @@ const App: React.FC<AppProps> = () => {
         )}
         {navigation.currentScreen === 'notes' && (
           <Notes initialNoteId={navigation.selectedNoteId} />
+        )}
+        {navigation.currentScreen === 'metrics' && canViewMetrics && (
+          <div style={{ padding: '24px' }}>
+            <NotesMetricsPanel />
+          </div>
         )}
 
         <NoteModal

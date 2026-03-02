@@ -1,0 +1,30 @@
+/* Título fixo de navegação (quando há apenas uma opção) */
+.navigation-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  user-select: none;
+}
+
+.navigation-title-text {
+  background: linear-gradient(135deg, #00D4AA 0%, #7B3FF2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .navigation-title {
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+}

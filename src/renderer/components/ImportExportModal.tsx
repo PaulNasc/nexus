@@ -537,34 +537,46 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
             )}
 
             {preview && !hasApplied && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>Cor das notas:</span>
-                {[
-                  { value: 'teal', color: 'var(--color-accent-teal)', label: 'Teal' },
-                  { value: 'blue', color: 'var(--color-accent-blue)', label: 'Azul' },
-                  { value: 'green', color: 'var(--color-accent-emerald)', label: 'Verde' },
-                  { value: 'yellow', color: 'var(--color-accent-amber)', label: 'Amarelo' },
-                  { value: 'red', color: 'var(--color-accent-rose)', label: 'Vermelho' },
-                  { value: 'purple', color: 'var(--color-accent-purple)', label: 'Roxo' },
-                  { value: 'orange', color: 'var(--color-accent-orange)', label: 'Laranja' },
-                  { value: 'pink', color: 'var(--color-accent-rose)', label: 'Rosa' },
-                ].map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setImportColor(opt.value)}
-                    title={opt.label}
-                    style={{
-                      width: '24px',
-                      height: '24px',
-                      borderRadius: '50%',
-                      border: importColor === opt.value ? '2px solid #fff' : '2px solid transparent',
-                      background: opt.color,
-                      cursor: 'pointer',
-                      boxShadow: importColor === opt.value ? '0 0 0 2px var(--color-primary-teal)' : 'none',
-                      transition: 'box-shadow 0.2s ease',
-                    }}
-                  />
-                ))}
+              <div style={{ display: 'grid', gap: '8px', opacity: importSystemTagId !== '' ? 0.5 : 1, pointerEvents: importSystemTagId !== '' ? 'none' : 'auto', transition: 'opacity 0.2s ease' }}>
+                <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                  Cor das notas: {importSystemTagId !== '' && <span style={{ fontSize: '11px', fontStyle: 'italic' }}>(bloqueada - usando cor da tag de sistema)</span>}
+                </span>
+                <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', overflowY: 'hidden', whiteSpace: 'nowrap', paddingBottom: '2px', scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
+                  {[
+                    { value: 'teal', color: 'var(--color-accent-teal)', label: 'Teal' },
+                    { value: 'blue', color: 'var(--color-accent-blue)', label: 'Azul' },
+                    { value: 'green', color: 'var(--color-accent-emerald)', label: 'Verde' },
+                    { value: 'yellow', color: 'var(--color-accent-amber)', label: 'Amarelo' },
+                    { value: 'red', color: 'var(--color-accent-rose)', label: 'Vermelho' },
+                    { value: 'purple', color: 'var(--color-accent-purple)', label: 'Roxo' },
+                    { value: 'violet', color: 'var(--color-accent-violet)', label: 'Violeta' },
+                    { value: 'orange', color: 'var(--color-accent-orange)', label: 'Laranja' },
+                    { value: 'pink', color: '#EC4899', label: 'Rosa' },
+                    { value: 'cyan', color: '#06B6D4', label: 'Ciano' },
+                    { value: 'lime', color: '#84CC16', label: 'Lima' },
+                    { value: 'turquoise', color: '#14B8A6', label: 'Turquesa' },
+                    { value: 'lavender', color: '#A78BFA', label: 'Lavanda' },
+                    { value: 'gold', color: '#FBBF24', label: 'Amarelo Ouro' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => importSystemTagId === '' && setImportColor(opt.value)}
+                      title={importSystemTagId !== '' ? 'Cor bloqueada - usando cor da tag de sistema' : opt.label}
+                      disabled={importSystemTagId !== ''}
+                      style={{
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '50%',
+                        border: importColor === opt.value ? '2px solid #fff' : '2px solid transparent',
+                        background: opt.color,
+                        cursor: importSystemTagId !== '' ? 'not-allowed' : 'pointer',
+                        boxShadow: importColor === opt.value ? '0 0 0 2px var(--color-primary-teal)' : 'none',
+                        transition: 'box-shadow 0.2s ease',
+                        flexShrink: 0,
+                      }}
+                    />
+                  ))}
+                </div>
               </div>
             )}
 

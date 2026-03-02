@@ -94,8 +94,22 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
     { value: '#F59E0B', label: 'Amarelo' },
     { value: '#EF4444', label: 'Vermelho' },
     { value: '#7B3FF2', label: 'Roxo' },
+    { value: '#8B5CF6', label: 'Violeta' },
     { value: '#F97316', label: 'Laranja' },
     { value: '#EC4899', label: 'Rosa' },
+    { value: '#06B6D4', label: 'Ciano' },
+    { value: '#84CC16', label: 'Lima' },
+    { value: '#F43F5E', label: 'Vermelho Rosado' },
+    { value: '#14B8A6', label: 'Turquesa' },
+    { value: '#A855F7', label: 'Púrpura' },
+    { value: '#FBBF24', label: 'Amarelo Ouro' },
+    { value: '#FB923C', label: 'Laranja Claro' },
+    { value: '#F87171', label: 'Vermelho Claro' },
+    { value: '#34D399', label: 'Verde Esmeralda' },
+    { value: '#60A5FA', label: 'Azul Céu' },
+    { value: '#A78BFA', label: 'Roxo Lavanda' },
+    { value: '#F472B6', label: 'Rosa Magenta' },
+    { value: '#FCD34D', label: 'Amarelo Limão' },
   ];
 
   const catIconOptions = ['Folder', 'Star', 'Heart', 'Zap', 'Target', 'Flag', 'Bookmark', 'Tag'];
@@ -902,8 +916,8 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
             </div>
           )}
 
-          {/* Shared Categories (admin/owner only) */}
-          {(myRole === 'owner' || myRole === 'admin') && (
+          {/* Shared Categories (admin/owner only) - TEMPORARIAMENTE DESABILITADO */}
+          {false && (myRole === 'owner' || myRole === 'admin') && (
             <div style={cardStyle}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFF' : '#111', display: 'flex', alignItems: 'center', gap: '8px' }}>

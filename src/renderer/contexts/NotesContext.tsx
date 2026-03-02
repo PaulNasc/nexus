@@ -7,7 +7,7 @@ import type { Note, CreateNoteData, UpdateNoteData, NoteStats } from '../../shar
 import type { ElectronAPI } from '../../main/preload';
 import { base64ToUint8Array, buildCloudVideoRef, parseVideoRef } from '../utils/videoAttachment';
 import { NOTES_ONLY_RELEASE } from '../config/featureFlags';
-import { uploadVideoBlobToR2Signed } from '../lib/r2Videos';
+import { deleteVideoFromR2, uploadVideoBlobToR2Signed } from '../lib/r2Videos';
 
 // Helper to get electron IPC bridge
 const getElectron = (): ElectronAPI | null => {
@@ -127,18 +127,73 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const useCloud = (storageMode === 'cloud' || storageMode === 'hybrid') && isAuthenticated;
   const useLocal = storageMode === 'local' || storageMode === 'hybrid' || !isAuthenticated;
 
+  const dedupeVideoRefs = useCallback((videoRefs: string[] | undefined): string[] | undefined => {
+    if (!videoRefs || videoRefs.length === 0) return videoRefs;
+
+    const deduped: string[] = [];
+    const seen = new Set<string>();
+
+    for (const rawVideoRef of videoRefs) {
+      const parsed = parseVideoRef(rawVideoRef);
+      const identity = parsed.storagePath || parsed.localFileName || parsed.raw;
+      if (!identity) continue;
+
+      const key = parsed.storagePath ? `cloud:${parsed.storagePath}` : `local:${identity}`;
+      if (seen.has(key)) continue;
+
+      seen.add(key);
+      deduped.push(rawVideoRef);
+    }
+
+    return deduped;
+  }, []);
+
+  const extractCloudVideoPaths = useCallback((videoRefs: string[] | undefined): string[] => {
+    if (!videoRefs || videoRefs.length === 0) return [];
+
+    const paths: string[] = [];
+    const seen = new Set<string>();
+
+    for (const rawVideoRef of videoRefs) {
+      const parsed = parseVideoRef(rawVideoRef);
+      if (!parsed.storagePath || seen.has(parsed.storagePath)) continue;
+      seen.add(parsed.storagePath);
+      paths.push(parsed.storagePath);
+    }
+
+    return paths;
+  }, []);
+
+  const removeCloudVideos = useCallback(async (objectKeys: string[]): Promise<void> => {
+    if (objectKeys.length === 0) return;
+
+    for (const objectKey of objectKeys) {
+      try {
+        await deleteVideoFromR2(objectKey);
+      } catch (err) {
+        console.warn('NotesContext.removeCloudVideos delete error:', {
+          objectKey,
+          error: err instanceof Error ? err.message : err,
+        });
+      }
+    }
+  }, []);
+
   const syncAttachedVideosToCloud = useCallback(async (
     attachedVideos: string[] | undefined,
     userId: string,
     orgId: string | null,
   ): Promise<string[] | undefined> => {
-    if (!attachedVideos || attachedVideos.length === 0) return attachedVideos;
+    const uniqueRefs = dedupeVideoRefs(attachedVideos);
+    if (!uniqueRefs || uniqueRefs.length === 0) return uniqueRefs;
 
     const electron = getElectron();
-    if (!electron?.video) return attachedVideos;
+    if (!electron?.video) return uniqueRefs;
+
+    const cloudPathsInPayload = new Set(extractCloudVideoPaths(uniqueRefs));
 
     const syncedVideos: string[] = [];
-    for (const rawVideoRef of attachedVideos) {
+    for (const rawVideoRef of uniqueRefs) {
       const parsed = parseVideoRef(rawVideoRef);
       if (parsed.storagePath) {
         syncedVideos.push(rawVideoRef);
@@ -159,6 +214,10 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         const scopePrefix = orgId ? `org/${orgId}` : `user/${userId}`;
         const objectKey = `${scopePrefix}/${parsed.localFileName}`;
+        if (cloudPathsInPayload.has(objectKey)) {
+          syncedVideos.push(buildCloudVideoRef(objectKey, parsed.localFileName));
+          continue;
+        }
 
         const payload = base64ToUint8Array(localVideo.base64);
         const payloadBuffer = payload.buffer.slice(
@@ -190,8 +249,8 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
 
-    return syncedVideos;
-  }, []);
+    return dedupeVideoRefs(syncedVideos);
+  }, [dedupeVideoRefs, extractCloudVideoPaths]);
 
   // ── LOCAL (IPC/MemoryDB) helpers ──────────────────────────────
   const fetchNotesLocal = useCallback(async (): Promise<Note[]> => {
@@ -477,10 +536,18 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
         const { data: userData } = await supabase.auth.getUser();
         const userId = userData?.user?.id;
         const orgId = activeOrg?.id || null;
+        const previousNote = notes.find(note => note.id === id);
+        const previousCloudPaths = extractCloudVideoPaths(previousNote?.attachedVideos);
         let syncedVideos = updates.attachedVideos;
         if (updates.attachedVideos !== undefined && userId) {
           syncedVideos = await syncAttachedVideosToCloud(updates.attachedVideos, userId, orgId);
         }
+
+        const nextCloudPaths = updates.attachedVideos !== undefined
+          ? extractCloudVideoPaths(syncedVideos)
+          : previousCloudPaths;
+        const nextCloudPathSet = new Set(nextCloudPaths);
+        const removedCloudPaths = previousCloudPaths.filter(path => !nextCloudPathSet.has(path));
 
         const updateData: Record<string, unknown> = {
           updated_at: new Date().toISOString(),
@@ -547,6 +614,8 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
           }
         }
 
+        await removeCloudVideos(removedCloudPaths);
+
         updated = dbRowToNote(data as SupabaseNoteRow, updates.linkedTaskIds);
       }
 
@@ -564,17 +633,40 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
       setError(err instanceof Error ? err.message : 'Erro ao atualizar nota');
       return null;
     }
-  }, [useCloud, useLocal, updateNoteLocal, activeOrg, syncAttachedVideosToCloud]);
+  }, [
+    useCloud,
+    useLocal,
+    updateNoteLocal,
+    activeOrg,
+    notes,
+    syncAttachedVideosToCloud,
+    extractCloudVideoPaths,
+    removeCloudVideos,
+  ]);
 
   const deleteNote = useCallback(async (id: number): Promise<boolean> => {
     setError(null);
     try {
       if (useCloud) {
+        let cloudVideoPaths = extractCloudVideoPaths(notes.find(note => note.id === id)?.attachedVideos);
+
+        if (cloudVideoPaths.length === 0) {
+          const { data: cloudNote } = await supabase
+            .from('notes')
+            .select('attached_videos')
+            .eq('id', id)
+            .maybeSingle();
+          const noteRow = cloudNote as { attached_videos?: string[] | null } | null;
+          cloudVideoPaths = extractCloudVideoPaths(noteRow?.attached_videos ?? undefined);
+        }
+
         const { error: deleteError } = await supabase
           .from('notes')
           .delete()
           .eq('id', id);
         if (deleteError) throw deleteError;
+
+        await removeCloudVideos(cloudVideoPaths);
       }
 
       if (useLocal) {
@@ -588,7 +680,7 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
       setError(err instanceof Error ? err.message : 'Erro ao deletar nota');
       return false;
     }
-  }, [useCloud, useLocal, deleteNoteLocal]);
+  }, [useCloud, useLocal, deleteNoteLocal, notes, extractCloudVideoPaths, removeCloudVideos]);
 
   const getNoteStats = useCallback(async (): Promise<NoteStats | null> => {
     setError(null);

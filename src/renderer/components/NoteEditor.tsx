@@ -321,7 +321,13 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
     { name: 'red', hex: '#EF4444' },
     { name: 'green', hex: '#10B981' },
     { name: 'violet', hex: '#8B5CF6' },
-    { name: 'orange', hex: '#F97316' }
+    { name: 'orange', hex: '#F97316' },
+    { name: 'pink', hex: '#EC4899' },
+    { name: 'cyan', hex: '#06B6D4' },
+    { name: 'lime', hex: '#84CC16' },
+    { name: 'turquoise', hex: '#14B8A6' },
+    { name: 'lavender', hex: '#A78BFA' },
+    { name: 'gold', hex: '#FBBF24' }
   ];
 
   const attachCount = attachedImages.length + attachedVideos.length + tags.length + linkedTaskIds.length;
@@ -453,12 +459,13 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
 
         <div style={{ flex: 1 }} />
 
-        <div style={{ display: 'flex', gap: 3 }}>
+        <div style={{ display: 'flex', gap: 3, maxWidth: 320, overflowX: 'auto', overflowY: 'hidden', whiteSpace: 'nowrap', paddingBottom: 2, scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
           {noteColors.map(nc => (
             <button
               key={nc.name}
+              title={nc.name}
               onClick={() => setColor(color === nc.name ? '' : nc.name)}
-              style={{ width: 16, height: 16, backgroundColor: nc.hex, border: color === nc.name ? '2px solid #fff' : '1px solid transparent', borderRadius: '50%', cursor: 'pointer', boxShadow: color === nc.name ? '0 0 0 1px rgba(0,0,0,0.3)' : 'none' }}
+              style={{ width: 16, height: 16, backgroundColor: nc.hex, border: color === nc.name ? '2px solid #fff' : '1px solid transparent', borderRadius: '50%', cursor: 'pointer', boxShadow: color === nc.name ? '0 0 0 1px rgba(0,0,0,0.3)' : 'none', flexShrink: 0 }}
             />
           ))}
         </div>

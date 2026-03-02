@@ -4,6 +4,7 @@ import { useSettings } from '../hooks/useSettings';
 import { useSystemTags } from '../contexts/SystemTagsContext';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { useI18n } from '../hooks/useI18n';
+import { supabase } from '../lib/supabase';
 
 import { Note, CreateNoteData } from '../../shared/types/note';
 import { Button } from './ui/Button';
@@ -11,7 +12,7 @@ import { Badge } from './ui/Badge';
 import { Input } from './ui/Input';
 import { NoteEditor } from './NoteEditor';
 import { LinkedTasksModal } from './LinkedTasksModal';
-import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, Pencil, CheckSquare, Square, Filter, X, ArrowUpDown, Users } from 'lucide-react';
+import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, Pencil, CheckSquare, Square, Filter, X, ArrowUpDown, Users, FolderOpen, FileText, Upload, Download } from 'lucide-react';
 
 import { NoteViewerModal } from './NoteViewerModal';
 
@@ -54,6 +55,13 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
   const [filterSystemTagIds, setFilterSystemTagIds] = useState<number[]>([]);
   const [showFilters, setShowFilters] = useState(false);
 
+  // Utilities panel state
+  const [showUtilitiesPanel, setShowUtilitiesPanel] = useState(false);
+  const [utilitySearch, setUtilitySearch] = useState('');
+  const [utilityFiles, setUtilityFiles] = useState<Array<{ name: string; size: number; created_at: string; url: string }>>([]);
+  const [utilityLoading, setUtilityLoading] = useState(false);
+  const [uploadingUtility, setUploadingUtility] = useState(false);
+
   // Sort state
   type SortOption = 'date_desc' | 'date_asc' | 'alpha_asc' | 'alpha_desc' | 'id_asc' | 'id_desc';
   const [sortBy, setSortBy] = useState<SortOption>('date_desc');
@@ -66,8 +74,14 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     { value: 'yellow', label: 'Amarelo' },
     { value: 'red', label: 'Vermelho' },
     { value: 'purple', label: 'Roxo' },
+    { value: 'violet', label: 'Violeta' },
     { value: 'orange', label: 'Laranja' },
     { value: 'pink', label: 'Rosa' },
+    { value: 'cyan', label: 'Ciano' },
+    { value: 'lime', label: 'Lima' },
+    { value: 'turquoise', label: 'Turquesa' },
+    { value: 'lavender', label: 'Lavanda' },
+    { value: 'gold', label: 'Amarelo Ouro' },
   ];
 
   const activeSystemTags = useMemo(
@@ -191,6 +205,11 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
       case 'violet': return 'var(--color-accent-violet)';
       case 'orange': return 'var(--color-accent-orange)';
       case 'pink': return 'var(--color-accent-rose)';
+      case 'cyan': return '#06B6D4';
+      case 'lime': return '#84CC16';
+      case 'turquoise': return '#14B8A6';
+      case 'lavender': return '#A78BFA';
+      case 'gold': return '#FBBF24';
       default: return 'var(--color-text-muted)';
     }
   }, []);
@@ -270,6 +289,102 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [notes, systemTagByName]);
+
+  const utilityItems = useMemo(() => {
+    const term = utilitySearch.toLowerCase().trim();
+    if (!term) return utilityFiles;
+    return utilityFiles.filter((file) => file.name.toLowerCase().includes(term));
+  }, [utilityFiles, utilitySearch]);
+
+  const loadUtilityFiles = useCallback(async () => {
+    if (!activeOrg) return;
+    setUtilityLoading(true);
+    try {
+      const { data, error } = await supabase.storage
+        .from('utilities')
+        .list(`${activeOrg.id}`, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+      
+      if (error) throw error;
+      
+      const filesWithUrls = await Promise.all(
+        (data || []).map(async (file) => {
+          const { data: urlData } = supabase.storage
+            .from('utilities')
+            .getPublicUrl(`${activeOrg.id}/${file.name}`);
+          return {
+            name: file.name,
+            size: file.metadata?.size || 0,
+            created_at: file.created_at,
+            url: urlData.publicUrl,
+          };
+        })
+      );
+      setUtilityFiles(filesWithUrls);
+    } catch (error) {
+      console.error('Erro ao carregar arquivos de utilitários:', error);
+    } finally {
+      setUtilityLoading(false);
+    }
+  }, [activeOrg]);
+
+  useEffect(() => {
+    if (showUtilitiesPanel && activeOrg) {
+      loadUtilityFiles();
+    }
+  }, [showUtilitiesPanel, activeOrg, loadUtilityFiles]);
+
+  const handleUtilityUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !activeOrg) return;
+    
+    setUploadingUtility(true);
+    try {
+      const filePath = `${activeOrg.id}/${file.name}`;
+      const { error } = await supabase.storage.from('utilities').upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false,
+      });
+      
+      if (error) throw error;
+      await loadUtilityFiles();
+    } catch (error) {
+      console.error('Erro ao fazer upload do arquivo:', error);
+      alert('Erro ao fazer upload. Verifique se o arquivo já existe.');
+    } finally {
+      setUploadingUtility(false);
+      event.target.value = '';
+    }
+  };
+
+  const handleUtilityDownload = (url: string, filename: string) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+  };
+
+  const handleUtilityDelete = async (filename: string) => {
+    if (!activeOrg || !confirm(`Deseja excluir ${filename}?`)) return;
+    
+    try {
+      const { error } = await supabase.storage
+        .from('utilities')
+        .remove([`${activeOrg.id}/${filename}`]);
+      
+      if (error) throw error;
+      await loadUtilityFiles();
+    } catch (error) {
+      console.error('Erro ao excluir arquivo:', error);
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+  };
 
   const sortLabels: Record<SortOption, string> = {
     date_desc: 'Data ↓ (recente)',
@@ -387,6 +502,9 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                 <List size={16} />
               </Button>
             </div>
+            <button onClick={() => setShowUtilitiesPanel(!showUtilitiesPanel)} title={showUtilitiesPanel ? 'Fechar utilitários' : 'Abrir utilitários'} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: showUtilitiesPanel ? 'rgba(0, 212, 170, 0.15)' : 'none', border: '1px solid var(--color-border-primary)', borderRadius: '8px', width: '36px', height: '36px', cursor: 'pointer', color: showUtilitiesPanel ? 'var(--color-primary-teal)' : 'var(--color-text-secondary)' }}>
+              <FolderOpen size={16} />
+            </button>
             <button onClick={() => setShowFilters(!showFilters)} title="Filtros" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: showFilters ? 'rgba(0, 212, 170, 0.15)' : 'none', border: '1px solid var(--color-border-primary)', borderRadius: '8px', width: '36px', height: '36px', cursor: 'pointer', color: showFilters ? 'var(--color-primary-teal)' : 'var(--color-text-secondary)' }}>
               <Filter size={16} />
             </button>
@@ -423,21 +541,39 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                 <CheckSquare size={16} />
               </button>
             )}
-            <Button onClick={handleNewNote} variant="primary" size="sm" style={{ background: 'linear-gradient(135deg, #00D4AA, #7B3FF2)', border: 'none' }}>
-              <Plus size={16} /> Nova Nota
+            <Button
+              onClick={handleNewNote}
+              variant="primary"
+              size="sm"
+              title="Nova nota"
+              style={{
+                background: 'linear-gradient(135deg, #00D4AA, #7B3FF2)',
+                border: 'none',
+                width: '36px',
+                minWidth: '36px',
+                height: '36px',
+                padding: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Plus size={16} />
             </Button>
           </div>
         )}
       </div>
 
       {settings.showNotesMenu && showFilters && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderBottom: '1px solid var(--color-border-primary)', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginRight: '4px' }}>Cor:</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderBottom: '1px solid var(--color-border-primary)', overflowX: 'auto', flexWrap: 'nowrap', scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
+          <span style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginRight: '4px', flexShrink: 0 }}>Cor:</span>
+          <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', maxWidth: '460px', padding: '2px 0', scrollbarWidth: 'thin', cursor: 'grab', flexShrink: 0 }}>
+            {colorOptions.map(opt => (
+              <button key={opt.value} onClick={() => setFilterColor(filterColor === opt.value ? null : opt.value)} title={opt.label} style={{ width: '20px', height: '20px', borderRadius: '50%', border: filterColor === opt.value ? '2px solid #fff' : '2px solid transparent', background: getColorClass(opt.value), cursor: 'pointer', boxShadow: filterColor === opt.value ? '0 0 0 2px var(--color-primary-teal)' : 'none', flexShrink: 0 }} />
+            ))}
+          </div>
 
-          {colorOptions.map(opt => (
-            <button key={opt.value} onClick={() => setFilterColor(filterColor === opt.value ? null : opt.value)} title={opt.label} style={{ width: '20px', height: '20px', borderRadius: '50%', border: filterColor === opt.value ? '2px solid #fff' : '2px solid transparent', background: getColorClass(opt.value), cursor: 'pointer', boxShadow: filterColor === opt.value ? '0 0 0 2px var(--color-primary-teal)' : 'none' }} />
-          ))}
-          <div style={{ width: '1px', height: '20px', background: 'var(--color-border-primary)', margin: '0 4px' }} />
+          <div style={{ width: '1px', height: '20px', background: 'var(--color-border-primary)', margin: '0 4px', flexShrink: 0 }} />
           <button onClick={() => setFilterPinned(!filterPinned)} title="Apenas fixadas" style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', background: filterPinned ? 'rgba(0, 212, 170, 0.15)' : 'transparent', border: '1px solid var(--color-border-primary)', borderRadius: '6px', color: filterPinned ? 'var(--color-primary-teal)' : 'var(--color-text-secondary)', cursor: 'pointer', fontSize: '12px' }}>
             <Pin size={12} /> Fixadas
           </button>
@@ -504,6 +640,158 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
       )}
 
       <div className="notes-content">
+        {showUtilitiesPanel && (
+          <div
+            className="notes-utilities-backdrop"
+            onClick={() => setShowUtilitiesPanel(false)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+                setShowUtilitiesPanel(false);
+              }
+            }}
+          />
+        )}
+
+        {showUtilitiesPanel && (
+          <aside className="notes-utilities-drawer">
+            <div className="notes-utilities-header">
+              <div className="notes-utilities-title-wrap">
+                <FolderOpen size={16} />
+                <h3 className="notes-utilities-title">Utilitários</h3>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="notes-utilities-close"
+                onClick={() => setShowUtilitiesPanel(false)}
+                title="Fechar utilitários"
+              >
+                <X size={14} />
+              </Button>
+            </div>
+
+            <div className="notes-utilities-toolbar">
+              <Input
+                className="notes-utilities-search"
+                type="text"
+                value={utilitySearch}
+                onChange={(e) => setUtilitySearch(e.target.value)}
+                placeholder="Buscar arquivo..."
+              />
+              <label
+                htmlFor="utility-upload-input"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 12px',
+                  background: uploadingUtility ? 'rgba(0, 212, 170, 0.1)' : 'linear-gradient(135deg, #00D4AA, #7B3FF2)',
+                  border: 'none',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  cursor: uploadingUtility ? 'not-allowed' : 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  opacity: uploadingUtility ? 0.6 : 1,
+                }}
+              >
+                <Upload size={14} />
+                {uploadingUtility ? 'Enviando...' : 'Upload'}
+              </label>
+              <input
+                id="utility-upload-input"
+                type="file"
+                onChange={handleUtilityUpload}
+                disabled={uploadingUtility}
+                style={{ display: 'none' }}
+              />
+            </div>
+
+            <div className="notes-utilities-list">
+              {utilityLoading ? (
+                <div className="notes-utilities-empty">
+                  <FileText size={18} />
+                  <span>Carregando arquivos...</span>
+                </div>
+              ) : utilityItems.length === 0 ? (
+                <div className="notes-utilities-empty">
+                  <FileText size={18} />
+                  <span>Nenhum arquivo encontrado.</span>
+                </div>
+              ) : (
+                utilityItems.map((file) => (
+                  <div key={`util-${file.name}`} className="notes-utility-item">
+                    <div
+                      className="notes-utility-item-main"
+                      style={{ cursor: 'default' }}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          setShowUtilitiesPanel(false);
+                          handleUtilityDownload(file.url, file.name);
+                        }
+                      }}
+                    >
+                      <FileText size={14} className="notes-utility-item-icon" />
+                      <div className="notes-utility-item-meta">
+                        <span className="notes-utility-item-name">{file.name}</span>
+                        <span className="notes-utility-item-size">{formatFileSize(file.size)}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUtilityDownload(file.url, file.name);
+                        }}
+                        title="Baixar arquivo"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: '6px',
+                          background: 'rgba(0, 212, 170, 0.1)',
+                          border: '1px solid var(--color-primary-teal)',
+                          borderRadius: '6px',
+                          color: 'var(--color-primary-teal)',
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                        }}
+                      >
+                        <Download size={14} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUtilityDelete(file.name);
+                        }}
+                        title="Excluir arquivo"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: '6px',
+                          background: 'rgba(239, 68, 68, 0.1)',
+                          border: '1px solid var(--color-accent-rose)',
+                          borderRadius: '6px',
+                          color: 'var(--color-accent-rose)',
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </aside>
+        )}
+
         {isLoading ? (
           <div className="notes-loading"><div className="loading-spinner"></div></div>
         ) : error ? (

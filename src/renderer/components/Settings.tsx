@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 import { useSettings } from '../hooks/useSettings';
 import { useI18n } from '../hooks/useI18n';
@@ -15,6 +15,7 @@ import { isModuleLocked } from '../config/featureFlags';
 import { Button } from './ui/Button';
 import { ImportExportModal } from './ImportExportModal';
 import { OrganizationsPanel } from './OrganizationsPanel';
+
 import {
   Settings as SettingsIcon,
   Palette,
@@ -344,7 +345,7 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
 interface SettingsProps {
   isOpen: boolean;
   onClose: () => void;
-}
+};
 
 type TabType = 'geral' | 'aparencia' | 'notificacoes' | 'acessibilidade' | 'dados' | 'organizacoes' | 'logs' | 'atualizacoes' | 'sobre';
 
@@ -386,6 +387,35 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   const getElectron = () => (window as unknown as { electronAPI: import('../../main/preload').ElectronAPI }).electronAPI;
 
   const dragDepthRef = useRef(0);
+  const isSettingsOpenRef = useRef(isOpen);
+  const externalDragSessionRef = useRef(false);
+  const openedFromExternalImportRef = useRef(false);
+  const settingsWasOpenBeforeExternalRef = useRef(false);
+  const [isFileDragActive, setIsFileDragActive] = useState(false);
+
+  useEffect(() => {
+    isSettingsOpenRef.current = isOpen;
+  }, [isOpen]);
+
+  const closeImportExportModal = useCallback(() => {
+    setImportExportModalOpen(false);
+    setInitialImportIntent(null);
+    setIsFileDragActive(false);
+    dragDepthRef.current = 0;
+    externalDragSessionRef.current = false;
+
+    const shouldCloseSettings =
+      openedFromExternalImportRef.current &&
+      !settingsWasOpenBeforeExternalRef.current &&
+      isSettingsOpenRef.current;
+
+    openedFromExternalImportRef.current = false;
+    settingsWasOpenBeforeExternalRef.current = false;
+
+    if (shouldCloseSettings) {
+      onClose();
+    }
+  }, [onClose]);
 
   useEffect(() => {
     const hasFiles = (event: DragEvent): boolean => {
@@ -398,44 +428,79 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       if (!hasFiles(event)) return;
       event.preventDefault();
       dragDepthRef.current += 1;
+
+      if (!externalDragSessionRef.current) {
+        externalDragSessionRef.current = true;
+        openedFromExternalImportRef.current = true;
+        settingsWasOpenBeforeExternalRef.current = isSettingsOpenRef.current;
+        if (!isSettingsOpenRef.current) {
+          window.dispatchEvent(new Event('openSettings'));
+        }
+        setImportExportMode('import');
+        setInitialImportIntent(null);
+        setImportExportModalOpen(true);
+      }
+
+      setIsFileDragActive(true);
     };
 
     const onDragOver = (event: DragEvent) => {
       if (!hasFiles(event)) return;
       event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'copy';
+      }
+      setIsFileDragActive(true);
     };
 
     const onDragLeave = (event: DragEvent) => {
       if (!hasFiles(event)) return;
       event.preventDefault();
       dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+
+      if (dragDepthRef.current === 0 && externalDragSessionRef.current) {
+        closeImportExportModal();
+      }
     };
 
     const onDrop = (event: DragEvent) => {
       if (!hasFiles(event)) return;
       event.preventDefault();
       dragDepthRef.current = 0;
+      externalDragSessionRef.current = false;
+      setIsFileDragActive(false);
 
       const droppedPath = event.dataTransfer?.files?.[0]?.path;
-      if (!droppedPath) return;
+      if (!droppedPath) {
+        closeImportExportModal();
+        return;
+      }
 
       window.dispatchEvent(new CustomEvent('openImportIntent', {
-        detail: { filePath: droppedPath },
+        detail: { filePath: droppedPath, source: 'external-dnd' },
       }));
+    };
+
+    const onWindowBlur = () => {
+      if (externalDragSessionRef.current) {
+        closeImportExportModal();
+      }
     };
 
     window.addEventListener('dragenter', onDragEnter);
     window.addEventListener('dragover', onDragOver);
     window.addEventListener('dragleave', onDragLeave);
     window.addEventListener('drop', onDrop);
+    window.addEventListener('blur', onWindowBlur);
 
     return () => {
       window.removeEventListener('dragenter', onDragEnter);
       window.removeEventListener('dragover', onDragOver);
       window.removeEventListener('dragleave', onDragLeave);
       window.removeEventListener('drop', onDrop);
+      window.removeEventListener('blur', onWindowBlur);
     };
-  }, []);
+  }, [closeImportExportModal]);
 
   useEffect(() => {
     const detectIntentFromPath = (filePath: string): ImportIntent => {
@@ -459,11 +524,25 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     };
 
     const handleOpenImportIntent = (event: Event) => {
-      const detail = (event as CustomEvent<{ intent?: ImportIntent; filePath?: string }>).detail;
+      const detail = (event as CustomEvent<{ intent?: ImportIntent; filePath?: string; source?: string }>).detail;
+      const fromExternalDrag = detail?.source === 'external-dnd';
       const intent = detail?.intent ?? (detail?.filePath ? detectIntentFromPath(detail.filePath) : undefined);
       if (!intent) return;
 
-      window.dispatchEvent(new Event('openSettings'));
+      if (fromExternalDrag) {
+        openedFromExternalImportRef.current = true;
+        if (!isSettingsOpenRef.current) {
+          window.dispatchEvent(new Event('openSettings'));
+        }
+      } else {
+        openedFromExternalImportRef.current = false;
+        settingsWasOpenBeforeExternalRef.current = false;
+        window.dispatchEvent(new Event('openSettings'));
+      }
+
+      externalDragSessionRef.current = false;
+      dragDepthRef.current = 0;
+      setIsFileDragActive(false);
       setImportExportMode('import');
       setInitialImportIntent(intent);
       setImportExportModalOpen(true);
@@ -602,36 +681,54 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
           let syncedTasks = 0;
 
           if (result.importedNotes && result.importedNotes.length > 0) {
-            for (const note of result.importedNotes) {
-              const created = await createNote({
-                title: note.title,
-                content: note.content,
-                format: note.format || 'text',
-                tags: mergeSystemTag(note.tags, note.systemTagName),
-                attachedImages: note.attachedImages,
-                attachedVideos: note.attachedVideos,
-                linkedTaskIds: note.linkedTaskIds,
-                color: options?.color || note.color,
-                system_tag_id: note.systemTagId,
-              });
-
-              if (created) {
-                syncedNotes += 1;
+            // Processar em lotes de 10 notas por vez para evitar travamento
+            const batchSize = 10;
+            for (let i = 0; i < result.importedNotes.length; i += batchSize) {
+              const batch = result.importedNotes.slice(i, i + batchSize);
+              const promises = batch.map(note => 
+                createNote({
+                  title: note.title,
+                  content: note.content,
+                  format: note.format || 'text',
+                  tags: mergeSystemTag(note.tags, note.systemTagName),
+                  attachedImages: note.attachedImages,
+                  attachedVideos: note.attachedVideos,
+                  linkedTaskIds: note.linkedTaskIds,
+                  color: options?.color || note.color,
+                  system_tag_id: note.systemTagId,
+                })
+              );
+              
+              const results = await Promise.allSettled(promises);
+              syncedNotes += results.filter(r => r.status === 'fulfilled' && r.value).length;
+              
+              // Pequeno delay entre lotes para não sobrecarregar
+              if (i + batchSize < result.importedNotes.length) {
+                await new Promise(resolve => setTimeout(resolve, 50));
               }
             }
           }
 
           if (result.importedTasks && result.importedTasks.length > 0) {
-            for (const task of result.importedTasks) {
-              const created = await createTask({
-                title: task.title,
-                description: task.description,
-                status: (task.status as 'backlog' | 'esta_semana' | 'hoje' | 'concluido') || 'backlog',
-                priority: (task.priority as 'low' | 'medium' | 'high') || 'medium',
-              });
-
-              if (created) {
-                syncedTasks += 1;
+            // Processar em lotes de 10 tarefas por vez
+            const batchSize = 10;
+            for (let i = 0; i <result.importedTasks.length; i += batchSize) {
+              const batch = result.importedTasks.slice(i, i + batchSize);
+              const promises = batch.map(task =>
+                createTask({
+                  title: task.title,
+                  description: task.description,
+                  status: (task.status as 'backlog' | 'esta_semana' | 'hoje' | 'concluido') || 'backlog',
+                  priority: (task.priority as 'low' | 'medium' | 'high') || 'medium',
+                })
+              );
+              
+              const results = await Promise.allSettled(promises);
+              syncedTasks += results.filter(r => r.status === 'fulfilled' && r.value).length;
+              
+              // Pequeno delay entre lotes
+              if (i + batchSize < result.importedTasks.length) {
+                await new Promise(resolve => setTimeout(resolve, 50));
               }
             }
           }
@@ -678,6 +775,17 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     }
   };
 
+  const handleOpenImportExportModal = (mode: 'import' | 'export') => {
+    openedFromExternalImportRef.current = false;
+    settingsWasOpenBeforeExternalRef.current = false;
+    externalDragSessionRef.current = false;
+    dragDepthRef.current = 0;
+    setIsFileDragActive(false);
+    setImportExportMode(mode);
+    setInitialImportIntent(null);
+    setImportExportModalOpen(true);
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     showToast('ID copiado para a área de transferência', 'success');
@@ -702,13 +810,34 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.8)',
+      backgroundColor: isFileDragActive ? 'rgba(3, 8, 12, 0.86)' : 'rgba(0, 0, 0, 0.8)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 1000,
-      backdropFilter: 'blur(4px)',
+      backdropFilter: isFileDragActive ? 'blur(6px)' : 'blur(4px)',
     }}>
+      {isFileDragActive && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '22px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            pointerEvents: 'none',
+            padding: '10px 16px',
+            borderRadius: '999px',
+            border: '1px dashed rgba(0, 212, 170, 0.6)',
+            background: 'rgba(10, 18, 24, 0.88)',
+            color: '#E6FBF5',
+            fontSize: '12px',
+            fontWeight: 600,
+            letterSpacing: '0.2px',
+          }}
+        >
+          Solte o arquivo para importar
+        </div>
+      )}
       <div style={{
         backgroundColor: theme.mode === 'dark' ? '#141414' : 'var(--color-bg-card)',
         border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
@@ -1171,7 +1300,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       gap: '12px',
                       cursor: 'pointer',
                       padding: '12px',
-                      backgroundColor: isDark ? '#0A0A0A' : 'var(--color-bg-secondary)',
+                      backgroundColor: isDark ? '#141414' : '#FFFFFF',
                       border: `1px solid ${isDark ? '#2A2A2A' : 'var(--color-border-primary)'}`,
                       borderRadius: '8px',
                       transition: 'all 0.2s ease'
@@ -1180,17 +1309,14 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         type="checkbox"
                         checked={settings.highContrastMode}
                         onChange={(e) => updateSettings({ highContrastMode: e.target.checked })}
-                        style={{
-                          accentColor: 'var(--color-primary-teal)',
-                          transform: 'scale(1.1)',
-                        }}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                       />
                       <div style={{ flex: 1 }}>
                         <div style={{
                           fontSize: '14px',
                           color: 'var(--color-text-primary)',
                           fontWeight: 500,
-                          marginBottom: '2px'
+                          marginBottom: '4px'
                         }}>
                           Modo Alto Contraste
                         </div>
@@ -1210,7 +1336,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       gap: '12px',
                       cursor: 'pointer',
                       padding: '12px',
-                      backgroundColor: isDark ? '#0A0A0A' : 'var(--color-bg-secondary)',
+                      backgroundColor: isDark ? '#141414' : '#FFFFFF',
                       border: `1px solid ${isDark ? '#2A2A2A' : 'var(--color-border-primary)'}`,
                       borderRadius: '8px',
                       transition: 'all 0.2s ease'
@@ -1219,10 +1345,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         type="checkbox"
                         checked={(settings as any).reduceAnimations}
                         onChange={(e) => updateSettings({ reduceAnimations: e.target.checked })}
-                        style={{
-                          accentColor: 'var(--color-primary-teal)',
-                          transform: 'scale(1.1)',
-                        }}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                       />
                       <div style={{ flex: 1 }}>
                         <div style={{
@@ -1476,7 +1599,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '2px' }}>
                             {opt.label}
                           </div>
-                          <div style={{ fontSize: '12px', color: isDark ? '#888' : '#6B7280', lineHeight: '1.4' }}>
+                          <div style={{ fontSize: '12px', color: isDark ? '#888' : '#6B7280', lineHeight: 1.4 }}>
                             {opt.desc}
                           </div>
                         </div>
@@ -1504,11 +1627,11 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     Use o sistema avançado de importação e exportação multi-formato.
                   </p>
                   <div style={{ display: 'flex', gap: '12px' }}>
-                    <Button onClick={() => { setImportExportMode('import'); setInitialImportIntent(null); setImportExportModalOpen(true); }}>
+                    <Button onClick={() => { handleOpenImportExportModal('import'); }}>
                       <Upload size={16} style={{ marginRight: '6px' }} />
                       Importar
                     </Button>
-                    <Button onClick={() => { setImportExportMode('export'); setInitialImportIntent(null); setImportExportModalOpen(true); }} variant="secondary">
+                    <Button onClick={() => { handleOpenImportExportModal('export'); }} variant="secondary">
                       <Download size={16} style={{ marginRight: '6px' }} />
                       Exportar
                     </Button>
@@ -1574,10 +1697,18 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                       />
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
+                        <div style={{
+                          fontSize: '14px',
+                          color: 'var(--color-text-primary)',
+                          fontWeight: 500,
+                          marginBottom: '4px'
+                        }}>
                           Modo Alto Contraste
                         </div>
-                        <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                        <div style={{
+                          fontSize: '12px',
+                          color: 'var(--color-text-secondary)'
+                        }}>
                           Aumenta o contraste entre texto e fundo para melhor visibilidade
                         </div>
                       </div>
@@ -1606,11 +1737,19 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                       />
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
+                        <div style={{
+                          fontSize: '14px',
+                          color: 'var(--color-text-primary)',
+                          fontWeight: 500,
+                          marginBottom: '4px'
+                        }}>
                           <Type size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
                           Fonte Ampliada
                         </div>
-                        <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                        <div style={{
+                          fontSize: '12px',
+                          color: 'var(--color-text-secondary)'
+                        }}>
                           Aumenta o tamanho da fonte em toda a interface para facilitar a leitura
                         </div>
                       </div>
@@ -1633,10 +1772,18 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                       />
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
+                        <div style={{
+                          fontSize: '14px',
+                          color: 'var(--color-text-primary)',
+                          fontWeight: 500,
+                          marginBottom: '4px'
+                        }}>
                           Animações e Transições
                         </div>
-                        <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                        <div style={{
+                          fontSize: '12px',
+                          color: 'var(--color-text-secondary)'
+                        }}>
                           Desabilite para reduzir movimento na tela (recomendado para sensibilidade a movimento)
                         </div>
                       </div>
@@ -1681,10 +1828,18 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                       />
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
+                        <div style={{
+                          fontSize: '14px',
+                          color: 'var(--color-text-primary)',
+                          fontWeight: 500,
+                          marginBottom: '4px'
+                        }}>
                           Navegação por Teclado
                         </div>
-                        <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                        <div style={{
+                          fontSize: '12px',
+                          color: 'var(--color-text-secondary)'
+                        }}>
                           Permite navegar pela interface usando Tab, Enter e teclas de seta
                         </div>
                       </div>
@@ -1707,11 +1862,19 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                       />
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
+                        <div style={{
+                          fontSize: '14px',
+                          color: 'var(--color-text-primary)',
+                          fontWeight: 500,
+                          marginBottom: '4px'
+                        }}>
                           <MousePointer size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
                           Indicadores de Foco Visíveis
                         </div>
-                        <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                        <div style={{
+                          fontSize: '12px',
+                          color: 'var(--color-text-secondary)'
+                        }}>
                           Destaca visualmente o elemento focado ao navegar por teclado
                         </div>
                       </div>
@@ -1734,11 +1897,19 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                       />
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937', marginBottom: '4px' }}>
+                        <div style={{
+                          fontSize: '14px',
+                          color: 'var(--color-text-primary)',
+                          fontWeight: 500,
+                          marginBottom: '4px'
+                        }}>
                           <Volume2 size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
                           Feedback Sonoro
                         </div>
-                        <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>
+                        <div style={{
+                          fontSize: '12px',
+                          color: 'var(--color-text-secondary)'
+                        }}>
                           Reproduz sons ao completar ações (notificações, timer, etc.)
                         </div>
                       </div>
@@ -2165,7 +2336,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
             {importExportModalOpen && (
               <ImportExportModal
                 open={importExportModalOpen}
-                onClose={() => { setImportExportModalOpen(false); setInitialImportIntent(null); }}
+                onClose={closeImportExportModal}
                 mode={importExportMode}
                 onExport={handleImportExportExport}
                 onImportPreview={handleImportExportPreview}
