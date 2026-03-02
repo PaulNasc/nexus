@@ -88,23 +88,6 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
   const [sortBy, setSortBy] = useState<SortOption>('date_desc');
   const [showSortMenu, setShowSortMenu] = useState(false);
 
-  const colorOptions = [
-    { value: 'teal', label: 'Teal' },
-    { value: 'blue', label: 'Azul' },
-    { value: 'green', label: 'Verde' },
-    { value: 'yellow', label: 'Amarelo' },
-    { value: 'red', label: 'Vermelho' },
-    { value: 'purple', label: 'Roxo' },
-    { value: 'violet', label: 'Violeta' },
-    { value: 'orange', label: 'Laranja' },
-    { value: 'pink', label: 'Rosa' },
-    { value: 'cyan', label: 'Ciano' },
-    { value: 'lime', label: 'Lima' },
-    { value: 'turquoise', label: 'Turquesa' },
-    { value: 'lavender', label: 'Lavanda' },
-    { value: 'gold', label: 'Amarelo Ouro' },
-  ];
-
   const activeSystemTags = useMemo(
     () => systemTags.filter((tag) => tag.is_active).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
     [systemTags],
@@ -117,6 +100,38 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
   const systemTagByName = useMemo(() => {
     return new Map(activeSystemTags.map((tag) => [tag.name.toLowerCase(), tag]));
   }, [activeSystemTags]);
+
+  const resolveEffectiveNoteColor = useCallback((note: Note): string | undefined => {
+    if (note.system_tag_id !== undefined) {
+      const byIdColor = systemTagById.get(note.system_tag_id)?.color;
+      if (byIdColor) return byIdColor;
+    }
+
+    if (note.tags && note.tags.length > 0) {
+      const noteTagNames = new Set(note.tags.map((tag) => tag.toLowerCase()));
+      const matchingSystemTag = activeSystemTags.find((tag) => noteTagNames.has(tag.name.toLowerCase()));
+      if (matchingSystemTag?.color) return matchingSystemTag.color;
+    }
+
+    if (note.color) return note.color;
+    return undefined;
+  }, [systemTagById, activeSystemTags]);
+
+  const organizationColorOptions = useMemo(() => {
+    const byColor = new Map<string, { value: string; label: string }>();
+    for (const note of notes) {
+      const color = (resolveEffectiveNoteColor(note) || '').trim();
+      if (!color) continue;
+
+      const key = color.toLowerCase();
+      if (byColor.has(key)) continue;
+
+      const sourceTag = activeSystemTags.find((tag) => (tag.color || '').trim().toLowerCase() === key);
+      byColor.set(key, { value: color, label: sourceTag?.name || color });
+    }
+
+    return Array.from(byColor.values());
+  }, [notes, resolveEffectiveNoteColor, activeSystemTags]);
 
   useEffect(() => {
     if (initialNoteId && notes.length > 0) {
@@ -258,8 +273,13 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     });
 
     if (filterColor) {
-      result = result.filter((n) => n.color === filterColor);
+      const selectedColor = filterColor.toLowerCase();
+      result = result.filter((note) => {
+        const effectiveColor = resolveEffectiveNoteColor(note);
+        return (effectiveColor || '').toLowerCase() === selectedColor;
+      });
     }
+
     if (filterPinned) {
       result = result.filter((n) => n.is_pinned);
     }
@@ -295,7 +315,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     });
 
     return result;
-  }, [notes, searchTerm, filterColor, filterPinned, filterTags, filterSystemTagIds, sortBy, systemTagById]);
+  }, [notes, searchTerm, filterColor, filterPinned, filterTags, filterSystemTagIds, sortBy, systemTagById, resolveEffectiveNoteColor]);
 
   const availableTags = useMemo(() => {
     const set = new Set<string>();
@@ -841,18 +861,36 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
       </div>
 
       {settings.showNotesMenu && showFilters && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderBottom: '1px solid var(--color-border-primary)', overflowX: 'auto', flexWrap: 'nowrap', scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderBottom: '1px solid var(--color-border-primary)', position: 'relative', zIndex: 80, overflow: 'visible', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginRight: '4px', flexShrink: 0 }}>Cor:</span>
           <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', maxWidth: '460px', padding: '2px 0', scrollbarWidth: 'thin', cursor: 'grab', flexShrink: 0 }}>
-            {colorOptions.map(opt => (
-              <button key={opt.value} onClick={() => setFilterColor(filterColor === opt.value ? null : opt.value)} title={opt.label} style={{ width: '20px', height: '20px', borderRadius: '50%', border: filterColor === opt.value ? '2px solid #fff' : '2px solid transparent', background: getColorClass(opt.value), cursor: 'pointer', boxShadow: filterColor === opt.value ? '0 0 0 2px var(--color-primary-teal)' : 'none', flexShrink: 0 }} />
-            ))}
+            {organizationColorOptions.map((opt) => {
+              const normalizedColor = opt.value.toLowerCase();
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => setFilterColor(filterColor === normalizedColor ? null : normalizedColor)}
+                  title={opt.label}
+                  style={{
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '50%',
+                    border: filterColor === normalizedColor ? '2px solid #fff' : '2px solid transparent',
+                    background: (opt.value.startsWith('#') || opt.value.startsWith('rgb') || opt.value.startsWith('hsl') || opt.value.startsWith('var(')) ? opt.value : getColorClass(opt.value),
+                    cursor: 'pointer',
+                    boxShadow: filterColor === normalizedColor ? '0 0 0 2px var(--color-primary-teal)' : 'none',
+                    flexShrink: 0,
+                  }}
+                />
+              );
+            })}
           </div>
 
           <div style={{ width: '1px', height: '20px', background: 'var(--color-border-primary)', margin: '0 4px', flexShrink: 0 }} />
           <button onClick={() => setFilterPinned(!filterPinned)} title="Apenas fixadas" style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', background: filterPinned ? 'rgba(0, 212, 170, 0.15)' : 'transparent', border: '1px solid var(--color-border-primary)', borderRadius: '6px', color: filterPinned ? 'var(--color-primary-teal)' : 'var(--color-text-secondary)', cursor: 'pointer', fontSize: '12px' }}>
             <Pin size={12} /> Fixadas
           </button>
+
           {availableTags.length > 0 && (
             <>
               <div style={{ width: '1px', height: '20px', background: 'var(--color-border-primary)', margin: '0 4px' }} />
@@ -861,7 +899,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                 <summary style={{ listStyle: 'none', cursor: 'pointer', fontSize: '11px', color: 'var(--color-text-secondary)', padding: '4px 8px', border: '1px solid var(--color-border-primary)', borderRadius: '6px' }}>
                   {filterTags.length > 0 ? `${filterTags.length} selecionada(s)` : 'Selecionar tags'}
                 </summary>
-                <div style={{ position: 'absolute', top: '110%', left: 0, minWidth: '220px', maxHeight: '240px', overflowY: 'auto', padding: '8px', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', zIndex: 40, boxShadow: '0 8px 24px rgba(0,0,0,0.25)' }}>
+                <div style={{ position: 'absolute', top: '110%', left: 0, minWidth: '220px', maxHeight: '240px', overflowY: 'auto', padding: '8px', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', zIndex: 120, boxShadow: '0 8px 24px rgba(0,0,0,0.25)' }}>
                   {availableTags.map((tag) => {
                     const active = filterTags.includes(tag);
                     return (
@@ -879,6 +917,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
               </details>
             </>
           )}
+
           {activeSystemTags.length > 0 && (
             <>
               <div style={{ width: '1px', height: '20px', background: 'var(--color-border-primary)', margin: '0 4px' }} />
@@ -887,7 +926,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                 <summary style={{ listStyle: 'none', cursor: 'pointer', fontSize: '11px', color: 'var(--color-text-secondary)', padding: '4px 8px', border: '1px solid var(--color-border-primary)', borderRadius: '6px' }}>
                   {filterSystemTagIds.length > 0 ? `${filterSystemTagIds.length} selecionada(s)` : 'Selecionar sistema'}
                 </summary>
-                <div style={{ position: 'absolute', top: '110%', left: 0, minWidth: '220px', maxHeight: '240px', overflowY: 'auto', padding: '8px', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', zIndex: 40, boxShadow: '0 8px 24px rgba(0,0,0,0.25)' }}>
+                <div style={{ position: 'absolute', top: '110%', left: 0, minWidth: '220px', maxHeight: '240px', overflowY: 'auto', padding: '8px', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', zIndex: 120, boxShadow: '0 8px 24px rgba(0,0,0,0.25)' }}>
                   {activeSystemTags.map((tag) => {
                     const active = filterSystemTagIds.includes(tag.id);
                     return (
@@ -906,6 +945,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
               </details>
             </>
           )}
+
           <div style={{ width: '1px', height: '20px', background: 'var(--color-border-primary)', margin: '0 4px' }} />
           {(filterColor || filterPinned || filterTags.length > 0 || filterSystemTagIds.length > 0) && (
             <button onClick={() => { setFilterColor(null); setFilterPinned(false); setFilterTags([]); setFilterSystemTagIds([]); }} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', background: 'transparent', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '11px' }}>

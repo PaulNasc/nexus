@@ -117,6 +117,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const fetchInFlightRef = useRef<Promise<void> | null>(null);
   const lastFetchKeyRef = useRef<string>('');
   const hasSystemTagColumnRef = useRef(true);
+  const nextSequentialIdRef = useRef<Map<string, number>>(new Map());
   const { settings } = useSettings();
   const { user, isOffline } = useAuth();
   const { activeOrg } = useOrganization();
@@ -341,6 +342,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const userId = userData?.user?.id;
     if (!userId) throw new Error('Usuário não autenticado');
     const orgId = activeOrg?.id || null;
+    const sequentialKey = orgId ? `org:${orgId}` : 'personal';
 
     // Dedup check: avoid inserting notes with the same title for this user in same org
     // Exclude archived notes to allow re-importing deleted notes
@@ -365,7 +367,14 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     // Generate sequential_id per organization (conflict-safe with retry)
-    const getNextSequentialId = async (): Promise<number> => {
+    // Uses local cache to avoid a DB max query for every imported note.
+    const reserveSequentialId = async (forceRefresh = false): Promise<number> => {
+      const cached = nextSequentialIdRef.current.get(sequentialKey);
+      if (!forceRefresh && cached !== undefined) {
+        nextSequentialIdRef.current.set(sequentialKey, cached + 1);
+        return cached;
+      }
+
       if (!orgId) {
         const { data: maxPersonal } = await supabase
           .from('notes')
@@ -373,7 +382,9 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           .is('organization_id', null)
           .order('sequential_id', { ascending: false })
           .limit(1);
-        return (maxPersonal?.[0]?.sequential_id ?? 0) + 1;
+        const next = (maxPersonal?.[0]?.sequential_id ?? 0) + 1;
+        nextSequentialIdRef.current.set(sequentialKey, next + 1);
+        return next;
       }
 
       const { data: maxRow } = await supabase
@@ -382,7 +393,9 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .eq('organization_id', orgId)
         .order('sequential_id', { ascending: false })
         .limit(1);
-      return (maxRow?.[0]?.sequential_id ?? 0) + 1;
+      const next = (maxRow?.[0]?.sequential_id ?? 0) + 1;
+      nextSequentialIdRef.current.set(sequentialKey, next + 1);
+      return next;
     };
 
     const isSequentialConstraintError = (err: unknown): boolean => {
@@ -393,7 +406,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return code === '23505' && message.includes('notes_org_sequential_id_unique');
     };
 
-    const sequentialId = await getNextSequentialId();
+    const sequentialId = await reserveSequentialId();
 
     const syncedVideos = await syncAttachedVideosToCloud(noteData.attachedVideos, userId, orgId);
 
@@ -424,7 +437,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let retryCount = 0;
     while (insertError && retryCount < 6) {
       if (isSequentialConstraintError(insertError) && 'sequential_id' in fallbackPayload) {
-        fallbackPayload.sequential_id = await getNextSequentialId();
+        fallbackPayload.sequential_id = await reserveSequentialId(true);
         ({ data, error: insertError } = await supabase
           .from('notes')
           .insert(fallbackPayload)

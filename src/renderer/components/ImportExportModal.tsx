@@ -107,16 +107,41 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncItems, setSyncItems] = useState<ImportSyncItem[]>([]);
   const [isRetryingFailed, setIsRetryingFailed] = useState(false);
+  const syncUpdateQueueRef = useRef<Map<string, ImportSyncItem>>(new Map());
+  const syncFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const updateSyncItem = useCallback((item: ImportSyncItem) => {
+  const flushSyncUpdates = useCallback(() => {
+    if (syncFlushTimerRef.current) {
+      clearTimeout(syncFlushTimerRef.current);
+      syncFlushTimerRef.current = null;
+    }
+    if (syncUpdateQueueRef.current.size === 0) return;
+
+    const queued = Array.from(syncUpdateQueueRef.current.values());
+    syncUpdateQueueRef.current.clear();
+
     setSyncItems((prev) => {
-      const index = prev.findIndex((candidate) => candidate.id === item.id);
-      if (index === -1) return [...prev, item];
       const copy = [...prev];
-      copy[index] = item;
+      for (const item of queued) {
+        const index = copy.findIndex((candidate) => candidate.id === item.id);
+        if (index === -1) {
+          copy.push(item);
+        } else {
+          copy[index] = item;
+        }
+      }
       return copy;
     });
   }, []);
+
+  const updateSyncItem = useCallback((item: ImportSyncItem) => {
+    syncUpdateQueueRef.current.set(item.id, item);
+    if (!syncFlushTimerRef.current) {
+      syncFlushTimerRef.current = setTimeout(() => {
+        flushSyncUpdates();
+      }, 80);
+    }
+  }, [flushSyncUpdates]);
 
   const startProgress = (label: string) => {
     setProgress(0);
@@ -143,15 +168,6 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   const title = useMemo(() => {
     return mode === 'import' ? 'Importar' : 'Exportar';
   }, [mode]);
-
-  useEffect(() => {
-    if (!open || mode !== 'import' || !preview || hasApplied) return;
-    if (importSystemTagId !== '') return;
-    const firstActive = systemTagOptions.find((tag) => tag.is_active !== false);
-    if (firstActive) {
-      setImportSystemTagId(firstActive.id);
-    }
-  }, [open, mode, preview, hasApplied, importSystemTagId, systemTagOptions]);
 
   useEffect(() => {
     if (!open) return;
@@ -197,9 +213,19 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     setSyncModalOpen(false);
     setSyncItems([]);
     setIsRetryingFailed(false);
+    syncUpdateQueueRef.current.clear();
+    if (syncFlushTimerRef.current) clearTimeout(syncFlushTimerRef.current);
+    syncFlushTimerRef.current = null;
     if (progressTimerRef.current) clearInterval(progressTimerRef.current);
     progressTimerRef.current = null;
   };
+
+  useEffect(() => {
+    return () => {
+      if (syncFlushTimerRef.current) clearTimeout(syncFlushTimerRef.current);
+      syncFlushTimerRef.current = null;
+    };
+  }, []);
 
   const close = () => {
     if (isBusy) return;
@@ -423,6 +449,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
           updateSyncItem(item);
         },
         onSyncComplete: () => {
+          flushSyncUpdates();
           // Modal permanece aberto para inspeção/reenvio
         },
       });

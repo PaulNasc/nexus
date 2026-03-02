@@ -661,6 +661,12 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
         return [systemTagName, ...deduped];
       };
 
+      const yieldToBrowser = async (): Promise<void> => {
+        await new Promise<void>((resolve) => {
+          window.requestAnimationFrame(() => resolve());
+        });
+      };
+
       if (intent?.kind === 'zip') result = await electron.backup.importZipApply({ source: 'external', filePath: intent.filePath });
       else if (intent?.kind === 'zip-backup') result = await electron.backup.importZipApply({ source: 'backupId', backupId: intent.backupId });
       else if (intent?.kind === 'json') result = await electron.backup.importJsonApply({ filePath: intent.filePath });
@@ -710,6 +716,10 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
           if (result.importedNotes && result.importedNotes.length > 0) {
             for (const [index, note] of result.importedNotes.entries()) {
+              if (index > 0 && index % 5 === 0) {
+                await yieldToBrowser();
+              }
+
               const itemId = `note-${index}`;
               progressHandlers?.onSyncUpdate?.({
                 id: itemId,
@@ -777,6 +787,10 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
           if (result.importedTasks && result.importedTasks.length > 0) {
             for (const [index, task] of result.importedTasks.entries()) {
+              if (index > 0 && index % 5 === 0) {
+                await yieldToBrowser();
+              }
+
               const itemId = `task-${index}`;
               progressHandlers?.onSyncUpdate?.({
                 id: itemId,

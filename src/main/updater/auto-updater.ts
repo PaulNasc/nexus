@@ -119,6 +119,14 @@ export class AppUpdater {
   private detectPortableMode(): boolean {
     if (!app.isPackaged) return false;
 
+    const portableExecutableFromEnv = process.env.PORTABLE_EXECUTABLE_FILE;
+    if (portableExecutableFromEnv) {
+      logger.info('Portable mode detected via env', 'updater', {
+        portableExecutableFromEnv,
+      });
+      return true;
+    }
+
     const exePath = app.getPath('exe');
     const exeDir = path.dirname(exePath);
     const exeName = path.basename(exePath).toLowerCase();
@@ -389,7 +397,19 @@ export class AppUpdater {
     if (this._isPortable) {
       this.quitAndInstallPortable();
     } else {
-      autoUpdater.quitAndInstall(true, true);
+      logger.info('Applying NSIS update (quitAndInstall)', 'updater', {
+        version: this.status.version,
+        isPortable: this._isPortable,
+      });
+
+      try {
+        // Use non-silent mode for better compatibility with NSIS launcher on some Windows setups.
+        autoUpdater.quitAndInstall(false, true);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error('NSIS quitAndInstall failed', 'updater', { error: msg });
+        this.setStatus({ state: 'error', error: `Erro ao iniciar instalador: ${msg}` });
+      }
     }
   }
 
@@ -514,6 +534,38 @@ foreach ($shortcutPath in $shortcutPaths) {
   } catch {}
 }
 
+try {
+  $desktopPath = [Environment]::GetFolderPath('Desktop')
+  if (-not [string]::IsNullOrWhiteSpace($desktopPath)) {
+    $primaryShortcutPath = Join-Path $desktopPath 'Nexus.lnk'
+    $primaryShortcut = $shell.CreateShortcut($primaryShortcutPath)
+    $primaryShortcut.TargetPath = $target
+    $primaryShortcut.WorkingDirectory = Split-Path $target
+    $primaryShortcut.IconLocation = "$target,0"
+    $primaryShortcut.Save()
+  }
+} catch {}
+
+try {
+  Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+namespace IconRefresher {
+  public static class NativeMethods {
+    [DllImport("shell32.dll")]
+    public static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
+  }
+}
+"@ -ErrorAction SilentlyContinue | Out-Null
+
+  [IconRefresher.NativeMethods]::SHChangeNotify(0x08000000, 0x0000, [IntPtr]::Zero, [IntPtr]::Zero)
+
+  $ie4uinit = Join-Path $env:SystemRoot 'System32\ie4uinit.exe'
+  if (Test-Path $ie4uinit) {
+    Start-Process -FilePath $ie4uinit -ArgumentList '-show' -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
+  }
+} catch {}
+
 Write-Output $updatedCount
 `;
 
@@ -525,6 +577,7 @@ Write-Output $updatedCount
     if (result.status !== 0) {
       logger.warn('Portable shortcut retargeting failed (non-blocking)', 'updater', {
         status: result.status,
+        stderr: result.stderr,
       });
       return;
     }
