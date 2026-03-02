@@ -4,7 +4,12 @@ import { useSettings } from '../hooks/useSettings';
 import { useSystemTags } from '../contexts/SystemTagsContext';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { useI18n } from '../hooks/useI18n';
-import { supabase } from '../lib/supabase';
+import {
+  deleteUtilityObjectFromR2,
+  downloadUtilityBlobFromR2Signed,
+  listUtilityObjectsFromR2,
+  uploadUtilityBlobToR2Signed,
+} from '../lib/r2Utilities';
 
 import { Note, CreateNoteData } from '../../shared/types/note';
 import { Button } from './ui/Button';
@@ -58,7 +63,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
   // Utilities panel state
   const [showUtilitiesPanel, setShowUtilitiesPanel] = useState(false);
   const [utilitySearch, setUtilitySearch] = useState('');
-  const [utilityFiles, setUtilityFiles] = useState<Array<{ name: string; size: number; created_at: string; url: string }>>([]);
+  const [utilityFiles, setUtilityFiles] = useState<Array<{ name: string; size: number; created_at: string; objectKey: string }>>([]);
   const [utilityLoading, setUtilityLoading] = useState(false);
   const [uploadingUtility, setUploadingUtility] = useState(false);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -302,26 +307,22 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     if (!activeOrg) return;
     setUtilityLoading(true);
     try {
-      const { data, error } = await supabase.storage
-        .from('utilities')
-        .list(`${activeOrg.id}`, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
-      
-      if (error) throw error;
-      
-      const filesWithUrls = await Promise.all(
-        (data || []).map(async (file) => {
-          const { data: urlData } = supabase.storage
-            .from('utilities')
-            .getPublicUrl(`${activeOrg.id}/${file.name}`);
-          return {
-            name: file.name,
-            size: file.metadata?.size || 0,
-            created_at: file.created_at,
-            url: urlData.publicUrl,
-          };
-        })
-      );
-      setUtilityFiles(filesWithUrls);
+      const prefix = `org/${activeOrg.id}/utilities/`;
+      const items = await listUtilityObjectsFromR2(prefix, 500);
+
+      const files = items
+        .filter((item) => item.objectKey.startsWith(prefix))
+        .filter((item) => !item.objectKey.endsWith('/.placeholder'))
+        .map((item) => ({
+          name: item.objectKey.slice(prefix.length),
+          size: item.size,
+          created_at: item.lastModified || '',
+          objectKey: item.objectKey,
+        }))
+        .filter((item) => !!item.name)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      setUtilityFiles(files);
     } catch (error) {
       console.error('Erro ao carregar arquivos de utilitários:', error);
     } finally {
@@ -341,13 +342,8 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     
     setUploadingUtility(true);
     try {
-      const filePath = `${activeOrg.id}/${file.name}`;
-      const { error } = await supabase.storage.from('utilities').upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false,
-      });
-      
-      if (error) throw error;
+      const objectKey = `org/${activeOrg.id}/utilities/${file.name}`;
+      await uploadUtilityBlobToR2Signed(objectKey, file, file.type || 'application/octet-stream');
       await loadUtilityFiles();
     } catch (error) {
       console.error('Erro ao fazer upload do arquivo:', error);
@@ -363,14 +359,8 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     if (!folderName || !activeOrg) return;
     
     try {
-      const placeholderPath = `${activeOrg.id}/${folderName}/.placeholder`;
-      const { error } = await supabase.storage.from('utilities').upload(
-        placeholderPath,
-        new Blob([''], { type: 'text/plain' }),
-        { cacheControl: '3600', upsert: false }
-      );
-      
-      if (error) throw error;
+      const objectKey = `org/${activeOrg.id}/utilities/${folderName}/.placeholder`;
+      await uploadUtilityBlobToR2Signed(objectKey, new Blob([''], { type: 'text/plain' }), 'text/plain');
       await loadUtilityFiles();
       setNewFolderName('');
       setIsCreatingFolder(false);
@@ -380,22 +370,21 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     }
   };
 
-  const handleUtilityDownload = (url: string, filename: string) => {
+  const handleUtilityDownload = async (objectKey: string, filename: string) => {
+    const blob = await downloadUtilityBlobFromR2Signed(objectKey);
+    const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = url;
+    link.href = objectUrl;
     link.download = filename;
     link.click();
+    URL.revokeObjectURL(objectUrl);
   };
 
-  const handleUtilityDelete = async (filename: string) => {
+  const handleUtilityDelete = async (objectKey: string, filename: string) => {
     if (!activeOrg || !confirm(`Deseja excluir ${filename}?`)) return;
     
     try {
-      const { error } = await supabase.storage
-        .from('utilities')
-        .remove([`${activeOrg.id}/${filename}`]);
-      
-      if (error) throw error;
+      await deleteUtilityObjectFromR2(objectKey);
       await loadUtilityFiles();
     } catch (error) {
       console.error('Erro ao excluir arquivo:', error);
@@ -797,7 +786,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           setShowUtilitiesPanel(false);
-                          handleUtilityDownload(file.url, file.name);
+                          void handleUtilityDownload(file.objectKey, file.name);
                         }
                       }}
                     >
@@ -811,7 +800,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleUtilityDownload(file.url, file.name);
+                          void handleUtilityDownload(file.objectKey, file.name);
                         }}
                         title="Baixar arquivo"
                         style={{
@@ -832,7 +821,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleUtilityDelete(file.name);
+                          void handleUtilityDelete(file.objectKey, file.name);
                         }}
                         title="Excluir arquivo"
                         style={{

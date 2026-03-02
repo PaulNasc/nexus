@@ -5,17 +5,19 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from 'npm:@aws-sdk/client-s3@3.726.1';
 import { getSignedUrl } from 'npm:@aws-sdk/s3-request-presigner@3.726.1';
 
-type Action = 'upload' | 'download' | 'delete';
+type Action = 'upload' | 'download' | 'delete' | 'list';
 
 interface SignedUrlRequest {
   action: Action;
   objectKey: string;
   contentType?: string;
+  maxKeys?: number;
 }
 
 const CORS_HEADERS = {
@@ -110,7 +112,7 @@ Deno.serve(async (req: Request) => {
     const objectKey = String(body?.objectKey || '').trim();
     const contentType = String(body?.contentType || 'video/mp4').trim();
 
-    if (!action || !['upload', 'download', 'delete'].includes(action)) {
+    if (!action || !['upload', 'download', 'delete', 'list'].includes(action)) {
       return json(400, { error: 'Invalid action' });
     }
 
@@ -138,6 +140,31 @@ Deno.serve(async (req: Request) => {
         secretAccessKey,
       },
     });
+
+    if (action === 'list') {
+      const maxKeysRaw = Number(body?.maxKeys || 200);
+      const maxKeys = Number.isFinite(maxKeysRaw)
+        ? Math.min(Math.max(Math.trunc(maxKeysRaw), 1), 1000)
+        : 200;
+
+      const command = new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: objectKey,
+        MaxKeys: maxKeys,
+      });
+
+      const result = await s3.send(command);
+      const items = (result.Contents || []).map((entry) => ({
+        objectKey: entry.Key || '',
+        size: Number(entry.Size || 0),
+        lastModified: entry.LastModified ? entry.LastModified.toISOString() : null,
+      })).filter((entry) => !!entry.objectKey);
+
+      return json(200, {
+        objectKey,
+        items,
+      });
+    }
 
     if (action === 'delete') {
       await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: objectKey }));
