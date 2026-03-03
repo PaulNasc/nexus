@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+﻿import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 import { useSettings } from '../hooks/useSettings';
 import { useI18n } from '../hooks/useI18n';
@@ -10,7 +10,7 @@ import { useSystemTags } from '../contexts/SystemTagsContext';
 import { useStorageMode } from '../hooks/useStorageMode';
 import { isModuleLocked } from '../config/featureFlags';
 
-// import { CategoryManager } from './CategoryManager'; // Temporariamente desativado: seção removida de Configurações > Geral
+// import { CategoryManager } from './CategoryManager'; // Temporariamente desativado: seÃ§Ã£o removida de ConfiguraÃ§Ãµes > Geral
 
 import { Button } from './ui/Button';
 import { ImportExportModal } from './ImportExportModal';
@@ -141,7 +141,7 @@ const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
         backgroundColor: isDark ? '#0F0F0F' : '#F9FAFB',
       }}>
         <select value={level} onChange={(e) => setLevel(e.target.value)} style={{ padding: '8px 10px', borderRadius: '8px' }}>
-          <option value="">Todos os níveis</option>
+          <option value="">Todos os nÃ­veis</option>
           <option value="debug">Debug</option>
           <option value="info">Info</option>
           <option value="warn">Warning</option>
@@ -232,7 +232,7 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
       const next = await getElectron()?.updater?.checkForUpdates?.();
       if (next) setStatus(next as UpdaterStatus);
     } catch (error) {
-      console.error('Falha ao verificar atualizações:', error);
+      console.error('Falha ao verificar atualizaÃ§Ãµes:', error);
     }
   };
 
@@ -240,7 +240,7 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
     try {
       await getElectron()?.updater?.downloadUpdate?.();
     } catch (error) {
-      console.error('Falha ao baixar atualização:', error);
+      console.error('Falha ao baixar atualizaÃ§Ã£o:', error);
     }
   };
 
@@ -248,7 +248,7 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
     try {
       await getElectron()?.updater?.quitAndInstall?.();
     } catch (error) {
-      console.error('Falha ao instalar atualização:', error);
+      console.error('Falha ao instalar atualizaÃ§Ã£o:', error);
     }
   };
 
@@ -257,7 +257,7 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
     try {
       await getElectron()?.settings?.set('autoDownloadUpdates', checked);
     } catch (error) {
-      console.error('Falha ao salvar preferência de atualização automática:', error);
+      console.error('Falha ao salvar preferÃªncia de atualizaÃ§Ã£o automÃ¡tica:', error);
     }
   };
 
@@ -275,7 +275,7 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
             <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFFFFF' : '#1F2937' }}>{status.state}</div>
           </div>
           <div>
-            <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>Versão disponível</div>
+            <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>VersÃ£o disponÃ­vel</div>
             <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFFFFF' : '#1F2937' }}>{status.version || '-'}</div>
           </div>
         </div>
@@ -303,7 +303,7 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <Button onClick={checkUpdates}>
             <RefreshCw size={15} style={{ marginRight: '6px' }} />
-            Verificar Atualizações
+            Verificar AtualizaÃ§Ãµes
           </Button>
           {(status.state === 'available' || status.state === 'downloading') && (
             <Button onClick={downloadUpdate} variant="secondary">
@@ -333,8 +333,8 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
             style={{ width: '16px', height: '16px', accentColor: 'var(--color-primary-teal)' }}
           />
           <div>
-            <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFFFFF' : '#1F2937' }}>Download automático</div>
-            <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>Baixar atualização automaticamente quando houver nova versão</div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFFFFF' : '#1F2937' }}>Download automÃ¡tico</div>
+            <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>Baixar atualizaÃ§Ã£o automaticamente quando houver nova versÃ£o</div>
           </div>
         </label>
       </div>
@@ -361,7 +361,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   const { theme: rawTheme } = useTheme();
   const { showNotification } = useNotifications();
   const { createTask } = useTasks();
-  const { createNote, fetchNotes } = useNotes();
+  const { createNote, fetchNotes, syncLegacyPdfNotesToCloud } = useNotes();
   const { tags: systemTags } = useSystemTags();
   const { useCloud } = useStorageMode();
 
@@ -370,6 +370,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showClearDataConfirm, setShowClearDataConfirm] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [isLegacySyncing, setIsLegacySyncing] = useState(false);
   const [importExportModalOpen, setImportExportModalOpen] = useState(false);
   const [importExportMode, setImportExportMode] = useState<'import' | 'export'>('export');
 
@@ -534,7 +535,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       return {
         kind: 'unsupported',
         filePath,
-        reason: 'Formato de arquivo não suportado para importação',
+        reason: 'Formato de arquivo nÃ£o suportado para importaÃ§Ã£o',
       };
     };
 
@@ -630,6 +631,33 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       title: t('settings.notifications.test'),
       body: 'Esta é uma notificação de teste do Nexus',
     });
+  };
+
+
+  const handleHiddenLegacySync = async () => {
+    if (isLegacySyncing) return;
+
+    setIsLegacySyncing(true);
+    try {
+      const summary = await syncLegacyPdfNotesToCloud();
+      if (summary.total === 0) {
+        showToast('Nenhuma nota com PDF local pendente de sincronização.', 'info');
+        return;
+      }
+
+      if (summary.failed === 0) {
+        showToast(`Sincronização concluída: ${summary.synced}/${summary.total} notas.`, 'success');
+      } else {
+        showToast(`Sincronização parcial: ${summary.synced}/${summary.total} notas, ${summary.failed} falhas.`, 'error');
+      }
+
+      await fetchNotes();
+    } catch (error) {
+      console.error('Erro ao sincronizar notas legadas com PDF:', error);
+      showToast('Falha ao sincronizar PDFs legados para a nuvem.', 'error');
+    } finally {
+      setIsLegacySyncing(false);
+    }
   };
 
   const handleImportExportPreview = async (intent: ImportIntent): Promise<RestorePreview | null> => {
@@ -772,14 +800,14 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   noteSyncResults.push({
                     title: note.title,
                     status: 'skipped',
-                    message: 'Nota duplicada (já existente).',
+                    message: 'Nota duplicada (jÃ¡ existente).',
                   });
                   progressHandlers?.onSyncUpdate?.({
                     id: itemId,
                     type: 'note',
                     title: note.title,
                     status: 'skipped',
-                    message: 'Nota duplicada (já existente).',
+                    message: 'Nota duplicada (jÃ¡ existente).',
                     retryPayload: { type: 'note', note },
                   });
                 }
@@ -838,14 +866,14 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   taskSyncResults.push({
                     title: task.title,
                     status: 'skipped',
-                    message: 'Tarefa duplicada (já existente).',
+                    message: 'Tarefa duplicada (jÃ¡ existente).',
                   });
                   progressHandlers?.onSyncUpdate?.({
                     id: itemId,
                     type: 'task',
                     title: task.title,
                     status: 'skipped',
-                    message: 'Tarefa duplicada (já existente).',
+                    message: 'Tarefa duplicada (jÃ¡ existente).',
                     retryPayload: { type: 'task', task },
                   });
                 }
@@ -873,14 +901,14 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
           if (result.imported.notes > syncedNotes) {
             result.warnings.push({
               type: 'note',
-              message: `Algumas notas não foram sincronizadas na nuvem (${syncedNotes}/${result.imported.notes}).`,
+              message: `Algumas notas nÃ£o foram sincronizadas na nuvem (${syncedNotes}/${result.imported.notes}).`,
             });
           }
 
           if (result.imported.tasks > syncedTasks) {
             result.warnings.push({
               type: 'task',
-              message: `Algumas tarefas não foram sincronizadas na nuvem (${syncedTasks}/${result.imported.tasks}).`,
+              message: `Algumas tarefas nÃ£o foram sincronizadas na nuvem (${syncedTasks}/${result.imported.tasks}).`,
             });
           }
 
@@ -921,7 +949,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    showToast('ID copiado para a área de transferência', 'success');
+    showToast('ID copiado para a Ã¡rea de transferÃªncia', 'success');
   };
 
   const tabs = [
@@ -930,9 +958,9 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     { id: 'notificacoes', label: t('settings.notifications'), icon: <Bell size={16} strokeWidth={1.7} /> },
     { id: 'acessibilidade', label: t('settings.accessibility'), icon: <Eye size={16} strokeWidth={1.7} /> },
     { id: 'dados', label: 'Dados & Armazenamento', icon: <HardDrive size={16} strokeWidth={1.7} /> },
-    { id: 'organizacoes', label: 'Organizações', icon: <Users size={16} strokeWidth={1.7} /> },
+    { id: 'organizacoes', label: 'OrganizaÃ§Ãµes', icon: <Users size={16} strokeWidth={1.7} /> },
     { id: 'logs', label: 'Logs', icon: <Database size={16} strokeWidth={1.7} /> },
-    { id: 'atualizacoes', label: 'Atualizações', icon: <RefreshCw size={16} strokeWidth={1.7} /> },
+    { id: 'atualizacoes', label: 'AtualizaÃ§Ãµes', icon: <RefreshCw size={16} strokeWidth={1.7} /> },
     { id: 'sobre', label: t('settings.about'), icon: <Info size={16} strokeWidth={1.7} /> },
   ];
 
@@ -941,7 +969,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
     for (const item of items) {
       if (!item.retryPayload) {
-        updatedItems.push({ ...item, status: 'error', message: 'Dados de reenvio não disponíveis.' });
+        updatedItems.push({ ...item, status: 'error', message: 'Dados de reenvio nÃ£o disponÃ­veis.' });
         continue;
       }
 
@@ -963,7 +991,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
           updatedItems.push({
             ...item,
             status: created ? 'success' : 'skipped',
-            message: created ? undefined : 'Nota duplicada (já existente).',
+            message: created ? undefined : 'Nota duplicada (jÃ¡ existente).',
           });
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Falha ao reenviar nota';
@@ -984,7 +1012,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
         updatedItems.push({
           ...item,
           status: createdTask ? 'success' : 'skipped',
-          message: createdTask ? undefined : 'Tarefa duplicada (já existente).',
+          message: createdTask ? undefined : 'Tarefa duplicada (jÃ¡ existente).',
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Falha ao reenviar tarefa';
@@ -1070,7 +1098,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text'
               }}>
-                Configurações
+                ConfiguraÃ§Ãµes
               </h2>
             </div>
           </div>
@@ -1120,14 +1148,14 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
           </nav>
         </div>
 
-        {/* Conteúdo principal */}
+        {/* ConteÃºdo principal */}
         <div style={{
           flex: 1,
           padding: '32px',
           overflowY: 'auto',
           backgroundColor: theme.mode === 'dark' ? '#141414' : 'var(--color-bg-card)',
         }}>
-          {/* Header com botão fechar */}
+          {/* Header com botÃ£o fechar */}
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -1174,7 +1202,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
             </button>
           </div>
 
-          {/* Conteúdo das abas */}
+          {/* ConteÃºdo das abas */}
           <div style={{ minHeight: '400px' }}>
             {activeTab === 'geral' && (
               <div style={{ display: 'grid', gap: '24px' }}>
@@ -1236,7 +1264,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </select>
                 </div>
 
-                {/* Removido por solicitação: seção "Meta Diária" */}
+                {/* Removido por solicitaÃ§Ã£o: seÃ§Ã£o "Meta DiÃ¡ria" */}
                 {/* <div>
                   <label style={{
                     display: 'block',
@@ -1265,12 +1293,12 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   />
                 </div> */}
 
-                {/* Removido por solicitação: seção "Produtividade & Sugestões" */}
+                {/* Removido por solicitaÃ§Ã£o: seÃ§Ã£o "Produtividade & SugestÃµes" */}
                 {/* 
                   // Safe JSX comment
                 */}
 
-                {/* Removido por solicitação: seção "Produtividade & Sugestões" */}
+                {/* Removido por solicitaÃ§Ã£o: seÃ§Ã£o "Produtividade & SugestÃµes" */}
                 {/* 
                   // Safe JSX comment
                 */}
@@ -1315,6 +1343,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       }}>
                         <strong style={{ color: 'var(--color-text-primary)' }}>{isDark ? 'Modo Escuro' : 'Modo Claro'}</strong> - Otimizado para produtividade
                       </p>
+                      
                     </div>
                   </div>
                 </div>
@@ -1379,9 +1408,9 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </h4>
                   <div style={{ display: 'grid', gap: '8px' }}>
                     {[
-                      { key: 'compact', label: 'Compacta', desc: 'Mais informações em menos espaço' },
-                      { key: 'normal', label: 'Normal', desc: 'Balanço ideal entre espaço e informação' },
-                      { key: 'comfortable', label: 'Confortável', desc: 'Mais espaçamento para facilitar a leitura' }
+                      { key: 'compact', label: 'Compacta', desc: 'Mais informaÃ§Ãµes em menos espaÃ§o' },
+                      { key: 'normal', label: 'Normal', desc: 'BalanÃ§o ideal entre espaÃ§o e informaÃ§Ã£o' },
+                      { key: 'comfortable', label: 'ConfortÃ¡vel', desc: 'Mais espaÃ§amento para facilitar a leitura' }
                     ].map((density) => (
                       <label key={density.key} style={{
                         display: 'flex',
@@ -1426,7 +1455,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-                {/* Transparência dos Cards */}
+                {/* TransparÃªncia dos Cards */}
                 <div>
                   <h4 style={{
                     margin: '0 0 8px 0',
@@ -1434,7 +1463,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     fontWeight: 600,
                     color: 'var(--color-text-primary)',
                   }}>
-                    Transparência dos Cards
+                    TransparÃªncia dos Cards
                   </h4>
                   <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                     <input
@@ -1467,7 +1496,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     marginTop: '4px',
                     marginBottom: 0
                   }}>
-                    Ajuste a transparência dos cards para personalizar a aparência
+                    Ajuste a transparÃªncia dos cards para personalizar a aparÃªncia
                   </p>
                 </div>
 
@@ -1522,7 +1551,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       </div>
                     </label>
 
-                    {/* Reduzir Animações */}
+                    {/* Reduzir AnimaÃ§Ãµes */}
                     <label style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -1547,7 +1576,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           fontWeight: 500,
                           marginBottom: '2px'
                         }}>
-                          Animações e Transições
+                          AnimaÃ§Ãµes e TransiÃ§Ãµes
                         </div>
                         <div style={{
                           fontSize: '12px',
@@ -1560,7 +1589,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-                {/* Componentes Visíveis */}
+                {/* Componentes VisÃ­veis */}
                 <div>
                   <h3 style={{
                     margin: '20px 0 16px 0',
@@ -1578,10 +1607,10 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     {[
                       { key: 'showDashboard', label: 'Dashboard', desc: 'Exibir aba do dashboard e funcionalidades de tarefas' },
                       { key: 'showTimer', label: 'Timer Pomodoro', desc: 'Exibir funcionalidade de timer' },
-                      { key: 'showReports', label: 'Relatórios', desc: 'Exibir aba de relatórios e estatísticas' },
-                      { key: 'showNotes', label: 'Notas', desc: 'Exibir sistema de notas e anotações' },
-                      { key: 'showQuickActions', label: 'Ações Rápidas', desc: 'Exibir botões de acesso rápido' },
-                      { key: 'showTaskCounters', label: 'Contadores de Tarefas', desc: 'Exibir números e estatísticas nas tarefas' }
+                      { key: 'showReports', label: 'RelatÃ³rios', desc: 'Exibir aba de relatÃ³rios e estatÃ­sticas' },
+                      { key: 'showNotes', label: 'Notas', desc: 'Exibir sistema de notas e anotaÃ§Ãµes' },
+                      { key: 'showQuickActions', label: 'AÃ§Ãµes RÃ¡pidas', desc: 'Exibir botÃµes de acesso rÃ¡pido' },
+                      { key: 'showTaskCounters', label: 'Contadores de Tarefas', desc: 'Exibir nÃºmeros e estatÃ­sticas nas tarefas' }
                     ].map((component) => (
                       (() => {
                         const isLocked = isModuleLocked(component.key as 'showDashboard' | 'showTimer' | 'showReports');
@@ -1758,13 +1787,13 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     Modo de Armazenamento
                   </h4>
                   <p style={{ fontSize: '12px', color: isDark ? '#888' : '#6B7280', margin: '0 0 16px 0' }}>
-                    Define onde notas, tarefas e categorias são salvos.
+                    Define onde notas, tarefas e categorias sÃ£o salvos.
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {[
-                      { value: 'cloud' as const, label: 'Cloud (Supabase)', desc: 'Dados salvos na nuvem. Requer autenticação. Compartilhável entre dispositivos.' },
-                      { value: 'local' as const, label: 'Local (Offline)', desc: 'Dados salvos apenas no dispositivo. Não requer internet nem login.' },
-                      { value: 'hybrid' as const, label: 'Híbrido', desc: 'Salva em ambos. Lê da nuvem quando autenticado, fallback local quando offline.' },
+                      { value: 'cloud' as const, label: 'Cloud (Supabase)', desc: 'Dados salvos na nuvem. Requer autenticaÃ§Ã£o. CompartilhÃ¡vel entre dispositivos.' },
+                      { value: 'local' as const, label: 'Local (Offline)', desc: 'Dados salvos apenas no dispositivo. NÃ£o requer internet nem login.' },
+                      { value: 'hybrid' as const, label: 'HÃ­brido', desc: 'Salva em ambos. LÃª da nuvem quando autenticado, fallback local quando offline.' },
                     ].map(opt => (
                       <label
                         key={opt.value}
@@ -1817,7 +1846,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     Importar / Exportar Dados
                   </h4>
                   <p style={{ fontSize: '12px', color: isDark ? '#888' : '#6B7280', margin: '0 0 16px 0' }}>
-                    Use o sistema avançado de importação e exportação multi-formato.
+                    Use o sistema avanÃ§ado de importaÃ§Ã£o e exportaÃ§Ã£o multi-formato.
                   </p>
                   <div style={{ display: 'flex', gap: '12px' }}>
                     <Button onClick={() => { handleOpenImportExportModal('import'); }}>
@@ -1842,7 +1871,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                     <AlertCircle size={16} style={{ color: '#3B82F6', marginTop: '2px', flexShrink: 0 }} />
                     <div style={{ fontSize: '12px', color: isDark ? '#93C5FD' : '#3B82F6', lineHeight: '1.5' }}>
-                      <strong>Nota:</strong> Alterar o modo de armazenamento não migra dados automaticamente. Use Importar/Exportar para transferir dados entre modos.
+                      <strong>Nota:</strong> Alterar o modo de armazenamento nÃ£o migra dados automaticamente. Use Importar/Exportar para transferir dados entre modos.
                     </div>
                   </div>
                 </div>
@@ -1853,7 +1882,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
             {activeTab === 'acessibilidade' && (
               <div style={{ display: 'grid', gap: '24px' }}>
-                {/* Visão e Leitura */}
+                {/* VisÃ£o e Leitura */}
                 <div style={{
                   padding: '20px',
                   backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
@@ -1870,7 +1899,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     gap: '8px',
                   }}>
                     <Eye size={16} />
-                    Visão e Leitura
+                    VisÃ£o e Leitura
                   </h4>
                   <div style={{ display: 'grid', gap: '12px' }}>
                     <label style={{
@@ -1971,7 +2000,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           fontWeight: 500,
                           marginBottom: '4px'
                         }}>
-                          Animações e Transições
+                          AnimaÃ§Ãµes e TransiÃ§Ãµes
                         </div>
                         <div style={{
                           fontSize: '12px',
@@ -1984,7 +2013,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-                {/* Navegação e Interação */}
+                {/* NavegaÃ§Ã£o e InteraÃ§Ã£o */}
                 <div style={{
                   padding: '20px',
                   backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
@@ -2001,7 +2030,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     gap: '8px',
                   }}>
                     <Keyboard size={16} />
-                    Navegação e Interação
+                    NavegaÃ§Ã£o e InteraÃ§Ã£o
                   </h4>
                   <div style={{ display: 'grid', gap: '12px' }}>
                     <label style={{
@@ -2027,7 +2056,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           fontWeight: 500,
                           marginBottom: '4px'
                         }}>
-                          Navegação por Teclado
+                          NavegaÃ§Ã£o por Teclado
                         </div>
                         <div style={{
                           fontSize: '12px',
@@ -2062,7 +2091,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           marginBottom: '4px'
                         }}>
                           <MousePointer size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
-                          Indicadores de Foco Visíveis
+                          Indicadores de Foco VisÃ­veis
                         </div>
                         <div style={{
                           fontSize: '12px',
@@ -2103,14 +2132,14 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           fontSize: '12px',
                           color: 'var(--color-text-secondary)'
                         }}>
-                          Reproduz sons ao completar ações (notificações, timer, etc.)
+                          Reproduz sons ao completar aÃ§Ãµes (notificaÃ§Ãµes, timer, etc.)
                         </div>
                       </div>
                     </label>
                   </div>
                 </div>
 
-                {/* Removido por solicitação: seção "Atalhos de Teclado" */}
+                {/* Removido por solicitaÃ§Ã£o: seÃ§Ã£o "Atalhos de Teclado" */}
                 {/* <div style={{
                   padding: '20px',
                   backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
@@ -2133,10 +2162,10 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     {[
                       { keys: 'Ctrl + N', desc: 'Nova tarefa' },
                       { keys: 'Ctrl + Shift + N', desc: 'Nova nota' },
-                      { keys: 'Ctrl + ,', desc: 'Abrir configurações' },
+                      { keys: 'Ctrl + ,', desc: 'Abrir configuraÃ§Ãµes' },
                       { keys: 'Ctrl + F', desc: 'Buscar' },
                       { keys: 'Ctrl + B', desc: 'Abrir/fechar barra lateral' },
-                      { keys: 'Esc', desc: 'Fechar modal/diálogo' },
+                      { keys: 'Esc', desc: 'Fechar modal/diÃ¡logo' },
                     ].map((shortcut) => (
                       <div key={shortcut.keys} style={{
                         display: 'flex',
@@ -2169,7 +2198,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div> */}
 
-                {/* Seção de Limpeza de Dados */}
+                {/* SeÃ§Ã£o de Limpeza de Dados */}
                 <div style={{
                   padding: '20px',
                   backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
@@ -2334,6 +2363,27 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       }}>
                         {t('about.version', { version: systemInfo?.version || '1.0.0' })}
                       </p>
+                      <button
+                        onClick={handleHiddenLegacySync}
+                        disabled={isLegacySyncing || !useCloud}
+                        title="Sincronizar notas legadas com PDF local para nuvem"
+                        style={{
+                          marginTop: '6px',
+                          fontSize: '11px',
+                          background: 'transparent',
+                          border: 'none',
+                          padding: 0,
+                          color: theme.mode === 'dark' ? '#7A7A7A' : '#9CA3AF',
+                          cursor: isLegacySyncing || !useCloud ? 'not-allowed' : 'pointer',
+                          opacity: isLegacySyncing || !useCloud ? 0.45 : 0.18,
+                          transition: 'opacity 0.2s ease',
+                          letterSpacing: '0.02em',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.opacity = isLegacySyncing || !useCloud ? '0.45' : '0.55'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.opacity = isLegacySyncing || !useCloud ? '0.45' : '0.18'; }}
+                      >
+                        {isLegacySyncing ? 'Sincronizando legados...' : 'sincronizar anexos legados'}
+                      </button>
                     </div>
                   </div>
 
@@ -2465,7 +2515,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
             )}
           </div>
 
-          {/* Footer com botões */}
+          {/* Footer com botÃµes */}
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -2545,3 +2595,4 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     </div>
   );
 }; 
+

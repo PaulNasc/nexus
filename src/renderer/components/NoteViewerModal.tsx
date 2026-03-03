@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from './ui/Button';
 import { X, Image as ImageIcon, FileText, FileCode2, Pin, Video, Download, Copy, Play, ExternalLink } from 'lucide-react';
 import type { ElectronAPI } from '../../main/preload';
 import { Note, NoteAttachment } from '../../shared/types/note';
 import { supabase } from '../lib/supabase';
 import { parseVideoRef } from '../utils/videoAttachment';
+import { parsePdfRef } from '../utils/pdfAttachment';
 import { downloadVideoBlobFromR2Signed } from '../lib/r2Videos';
 
 interface NoteViewerModalProps {
@@ -86,17 +87,6 @@ const getElectron = (): ElectronAPI | null => {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI || null;
 };
 
-const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onloadend = () => {
-    const dataUrl = String(reader.result || '');
-    const commaIndex = dataUrl.indexOf(',');
-    resolve(commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl);
-  };
-  reader.onerror = () => reject(reader.error || new Error('Falha ao converter blob para base64'));
-  reader.readAsDataURL(blob);
-});
-
 export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, onClose, onTogglePin }) => {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [videoLightbox, setVideoLightbox] = useState<string | null>(null);
@@ -105,6 +95,11 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
   const [videoPaths, setVideoPaths] = useState<Record<string, string>>({});
   const [videoMissing, setVideoMissing] = useState<Record<string, boolean>>({});
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
+  const [pdfCandidateUrls, setPdfCandidateUrls] = useState<string[]>([]);
+  const [pdfCandidateIndex, setPdfCandidateIndex] = useState(0);
+  const [pdfLoadError, setPdfLoadError] = useState(false);
+  const tempVideoObjectUrlsRef = useRef<Set<string>>(new Set());
+  const tempPdfObjectUrlsRef = useRef<Set<string>>(new Set());
 
   const toPdfViewerUrl = (rawUrl: string): string => {
     const value = String(rawUrl || '').trim();
@@ -141,17 +136,143 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
   }, [note]);
 
   const primaryPdf = pdfAttachments[0] || null;
-  const primaryPdfUrl = primaryPdf
-    ? toPdfViewerUrl(primaryPdf.url)
-    : (contentPdfSource ? toPdfViewerUrl(contentPdfSource) : '');
+  const primaryPdfSource = primaryPdf?.url || contentPdfSource || '';
+  const primaryPdfUrl = pdfCandidateUrls[pdfCandidateIndex] || '';
   const hasPdfAttachment = Boolean(primaryPdfUrl);
 
   const hasVideos = useMemo(() => {
     return note?.attachedVideos && note.attachedVideos.length > 0;
   }, [note]);
 
+  const clearTempVideoObjectUrls = () => {
+    for (const objectUrl of tempVideoObjectUrlsRef.current) {
+      try {
+        URL.revokeObjectURL(objectUrl);
+      } catch {
+        // ignore cleanup errors
+      }
+    }
+    tempVideoObjectUrlsRef.current.clear();
+  };
+
+  const clearTempPdfObjectUrls = () => {
+    for (const objectUrl of tempPdfObjectUrlsRef.current) {
+      try {
+        URL.revokeObjectURL(objectUrl);
+      } catch {
+        // ignore cleanup errors
+      }
+    }
+    tempPdfObjectUrlsRef.current.clear();
+  };
+
+  const decodeFileLikePath = (value: string): string => {
+    const normalized = String(value || '').trim();
+    if (!normalized) return '';
+    if (!/^file:\/\//i.test(normalized)) return normalized;
+    const withoutScheme = normalized.replace(/^file:\/+/i, '');
+    const decoded = decodeURIComponent(withoutScheme);
+    return decoded.replace(/^\/+([a-zA-Z]:\/)/, '$1');
+  };
+
   useEffect(() => {
-    if (!note?.attachedVideos || note.attachedVideos.length === 0) {
+    let canceled = false;
+    const nextPdfObjectUrls = new Set<string>();
+
+    const resolvePdfCandidates = async () => {
+      if (!isOpen || !primaryPdfSource) {
+        if (!canceled) {
+          clearTempPdfObjectUrls();
+          setPdfCandidateUrls([]);
+          setPdfCandidateIndex(0);
+          setPdfLoadError(false);
+        }
+        return;
+      }
+
+      const candidates: string[] = [];
+      const parsedPdf = parsePdfRef(primaryPdfSource);
+
+      if (parsedPdf.storagePath) {
+        try {
+          const blob = await downloadVideoBlobFromR2Signed(parsedPdf.storagePath);
+          const blobUrl = URL.createObjectURL(blob);
+          nextPdfObjectUrls.add(blobUrl);
+          candidates.push(blobUrl);
+        } catch (err) {
+          console.warn('NoteViewerModal PDF cloud download failed:', {
+            source: primaryPdfSource,
+            storagePath: parsedPdf.storagePath,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      const baseUrl = toPdfViewerUrl(primaryPdfSource);
+      if (baseUrl && !candidates.includes(baseUrl)) candidates.push(baseUrl);
+
+      const electron = getElectron();
+      const rawPath = decodeFileLikePath(primaryPdfSource).replace(/\\/g, '/');
+      const fileName = rawPath.split('/').filter(Boolean).pop() || '';
+
+      if (electron?.video && fileName && rawPath.toLowerCase().includes('/imported-pdfs/')) {
+        try {
+          const videosDir = await electron.video.getVideosDir();
+          const normalizedVideosDir = String(videosDir || '').replace(/\\/g, '/');
+          const userDataDir = normalizedVideosDir.replace(/\/nexus-videos$/i, '');
+          if (userDataDir && userDataDir !== normalizedVideosDir) {
+            const remappedPath = `${userDataDir}/imported-pdfs/${fileName}`;
+            const remappedUrl = toPdfViewerUrl(remappedPath);
+            if (remappedUrl && !candidates.includes(remappedUrl)) {
+              candidates.unshift(remappedUrl);
+            }
+          }
+        } catch {
+          // ignore remap errors
+        }
+      }
+
+      if (canceled) return;
+      clearTempPdfObjectUrls();
+      tempPdfObjectUrlsRef.current = nextPdfObjectUrls;
+      setPdfCandidateUrls(candidates);
+      setPdfCandidateIndex(0);
+      setPdfLoadError(false);
+    };
+
+    resolvePdfCandidates();
+
+    return () => {
+      canceled = true;
+      for (const objectUrl of nextPdfObjectUrls) {
+        try {
+          URL.revokeObjectURL(objectUrl);
+        } catch {
+          // ignore cleanup errors
+        }
+      }
+      clearTempPdfObjectUrls();
+    };
+  }, [isOpen, primaryPdfSource]);
+
+  const handlePdfIframeError = () => {
+    setPdfCandidateIndex((current) => {
+      if (current < pdfCandidateUrls.length - 1) {
+        setPdfLoadError(false);
+        return current + 1;
+      }
+      setPdfLoadError(true);
+      return current;
+    });
+  };
+
+  const handlePdfIframeLoad = () => {
+    setPdfLoadError(false);
+  };
+
+  useEffect(() => {
+    if (!isOpen || !note?.attachedVideos || note.attachedVideos.length === 0) {
+      clearTempVideoObjectUrls();
       setVideoUrls({});
       setVideoPaths({});
       setVideoMissing({});
@@ -161,6 +282,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     if (!electron?.video) return;
 
     let canceled = false;
+    const nextTempObjectUrls = new Set<string>();
 
     const resolve = async () => {
       const { data: noteScopeData } = await supabase
@@ -215,17 +337,12 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                   continue;
                 }
 
-                const base64 = await blobToBase64(downloadedBlob);
-                const write = await electron.video.writeBase64ToLocal(localVideoName, base64);
-                if (write.success) {
-                  const localPath = write.localPath || await electron.video.getLocalPath(localVideoName);
-                  paths[videoRef] = localPath;
-                  urls[videoRef] = `file://${localPath.replace(/\\/g, '/')}`;
-                  downloaded = true;
-                  break;
-                }
-
-                lastDownloadError = write.error || 'Falha ao gravar vídeo localmente';
+                const objectUrl = URL.createObjectURL(downloadedBlob);
+                urls[videoRef] = objectUrl;
+                paths[videoRef] = '[temporario em memoria]';
+                nextTempObjectUrls.add(objectUrl);
+                downloaded = true;
+                break;
               }
             } catch (downloadError) {
               lastDownloadError = downloadError instanceof Error ? downloadError.message : String(downloadError);
@@ -249,6 +366,8 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
         }
       }
       if (canceled) return;
+      clearTempVideoObjectUrls();
+      tempVideoObjectUrlsRef.current = nextTempObjectUrls;
       setVideoUrls(urls);
       setVideoPaths(paths);
       setVideoMissing(missing);
@@ -257,8 +376,16 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
 
     return () => {
       canceled = true;
+      for (const objectUrl of nextTempObjectUrls) {
+        try {
+          URL.revokeObjectURL(objectUrl);
+        } catch {
+          // ignore cleanup errors
+        }
+      }
+      clearTempVideoObjectUrls();
     };
-  }, [note?.attachedVideos, note?.id]);
+  }, [isOpen, note?.attachedVideos, note?.id]);
 
   const hasImages = useMemo(() => {
     if (!note) return false;
@@ -306,6 +433,11 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
   const handleOpenVideoExternal = async (videoRef: string) => {
     const electron = getElectron();
     if (!electron?.video) return;
+    const existingUrl = videoUrls[videoRef] || '';
+    if (existingUrl.startsWith('blob:')) {
+      window.open(existingUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
     const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
     await electron.video.openExternal(localVideoName);
   };
@@ -313,6 +445,17 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
   const handleSaveVideoAs = async (videoRef: string) => {
     const electron = getElectron();
     if (!electron?.video) return;
+    const existingUrl = videoUrls[videoRef] || '';
+    if (existingUrl.startsWith('blob:')) {
+      const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
+      const link = document.createElement('a');
+      link.href = existingUrl;
+      link.download = localVideoName.replace(/^\d+-/, '') || 'video.mp4';
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.click();
+      return;
+    }
     const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
     await electron.video.saveAs(localVideoName);
   };
@@ -410,18 +553,21 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
                       onClick={() => setPdfLightboxSrc(primaryPdfUrl)}
+                      disabled={!primaryPdfUrl}
                       style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
                     >
                       <ExternalLink size={12} /> Expandir
                     </button>
                     <button
                       onClick={() => handleOpenPdfExternal(primaryPdfUrl)}
+                      disabled={!primaryPdfUrl}
                       style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
                     >
                       <Play size={12} /> Abrir
                     </button>
                     <button
                       onClick={() => handleDownloadPdf(primaryPdfUrl, primaryPdf?.name)}
+                      disabled={!primaryPdfUrl}
                       style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
                     >
                       <Download size={12} /> Baixar
@@ -429,10 +575,17 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                   </div>
                 </div>
                 <div style={{ width: '100%', height: '52vh', background: '#0b0b0b' }}>
+                  {pdfLoadError && (
+                    <div style={{ padding: 10, fontSize: 12, color: 'var(--color-text-secondary)', borderBottom: '1px solid var(--color-border-primary)' }}>
+                      PDF não encontrado neste dispositivo. Caminhos locais de outra máquina podem não existir aqui.
+                    </div>
+                  )}
                   <iframe
                     src={primaryPdfUrl}
                     title={primaryPdf?.name || 'PDF'}
                     style={{ width: '100%', height: '100%', border: 0 }}
+                    onLoad={handlePdfIframeLoad}
+                    onError={handlePdfIframeError}
                   />
                 </div>
               </div>

@@ -6,6 +6,7 @@ import { useOrganization } from './OrganizationContext';
 import type { Note, CreateNoteData, UpdateNoteData, NoteStats } from '../../shared/types/note';
 import type { ElectronAPI } from '../../main/preload';
 import { base64ToUint8Array, buildCloudVideoRef, parseVideoRef } from '../utils/videoAttachment';
+import { buildCloudPdfRef, parsePdfRef } from '../utils/pdfAttachment';
 import { NOTES_ONLY_RELEASE } from '../config/featureFlags';
 import { deleteVideoFromR2, uploadVideoBlobToR2Signed } from '../lib/r2Videos';
 
@@ -102,12 +103,14 @@ interface NotesContextType {
   createNote: (noteData: CreateNoteData) => Promise<Note | null>;
   updateNote: (id: number, updates: UpdateNoteData) => Promise<Note | null>;
   deleteNote: (id: number) => Promise<boolean>;
+  syncLegacyPdfNotesToCloud: () => Promise<{ total: number; synced: number; skipped: number; failed: number }>;
   getNoteStats: () => Promise<NoteStats | null>;
   linkTaskToNote: (taskId: number, noteId: number) => Promise<boolean>;
   unlinkTaskFromNote: (taskId: number) => Promise<boolean>;
 }
 
 const NotesContext = createContext<NotesContextType | null>(null);
+const PDF_SOURCE_REGEX = /\[PDF_SOURCE\]([\s\S]*?)\[\/PDF_SOURCE\]/i;
 
 export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -148,6 +151,123 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     return deduped;
   }, []);
+
+  const decodeFileLikePath = useCallback((value: string): string => {
+    const normalized = String(value || '').trim();
+    if (!normalized) return '';
+    if (!/^file:\/\//i.test(normalized)) return normalized;
+    const withoutScheme = normalized.replace(/^file:\/+/i, '');
+    const decoded = decodeURIComponent(withoutScheme);
+    return decoded.replace(/^\/+([a-zA-Z]:\/)/, '$1');
+  }, []);
+
+  const extractPdfSourceFromContent = useCallback((content: string | undefined): string => {
+    const match = String(content || '').match(PDF_SOURCE_REGEX);
+    return String(match?.[1] || '').trim();
+  }, []);
+
+  const replacePdfSourceInContent = useCallback((content: string, nextSource: string): string => {
+    if (!String(content || '').match(PDF_SOURCE_REGEX)) return content;
+    return content.replace(PDF_SOURCE_REGEX, `[PDF_SOURCE]${nextSource}[/PDF_SOURCE]`);
+  }, []);
+
+  const extractCloudPdfPathFromContent = useCallback((content: string | undefined): string | null => {
+    const source = extractPdfSourceFromContent(content);
+    if (!source) return null;
+    const parsed = parsePdfRef(source);
+    return parsed.storagePath || null;
+  }, [extractPdfSourceFromContent]);
+
+  const removeCloudPdfs = useCallback(async (objectKeys: string[]): Promise<void> => {
+    if (objectKeys.length === 0) return;
+
+    for (const objectKey of objectKeys) {
+      try {
+        await deleteVideoFromR2(objectKey);
+      } catch (err) {
+        console.warn('NotesContext.removeCloudPdfs delete error:', {
+          objectKey,
+          error: err instanceof Error ? err.message : err,
+        });
+      }
+    }
+  }, []);
+
+  const syncPdfSourceToCloud = useCallback(async (
+    content: string,
+    userId: string,
+    orgId: string | null,
+  ): Promise<{ content: string; cloudPath: string | null }> => {
+    const source = extractPdfSourceFromContent(content);
+    if (!source) return { content, cloudPath: null };
+
+    const parsedCloud = parsePdfRef(source);
+    if (parsedCloud.storagePath) {
+      return { content, cloudPath: parsedCloud.storagePath };
+    }
+
+    const localPath = decodeFileLikePath(source);
+    if (!localPath || /^(https?:|data:)/i.test(localPath)) {
+      return { content, cloudPath: null };
+    }
+
+    const electron = getElectron();
+    if (!electron) return { content, cloudPath: null };
+
+    type UtilityImportResult = {
+      success: boolean;
+      error?: string;
+      item?: {
+        localFileName: string;
+        mimeType?: string;
+      };
+    };
+
+    type UtilityReadResult = {
+      success: boolean;
+      error?: string;
+      base64?: string;
+      mimeType?: string;
+      fileName?: string;
+    };
+
+    try {
+      const imported = await electron.invoke('utility:importFromPath', localPath) as UtilityImportResult;
+      if (!imported?.success || !imported.item?.localFileName) {
+        return { content, cloudPath: null };
+      }
+
+      const localFileName = imported.item.localFileName;
+      const localFile = await electron.invoke('utility:readLocalAsBase64', localFileName) as UtilityReadResult;
+      if (!localFile?.success || !localFile.base64) {
+        return { content, cloudPath: null };
+      }
+
+      const payload = base64ToUint8Array(localFile.base64);
+      const payloadBuffer = payload.buffer.slice(
+        payload.byteOffset,
+        payload.byteOffset + payload.byteLength,
+      ) as ArrayBuffer;
+      const mimeType = localFile.mimeType || imported.item.mimeType || 'application/pdf';
+      const blobPayload = new Blob([payloadBuffer], { type: mimeType });
+
+      const scopePrefix = orgId ? `org/${orgId}` : `user/${userId}`;
+      const objectKey = `${scopePrefix}/pdf/${localFileName}`;
+      await uploadVideoBlobToR2Signed(objectKey, blobPayload, mimeType);
+
+      const cloudRef = buildCloudPdfRef(objectKey, localFileName);
+      return {
+        content: replacePdfSourceInContent(content, cloudRef),
+        cloudPath: objectKey,
+      };
+    } catch (err) {
+      console.warn('NotesContext.syncPdfSourceToCloud error:', {
+        source,
+        error: err instanceof Error ? err.message : err,
+      });
+      return { content, cloudPath: null };
+    }
+  }, [decodeFileLikePath, extractPdfSourceFromContent, replacePdfSourceInContent]);
 
   const extractCloudVideoPaths = useCallback((videoRefs: string[] | undefined): string[] => {
     if (!videoRefs || videoRefs.length === 0) return [];
@@ -409,11 +529,12 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const sequentialId = await reserveSequentialId();
 
     const syncedVideos = await syncAttachedVideosToCloud(noteData.attachedVideos, userId, orgId);
+    const syncedPdf = await syncPdfSourceToCloud(noteData.content || '', userId, orgId);
 
     const insertPayload: Record<string, unknown> = {
       user_id: userId,
       title: noteData.title,
-      content: noteData.content || '',
+      content: syncedPdf.content,
       format: noteData.format || 'text',
       tags: noteData.tags || [],
       attached_images: noteData.attachedImages || [],
@@ -486,7 +607,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
 return created;
-}, [activeOrg, syncAttachedVideosToCloud]);
+}, [activeOrg, syncAttachedVideosToCloud, syncPdfSourceToCloud]);
 
 // ── PUBLIC API ────────────────────────────────────────────────
 const fetchNotes = useCallback(async () => {
@@ -572,9 +693,19 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
         const orgId = activeOrg?.id || null;
         const previousNote = notes.find(note => note.id === id);
         const previousCloudPaths = extractCloudVideoPaths(previousNote?.attachedVideos);
+        const previousPdfCloudPath = extractCloudPdfPathFromContent(previousNote?.content);
         let syncedVideos = updates.attachedVideos;
+        let syncedContent = updates.content;
+        let nextPdfCloudPath = updates.content !== undefined
+          ? extractCloudPdfPathFromContent(updates.content)
+          : previousPdfCloudPath;
         if (updates.attachedVideos !== undefined && userId) {
           syncedVideos = await syncAttachedVideosToCloud(updates.attachedVideos, userId, orgId);
+        }
+        if (updates.content !== undefined && userId) {
+          const syncedPdf = await syncPdfSourceToCloud(updates.content || '', userId, orgId);
+          syncedContent = syncedPdf.content;
+          nextPdfCloudPath = syncedPdf.cloudPath;
         }
 
         const nextCloudPaths = updates.attachedVideos !== undefined
@@ -582,12 +713,15 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
           : previousCloudPaths;
         const nextCloudPathSet = new Set(nextCloudPaths);
         const removedCloudPaths = previousCloudPaths.filter(path => !nextCloudPathSet.has(path));
+        const removedPdfPaths = previousPdfCloudPath && previousPdfCloudPath !== nextPdfCloudPath
+          ? [previousPdfCloudPath]
+          : [];
 
         const updateData: Record<string, unknown> = {
           updated_at: new Date().toISOString(),
         };
         if (updates.title !== undefined) updateData.title = updates.title;
-        if (updates.content !== undefined) updateData.content = updates.content;
+        if (updates.content !== undefined) updateData.content = syncedContent;
         if (updates.format !== undefined) updateData.format = updates.format;
         if (updates.tags !== undefined) updateData.tags = updates.tags;
         if (updates.attachedImages !== undefined) updateData.attached_images = updates.attachedImages;
@@ -649,6 +783,7 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
         }
 
         await removeCloudVideos(removedCloudPaths);
+        await removeCloudPdfs(removedPdfPaths);
 
         updated = dbRowToNote(data as SupabaseNoteRow, updates.linkedTaskIds);
       }
@@ -674,24 +809,75 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
     activeOrg,
     notes,
     syncAttachedVideosToCloud,
+    syncPdfSourceToCloud,
     extractCloudVideoPaths,
+    extractCloudPdfPathFromContent,
     removeCloudVideos,
+    removeCloudPdfs,
+  ]);
+
+  const syncLegacyPdfNotesToCloud = useCallback(async (): Promise<{ total: number; synced: number; skipped: number; failed: number }> => {
+    if (!useCloud) {
+      return { total: 0, synced: 0, skipped: 0, failed: 0 };
+    }
+
+    const candidates = notes.filter((note) => {
+      const source = extractPdfSourceFromContent(note.content);
+      if (!source) return false;
+      const parsed = parsePdfRef(source);
+      if (parsed.storagePath) return false;
+      const localPath = decodeFileLikePath(source);
+      return Boolean(localPath) && !/^(https?:|data:)/i.test(localPath);
+    });
+
+    let synced = 0;
+    let failed = 0;
+
+    for (const note of candidates) {
+      const updated = await updateNote(note.id, { content: note.content });
+      if (updated && extractCloudPdfPathFromContent(updated.content)) {
+        synced += 1;
+      } else {
+        failed += 1;
+      }
+    }
+
+    return {
+      total: candidates.length,
+      synced,
+      failed,
+      skipped: Math.max(0, notes.length - candidates.length),
+    };
+  }, [
+    useCloud,
+    notes,
+    decodeFileLikePath,
+    extractPdfSourceFromContent,
+    extractCloudPdfPathFromContent,
+    updateNote,
   ]);
 
   const deleteNote = useCallback(async (id: number): Promise<boolean> => {
     setError(null);
     try {
       if (useCloud) {
-        let cloudVideoPaths = extractCloudVideoPaths(notes.find(note => note.id === id)?.attachedVideos);
+        const noteInState = notes.find(note => note.id === id);
+        let cloudVideoPaths = extractCloudVideoPaths(noteInState?.attachedVideos);
+        let cloudPdfPaths = (() => {
+          const path = extractCloudPdfPathFromContent(noteInState?.content);
+          return path ? [path] : [];
+        })();
 
-        if (cloudVideoPaths.length === 0) {
+        if (cloudVideoPaths.length === 0 || cloudPdfPaths.length === 0) {
           const { data: cloudNote } = await supabase
             .from('notes')
-            .select('attached_videos')
+            .select('attached_videos, content')
             .eq('id', id)
             .maybeSingle();
-          const noteRow = cloudNote as { attached_videos?: string[] | null } | null;
+          const noteRow = cloudNote as { attached_videos?: string[] | null; content?: string | null } | null;
           cloudVideoPaths = extractCloudVideoPaths(noteRow?.attached_videos ?? undefined);
+          const maybePdfPath = extractCloudPdfPathFromContent(noteRow?.content ?? undefined);
+          cloudPdfPaths = maybePdfPath ? [maybePdfPath] : cloudPdfPaths;
         }
 
         const { error: deleteError } = await supabase
@@ -701,6 +887,7 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
         if (deleteError) throw deleteError;
 
         await removeCloudVideos(cloudVideoPaths);
+        await removeCloudPdfs(cloudPdfPaths);
       }
 
       if (useLocal) {
@@ -714,7 +901,16 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
       setError(err instanceof Error ? err.message : 'Erro ao deletar nota');
       return false;
     }
-  }, [useCloud, useLocal, deleteNoteLocal, notes, extractCloudVideoPaths, removeCloudVideos]);
+  }, [
+    useCloud,
+    useLocal,
+    deleteNoteLocal,
+    notes,
+    extractCloudVideoPaths,
+    extractCloudPdfPathFromContent,
+    removeCloudVideos,
+    removeCloudPdfs,
+  ]);
 
   const getNoteStats = useCallback(async (): Promise<NoteStats | null> => {
     setError(null);
@@ -854,10 +1050,23 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
     createNote,
     updateNote,
     deleteNote,
+    syncLegacyPdfNotesToCloud,
     getNoteStats,
     linkTaskToNote,
     unlinkTaskFromNote,
-  }), [notes, isLoading, error, fetchNotes, createNote, updateNote, deleteNote, getNoteStats, linkTaskToNote, unlinkTaskFromNote]);
+  }), [
+    notes,
+    isLoading,
+    error,
+    fetchNotes,
+    createNote,
+    updateNote,
+    deleteNote,
+    syncLegacyPdfNotesToCloud,
+    getNoteStats,
+    linkTaskToNote,
+    unlinkTaskFromNote,
+  ]);
 
   return (
     <NotesContext.Provider value={value}>
