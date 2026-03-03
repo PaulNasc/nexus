@@ -1225,6 +1225,155 @@ class MainApplication {
       return { filePath, html };
     };
 
+    const readPdfImport = (filePath: string): { filePath: string } => {
+      if (!filePath || typeof filePath !== 'string') {
+        throw new Error('filePath inválido');
+      }
+      if (!fs.existsSync(filePath)) {
+        throw new Error('Arquivo não encontrado');
+      }
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext !== '.pdf') {
+        throw new Error('Arquivo PDF inválido');
+      }
+      return { filePath };
+    };
+
+    const decodePdfLiteralString = (rawLiteral: string): string => {
+      if (!rawLiteral) return '';
+      let out = '';
+      for (let i = 0; i < rawLiteral.length; i += 1) {
+        const ch = rawLiteral[i]!;
+        if (ch !== '\\') {
+          out += ch;
+          continue;
+        }
+
+        const next = rawLiteral[i + 1];
+        if (!next) break;
+        i += 1;
+        if (next === 'n') out += '\n';
+        else if (next === 'r') out += '\r';
+        else if (next === 't') out += '\t';
+        else if (next === 'b') out += '\b';
+        else if (next === 'f') out += '\f';
+        else if (next === '(') out += '(';
+        else if (next === ')') out += ')';
+        else if (next === '\\') out += '\\';
+        else if (/[0-7]/.test(next)) {
+          const octal = `${next}${rawLiteral[i + 1] || ''}${rawLiteral[i + 2] || ''}`.match(/^[0-7]{1,3}/)?.[0] || next;
+          out += String.fromCharCode(parseInt(octal, 8));
+          i += octal.length - 1;
+        } else {
+          out += next;
+        }
+      }
+      return out;
+    };
+
+    const decodePdfHexString = (rawHexToken: string): string => {
+      const normalized = rawHexToken
+        .replace(/[<>]/g, '')
+        .replace(/\s+/g, '');
+      if (!normalized) return '';
+      const evenHex = normalized.length % 2 === 0 ? normalized : `${normalized}0`;
+      const buf = Buffer.from(evenHex, 'hex');
+      if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
+        const chars: string[] = [];
+        for (let i = 2; i + 1 < buf.length; i += 2) {
+          chars.push(String.fromCharCode((buf[i]! << 8) | buf[i + 1]!));
+        }
+        return chars.join('');
+      }
+      return buf.toString('utf8') || buf.toString('latin1');
+    };
+
+    const extractPdfTextFallback = (filePath: string): string => {
+      try {
+        const raw = fs.readFileSync(filePath);
+        const source = raw.toString('latin1');
+        const chunks: string[] = [];
+        const appendChunk = (value: string) => {
+          const cleaned = String(value || '')
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (cleaned.length >= 2) chunks.push(cleaned);
+        };
+
+        const directTextRegex = /(\((?:\\.|[^\\()])*\)|<[0-9a-fA-F\s]+>)\s*Tj/g;
+        for (const match of source.matchAll(directTextRegex)) {
+          const token = match[1] || '';
+          if (token.startsWith('(')) {
+            appendChunk(decodePdfLiteralString(token.slice(1, -1)));
+          } else {
+            appendChunk(decodePdfHexString(token));
+          }
+          if (chunks.length > 8000) break;
+        }
+
+        const arrayTextRegex = /\[(.*?)\]\s*TJ/gs;
+        for (const match of source.matchAll(arrayTextRegex)) {
+          const arrayBody = match[1] || '';
+          const tokenRegex = /(\((?:\\.|[^\\()])*\)|<[0-9a-fA-F\s]+>)/g;
+          for (const tokenMatch of arrayBody.matchAll(tokenRegex)) {
+            const token = tokenMatch[1] || '';
+            if (token.startsWith('(')) {
+              appendChunk(decodePdfLiteralString(token.slice(1, -1)));
+            } else {
+              appendChunk(decodePdfHexString(token));
+            }
+            if (chunks.length > 8000) break;
+          }
+          if (chunks.length > 8000) break;
+        }
+
+        if (chunks.length === 0) return '';
+        return chunks.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+      } catch {
+        return '';
+      }
+    };
+
+    const sanitizePdfFileName = (value: string): string => {
+      try {
+        const withoutReserved = String(value || '').replace(/[<>:"/\\|?*]/g, '');
+        const safe = Array.from(withoutReserved).filter((ch) => ch.charCodeAt(0) >= 32).join('').trim();
+        return safe || `documento-${Date.now()}.pdf`;
+      } catch {
+        return `documento-${Date.now()}.pdf`;
+      }
+    };
+
+    const cacheImportedPdf = async (sourceFilePath: string): Promise<{ localPath: string; fileName: string; size: number }> => {
+      const importedPdfsDir = path.join(app.getPath('userData'), 'imported-pdfs');
+      if (!fs.existsSync(importedPdfsDir)) {
+        fs.mkdirSync(importedPdfsDir, { recursive: true });
+      }
+
+      const originalName = sanitizePdfFileName(path.basename(sourceFilePath));
+      const ext = path.extname(originalName) || '.pdf';
+      const baseName = path.basename(originalName, ext);
+      const stampedName = `${baseName}-${Date.now()}${ext}`;
+      const targetPath = path.join(importedPdfsDir, stampedName);
+
+      await fs.promises.copyFile(sourceFilePath, targetPath);
+      const stat = await fs.promises.stat(targetPath);
+      return { localPath: targetPath, fileName: originalName, size: stat.size };
+    };
+
+    const renderPdfThumbnailDataUrl = async (filePath: string): Promise<string | null> => {
+      try {
+        const image = await nativeImage.createThumbnailFromPath(filePath, {
+          width: 1024,
+          height: 1448,
+        });
+        if (!image || image.isEmpty()) return null;
+        return image.toDataURL();
+      } catch {
+        return null;
+      }
+    };
+
     const mimeFromExt = (ext: string): string => {
       const e = (ext || '').toLowerCase();
       if (e === '.png') return 'image/png';
@@ -1236,162 +1385,68 @@ class MainApplication {
       return 'application/octet-stream';
     };
 
-    const htmlToTextPreserveLines = async (html: string): Promise<string> => {
-      const $ = cheerio.load(html || '', { xmlMode: false });
-
-      $('script').remove();
-      $('style').remove();
-      $('noscript').remove();
-      $('head').remove();
-
-      $('br').replaceWith('\n');
-      $('div').each((_, el) => {
-        const node = $(el);
-        node.prepend('\n');
-        node.append('\n');
-      });
-      $('p').each((_, el) => {
-        const node = $(el);
-        node.prepend('\n');
-        node.append('\n');
-      });
-
-      const root = $('en-note').first();
-      const text = (root && root.length > 0 ? root.text() : $('body').text()) || $.root().text();
-      return text.replace(/\n{3,}/g, '\n\n').trim();
-    };
-
-    const deriveHtmlTitle = async (html: string, filePath: string): Promise<string> => {
-      try {
-        const $ = cheerio.load(html || '', { xmlMode: false });
-        const title = String($('title').first().text() || '').trim();
-        if (title) return title;
-      } catch {
-        // ignore
-      }
-      const base = path.basename(filePath);
-      return base.replace(/\.(html|htm)$/i, '');
-    };
-
-    const extractHtmlImagesAsDataUrls = (html: string, htmlFilePath: string): string[] => {
-      try {
-        const $ = cheerio.load(html || '', { xmlMode: false });
-        const srcs = new Set<string>();
-        $('img').each((_, el) => {
-          const src = String($(el).attr('src') || '').trim();
-          if (!src) return;
-          srcs.add(src);
-        });
-
-        const baseDir = path.dirname(htmlFilePath);
-        const out: string[] = [];
-        for (const src of srcs) {
-          if (/^data:/i.test(src)) {
-            out.push(src);
-            continue;
-          }
-          if (/^(https?:)?\/\//i.test(src)) {
-            continue;
-          }
-
-          const decoded = (() => {
-            try {
-              return decodeURIComponent(src);
-            } catch {
-              return src;
-            }
-          })();
-
-          const absPath = path.resolve(baseDir, decoded);
-          if (!fs.existsSync(absPath)) continue;
-          const buf = fs.readFileSync(absPath);
-          const mime = mimeFromExt(path.extname(absPath));
-          out.push(`data:${mime};base64,${buf.toString('base64')}`);
-        }
-        return out;
-      } catch {
-        return [];
-      }
-    };
-
-    ipcMain.handle('import:html-preview', async (event, input: { filePath: string }): Promise<RestorePreview> => {
-      readHtmlImport(input?.filePath);
+    ipcMain.handle('import:pdf-preview', async (event, input: { filePath: string }): Promise<RestorePreview> => {
+      readPdfImport(input?.filePath);
       return { tasks: 0, notes: 1, categories: 0, settings: false, conflicts: [], warnings: [] };
     });
 
-    ipcMain.handle('import:html-apply', async (event, input: { filePath: string }): Promise<ImportResult> => {
-      const { filePath, html } = readHtmlImport(input?.filePath);
-      const title = await deriveHtmlTitle(html, filePath);
-      const content = await htmlToTextPreserveLines(html);
-      const attachedImages = extractHtmlImagesAsDataUrls(html, filePath);
+    ipcMain.handle('import:pdf-apply', async (event, input: { filePath: string; systemTagId?: number; systemTagName?: string }): Promise<ImportResult> => {
+      const { filePath } = readPdfImport(input?.filePath);
+      const title = path.basename(filePath, path.extname(filePath));
+      const extractedText = extractPdfTextFallback(filePath);
+      const attachedPreviewImage = await renderPdfThumbnailDataUrl(filePath);
+      const cachedPdf = await cacheImportedPdf(filePath);
+      const now = new Date().toISOString();
+
+      const noteId = Date.now();
+
+      const tags = (() => {
+        const baseTags = ['pdf-importado'];
+        const systemTagName = typeof input?.systemTagName === 'string' ? input.systemTagName.trim() : '';
+        if (!systemTagName) return baseTags;
+        return [systemTagName, ...baseTags.filter(tag => tag.toLowerCase() !== systemTagName.toLowerCase())];
+      })();
+
       const note: Note = {
-        id: Date.now(),
+        id: noteId,
         title,
-        content,
+        content: `${extractedText ? `${extractedText}\n\n` : ''}[PDF_SOURCE]${cachedPdf.localPath}[/PDF_SOURCE]`,
         format: 'text',
-        attachedImages: attachedImages.length > 0 ? attachedImages : undefined,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        tags,
+        attachedImages: attachedPreviewImage ? [attachedPreviewImage] : undefined,
+        attachments: [
+          {
+            id: `pdf-${noteId}`,
+            noteId,
+            type: 'file',
+            url: cachedPdf.localPath,
+            name: cachedPdf.fileName,
+            size: cachedPdf.size,
+            mimeType: 'application/pdf',
+            created_at: now,
+          },
+        ],
+        created_at: now,
+        updated_at: now,
       };
+
       const db = MemoryDatabase.getInstance();
       const result = await db.mergeData({ tasks: [], notes: [note] });
-      return { ...result, importedNotes: [note] };
-    });
+      const warnings = [...(result.warnings || [])];
+      if (!extractedText) {
+        warnings.push({
+          type: 'note',
+          message: 'PDF importado sem transcrição de texto. O arquivo pode estar escaneado ou com texto não extraível.',
+        });
+      }
+      if (!attachedPreviewImage) {
+        warnings.push({
+          type: 'note',
+          message: 'PDF importado sem miniatura visual. O conteúdo textual foi mantido na nota.',
+        });
+      }
 
-    ipcMain.handle('import:txt-preview', async (event, input: { filePath: string }): Promise<RestorePreview> => {
-      if (!input?.filePath) throw new Error('filePath inválido');
-      readUtf8(input.filePath); // validate readable
-      return { tasks: 0, notes: 1, categories: 0, settings: false, conflicts: [], warnings: [] };
-    });
-
-    ipcMain.handle('import:txt-apply', async (event, input: { filePath: string }): Promise<ImportResult> => {
-      if (!input?.filePath) throw new Error('filePath inválido');
-      const content = readUtf8(input.filePath);
-      const fileName = path.basename(input.filePath, path.extname(input.filePath));
-      const db = MemoryDatabase.getInstance();
-      const note: Note = {
-        id: Date.now(),
-        title: fileName,
-        content,
-        format: 'text',
-        tags: [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      const result = await db.mergeData({ tasks: [], notes: [note] });
-      return { ...result, importedNotes: [note] };
-    });
-
-    ipcMain.handle('import:md-preview', async (event, input: { filePath: string }): Promise<RestorePreview> => {
-      if (!input?.filePath) throw new Error('filePath inválido');
-      readUtf8(input.filePath); // validate readable
-      return { tasks: 0, notes: 1, categories: 0, settings: false, conflicts: [], warnings: [] };
-    });
-
-    ipcMain.handle('import:md-apply', async (event, input: { filePath: string }): Promise<ImportResult> => {
-      if (!input?.filePath) throw new Error('filePath inválido');
-      const content = readUtf8(input.filePath);
-      const fileName = path.basename(input.filePath, path.extname(input.filePath));
-      const db = MemoryDatabase.getInstance();
-      const note: Note = {
-        id: Date.now(),
-        title: fileName,
-        content,
-        format: 'markdown',
-        tags: [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      const result = await db.mergeData({ tasks: [], notes: [note] });
-      return { ...result, importedNotes: [note] };
-    });
-
-    ipcMain.handle('import:pdf-preview', async (): Promise<RestorePreview> => {
-      return { tasks: 0, notes: 0, categories: 0, settings: false, conflicts: [], warnings: ['Importação PDF ainda não implementada'] };
-    });
-
-    ipcMain.handle('import:pdf-apply', async (): Promise<ImportResult> => {
-      return { success: false, imported: { tasks: 0, notes: 0, categories: 0 }, warnings: [], errors: [{ type: 'note', message: 'Importação PDF ainda não implementada' }] };
+      return { ...result, warnings, importedNotes: [note] };
     });
 
     ipcMain.handle('import:mp4-preview', async (event, input: { filePath: string }): Promise<RestorePreview> => {

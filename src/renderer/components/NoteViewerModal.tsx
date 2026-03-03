@@ -100,10 +100,51 @@ const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reje
 export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, onClose, onTogglePin }) => {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [videoLightbox, setVideoLightbox] = useState<string | null>(null);
+  const [pdfLightboxSrc, setPdfLightboxSrc] = useState<string | null>(null);
   const [videoUrls, setVideoUrls] = useState<Record<string, string>>({});
   const [videoPaths, setVideoPaths] = useState<Record<string, string>>({});
   const [videoMissing, setVideoMissing] = useState<Record<string, boolean>>({});
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
+
+  const toPdfViewerUrl = (rawUrl: string): string => {
+    const value = String(rawUrl || '').trim();
+    if (!value) return '';
+    if (/^(data:|https?:\/\/|file:\/\/)/i.test(value)) return value;
+    const normalized = value.replace(/\\/g, '/');
+    if (/^[a-zA-Z]:\//.test(normalized)) return `file:///${normalized}`;
+    if (normalized.startsWith('/')) return `file://${normalized}`;
+    return value;
+  };
+
+  const contentPdfSource = useMemo(() => {
+    const content = String(note?.content || '');
+    const match = content.match(/\[PDF_SOURCE\]([\s\S]*?)\[\/PDF_SOURCE\]/i);
+    return (match?.[1] || '').trim();
+  }, [note?.content]);
+
+  const sanitizedNoteContent = useMemo(() => {
+    return String(note?.content || '')
+      .replace(/\n?\s*\[PDF_SOURCE\][\s\S]*?\[\/PDF_SOURCE\]\s*\n?/gi, '\n')
+      .replace(/\[PDF importado\]\s*\n?\s*Não foi possível extrair texto automaticamente de .*?\.pdf\.?/gi, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }, [note?.content]);
+
+  const pdfAttachments = useMemo(() => {
+    return (note?.attachments || []).filter((a) => {
+      if (a.type !== 'file') return false;
+      const mime = String(a.mimeType || '').toLowerCase();
+      const name = String(a.name || '').toLowerCase();
+      const url = String(a.url || '').toLowerCase();
+      return mime === 'application/pdf' || name.endsWith('.pdf') || url.endsWith('.pdf');
+    });
+  }, [note]);
+
+  const primaryPdf = pdfAttachments[0] || null;
+  const primaryPdfUrl = primaryPdf
+    ? toPdfViewerUrl(primaryPdf.url)
+    : (contentPdfSource ? toPdfViewerUrl(contentPdfSource) : '');
+  const hasPdfAttachment = Boolean(primaryPdfUrl);
 
   const hasVideos = useMemo(() => {
     return note?.attachedVideos && note.attachedVideos.length > 0;
@@ -229,6 +270,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
   }, [note]);
 
   const hasAttachments = hasVideos || hasImages;
+  const showAttachmentSidebar = hasVideos || (hasImages && !hasPdfAttachment);
 
   if (!isOpen || !note) return null;
 
@@ -273,6 +315,21 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     if (!electron?.video) return;
     const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
     await electron.video.saveAs(localVideoName);
+  };
+
+  const handleOpenPdfExternal = (pdfUrl: string) => {
+    if (!pdfUrl) return;
+    window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleDownloadPdf = (pdfUrl: string, fileName?: string) => {
+    if (!pdfUrl) return;
+    const link = document.createElement('a');
+    link.href = pdfUrl;
+    link.download = fileName || 'documento.pdf';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.click();
   };
 
   const handleRelinkVideo = async (videoRef: string) => {
@@ -331,20 +388,69 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
           {/* Text area — expanded */}
           <div style={{ flex: 1, overflow: 'auto', padding: 'var(--space-5) var(--space-6)', minWidth: 0 }}>
+            {hasPdfAttachment && (
+              <div style={{
+                border: '1px solid var(--color-border-primary)',
+                borderRadius: 10,
+                background: 'var(--color-bg-secondary)',
+                overflow: 'hidden',
+                marginBottom: 14,
+              }}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 10px',
+                  borderBottom: '1px solid var(--color-border-primary)',
+                }}>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {primaryPdf?.name || 'PDF anexado'}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={() => setPdfLightboxSrc(primaryPdfUrl)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                    >
+                      <ExternalLink size={12} /> Expandir
+                    </button>
+                    <button
+                      onClick={() => handleOpenPdfExternal(primaryPdfUrl)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                    >
+                      <Play size={12} /> Abrir
+                    </button>
+                    <button
+                      onClick={() => handleDownloadPdf(primaryPdfUrl, primaryPdf?.name)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                    >
+                      <Download size={12} /> Baixar
+                    </button>
+                  </div>
+                </div>
+                <div style={{ width: '100%', height: '52vh', background: '#0b0b0b' }}>
+                  <iframe
+                    src={primaryPdfUrl}
+                    title={primaryPdf?.name || 'PDF'}
+                    style={{ width: '100%', height: '100%', border: 0 }}
+                  />
+                </div>
+              </div>
+            )}
             {note.format === 'markdown' ? (
               <div
                 className="note-viewer-markdown"
-                dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(note.content || '') }}
+                dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(sanitizedNoteContent) }}
               />
             ) : (
               <div className="note-viewer-plaintext">
-                {note.content}
+                {sanitizedNoteContent}
               </div>
             )}
           </div>
 
           {/* Right sidebar — attachments */}
-          {hasAttachments && (
+          {showAttachmentSidebar && (
             <div style={{
               width: 320, minWidth: 320, borderLeft: '1px solid var(--color-border-primary)',
               overflow: 'auto', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 16,
@@ -484,6 +590,24 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
               <X size={18} />
             </button>
             <img src={lightboxSrc} className="note-image-lightbox-img" alt="Imagem ampliada" />
+          </div>
+        )}
+
+        {pdfLightboxSrc && (
+          <div
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, animation: 'fade-in 0.15s ease-out' }}
+            onClick={() => setPdfLightboxSrc(null)}
+          >
+            <button
+              onClick={() => setPdfLightboxSrc(null)}
+              aria-label="Fechar"
+              style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 1101 }}
+            >
+              <X size={18} />
+            </button>
+            <div onClick={(e) => e.stopPropagation()} style={{ width: '92vw', height: '88vh', borderRadius: 8, overflow: 'hidden', background: '#111' }}>
+              <iframe src={pdfLightboxSrc} title="PDF expandido" style={{ width: '100%', height: '100%', border: 0 }} />
+            </div>
           </div>
         )}
 
