@@ -345,8 +345,7 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
 interface SettingsProps {
   isOpen: boolean;
   onClose: () => void;
-};
-
+}
 type TabType = 'geral' | 'aparencia' | 'notificacoes' | 'acessibilidade' | 'dados' | 'organizacoes' | 'logs' | 'atualizacoes' | 'sobre';
 
 export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
@@ -473,14 +472,27 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       externalDragSessionRef.current = false;
       setIsFileDragActive(false);
 
-      const droppedPath = event.dataTransfer?.files?.[0]?.path;
-      if (!droppedPath) {
+      const files = Array.from(event.dataTransfer?.files || []);
+      const droppedPaths = files.map((file) => file.path).filter(Boolean) as string[];
+      if (droppedPaths.length === 0) {
         closeImportExportModal();
         return;
       }
 
+      const droppedExts = files
+        .map((file) => file.name.toLowerCase().match(/\.[^.]+$/)?.[0] || '')
+        .filter(Boolean);
+      const onlyPdfs = droppedExts.length > 0 && droppedExts.every((ext) => ext === '.pdf');
+
+      if (droppedPaths.length > 1 && onlyPdfs) {
+        window.dispatchEvent(new CustomEvent('openImportIntent', {
+          detail: { intent: { kind: 'pdf-files', filePaths: droppedPaths }, source: 'external-dnd' },
+        }));
+        return;
+      }
+
       window.dispatchEvent(new CustomEvent('openImportIntent', {
-        detail: { filePath: droppedPath, source: 'external-dnd' },
+        detail: { filePath: droppedPaths[0], source: 'external-dnd' },
       }));
     };
 
@@ -631,6 +643,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       if (intent?.kind === 'enex') return await electron.backup.importEnexPreview({ filePath: intent.filePath });
       if (intent?.kind === 'html-file') return await electron.invoke('import:html-preview', { filePath: intent.filePath }) as RestorePreview;
       if (intent?.kind === 'pdf-file') return await electron.invoke('import:pdf-preview', { filePath: intent.filePath }) as RestorePreview;
+      if (intent?.kind === 'pdf-files') return await electron.invoke('import:pdf-preview', { filePaths: intent.filePaths }) as RestorePreview;
       if (intent?.kind === 'txt-file') return await electron.invoke('import:txt-preview', { filePath: intent.filePath }) as RestorePreview;
       if (intent?.kind === 'md-file') return await electron.invoke('import:md-preview', { filePath: intent.filePath }) as RestorePreview;
       if (intent?.kind === 'folder') return await electron.invoke('import:folder-preview', { folderPath: intent.folderPath }) as RestorePreview;
@@ -674,6 +687,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       else if (intent?.kind === 'enex') result = await electron.backup.importEnexApply({ filePath: intent.filePath });
       else if (intent?.kind === 'html-file') result = await electron.invoke('import:html-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
       else if (intent?.kind === 'pdf-file') result = await electron.invoke('import:pdf-apply', { filePath: intent.filePath }) as ImportResult;
+      else if (intent?.kind === 'pdf-files') result = await electron.invoke('import:pdf-apply', { filePaths: intent.filePaths, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
       else if (intent?.kind === 'txt-file') result = await electron.invoke('import:txt-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
       else if (intent?.kind === 'md-file') result = await electron.invoke('import:md-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
       else if (intent?.kind === 'mp4-file') result = await electron.invoke('import:mp4-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;

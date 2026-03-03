@@ -51,6 +51,9 @@ type ImportIntent = {
   kind: 'pdf-file';
   filePath: string;
 } | {
+  kind: 'pdf-files';
+  filePaths: string[];
+} | {
   kind: 'txt-file';
   filePath: string;
 } | {
@@ -387,6 +390,32 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       const files = Array.from(e.dataTransfer.files);
       if (files.length === 0) {
         setError('Nenhum arquivo foi arrastado');
+        return;
+      }
+
+      const droppedPaths = files.map((f) => f.path).filter(Boolean) as string[];
+      if (droppedPaths.length === 0) {
+        setError('Não foi possível obter o caminho dos arquivos');
+        return;
+      }
+
+      const droppedExts = files
+        .map((f) => f.name.toLowerCase().match(/\.[^.]+$/)?.[0] || '')
+        .filter(Boolean);
+
+      const onlyPdfs = droppedExts.length > 0 && droppedExts.every((ext) => ext === '.pdf');
+      if (files.length > 1 && onlyPdfs) {
+        const nextIntent: ImportIntent = { kind: 'pdf-files', filePaths: droppedPaths };
+        setIsBusy(true);
+        setIntent(nextIntent);
+        startProgress('Analisando arquivos PDF...');
+        const p = await onImportPreview(nextIntent);
+        if (!p) {
+          setError('Erro ao gerar preview do import');
+          finishProgress();
+          return;
+        }
+        setPreview(p);
         return;
       }
 

@@ -1385,26 +1385,27 @@ class MainApplication {
       return 'application/octet-stream';
     };
 
-    ipcMain.handle('import:pdf-preview', async (event, input: { filePath: string }): Promise<RestorePreview> => {
-      readPdfImport(input?.filePath);
-      return { tasks: 0, notes: 1, categories: 0, settings: false, conflicts: [], warnings: [] };
-    });
+    const resolvePdfImportPaths = (input: { filePath?: string; filePaths?: string[] }): string[] => {
+      const candidates = Array.isArray(input?.filePaths) && input.filePaths.length > 0
+        ? input.filePaths
+        : (input?.filePath ? [input.filePath] : []);
+      if (candidates.length === 0) throw new Error('filePath inválido');
+      return candidates.map((candidate) => readPdfImport(candidate).filePath);
+    };
 
-    ipcMain.handle('import:pdf-apply', async (event, input: { filePath: string; systemTagId?: number; systemTagName?: string }): Promise<ImportResult> => {
-      const { filePath } = readPdfImport(input?.filePath);
+    const createImportedPdfNote = async (filePath: string, systemTagName?: string): Promise<{ note: Note; warnings: Array<{ type: 'note'; message: string }> }> => {
       const title = path.basename(filePath, path.extname(filePath));
       const extractedText = extractPdfTextFallback(filePath);
       const attachedPreviewImage = await renderPdfThumbnailDataUrl(filePath);
       const cachedPdf = await cacheImportedPdf(filePath);
       const now = new Date().toISOString();
-
-      const noteId = Date.now();
+      const noteId = Date.now() + Math.floor(Math.random() * 100000);
 
       const tags = (() => {
         const baseTags = ['pdf-importado'];
-        const systemTagName = typeof input?.systemTagName === 'string' ? input.systemTagName.trim() : '';
-        if (!systemTagName) return baseTags;
-        return [systemTagName, ...baseTags.filter(tag => tag.toLowerCase() !== systemTagName.toLowerCase())];
+        const normalizedSystemTag = typeof systemTagName === 'string' ? systemTagName.trim() : '';
+        if (!normalizedSystemTag) return baseTags;
+        return [normalizedSystemTag, ...baseTags.filter(tag => tag.toLowerCase() !== normalizedSystemTag.toLowerCase())];
       })();
 
       const note: Note = {
@@ -1430,23 +1431,42 @@ class MainApplication {
         updated_at: now,
       };
 
-      const db = MemoryDatabase.getInstance();
-      const result = await db.mergeData({ tasks: [], notes: [note] });
-      const warnings = [...(result.warnings || [])];
+      const warnings: Array<{ type: 'note'; message: string }> = [];
       if (!extractedText) {
         warnings.push({
           type: 'note',
-          message: 'PDF importado sem transcrição de texto. O arquivo pode estar escaneado ou com texto não extraível.',
+          message: `PDF importado sem transcrição de texto: ${path.basename(filePath)}.`,
         });
       }
       if (!attachedPreviewImage) {
         warnings.push({
           type: 'note',
-          message: 'PDF importado sem miniatura visual. O conteúdo textual foi mantido na nota.',
+          message: `PDF importado sem miniatura visual: ${path.basename(filePath)}.`,
         });
       }
 
-      return { ...result, warnings, importedNotes: [note] };
+      return { note, warnings };
+    };
+
+    ipcMain.handle('import:pdf-preview', async (event, input: { filePath?: string; filePaths?: string[] }): Promise<RestorePreview> => {
+      const filePaths = resolvePdfImportPaths(input || {});
+      return { tasks: 0, notes: filePaths.length, categories: 0, settings: false, conflicts: [], warnings: [] };
+    });
+
+    ipcMain.handle('import:pdf-apply', async (event, input: { filePath?: string; filePaths?: string[]; systemTagId?: number; systemTagName?: string }): Promise<ImportResult> => {
+      const filePaths = resolvePdfImportPaths(input || {});
+      const db = MemoryDatabase.getInstance();
+      const notes: Note[] = [];
+      const warnings: Array<{ type: 'note'; message: string }> = [];
+
+      for (const filePath of filePaths) {
+        const created = await createImportedPdfNote(filePath, input?.systemTagName);
+        notes.push(created.note);
+        warnings.push(...created.warnings);
+      }
+
+      const result = await db.mergeData({ tasks: [], notes });
+      return { ...result, warnings: [...(result.warnings || []), ...warnings], importedNotes: notes };
     });
 
     ipcMain.handle('import:mp4-preview', async (event, input: { filePath: string }): Promise<RestorePreview> => {

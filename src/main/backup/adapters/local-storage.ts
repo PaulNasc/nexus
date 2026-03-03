@@ -302,6 +302,7 @@ export class LocalStorageAdapter {
     textFiles: string[];      // texto e código fonte
     imageFiles: string[];     // .png, .jpg, .jpeg, .jfif, .gif, .bmp, .webp
     videoFiles: string[];     // .mp4, .webm, .ogg, .mov, .avi, .mkv
+    pdfFiles: string[];       // .pdf
     docFiles: string[];       // .doc, .docx, .rtf, .odt
     archiveFiles: string[];   // .rar, .zip (aninhados)
     htmlFiles: string[];      // .html, .htm
@@ -319,6 +320,7 @@ export class LocalStorageAdapter {
     ]);
     const imageExts = new Set(['.png', '.jpg', '.jpeg', '.jfif', '.gif', '.bmp', '.webp', '.svg', '.tiff', '.ico']);
     const videoExts = new Set(['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv']);
+    const pdfExts = new Set(['.pdf']);
     const docExts = new Set(['.doc', '.docx', '.rtf', '.odt', '.xls', '.xlsx', '.ppt', '.pptx']);
     const archiveExts = new Set(['.rar', '.zip', '.7z', '.tar', '.gz']);
     const htmlExts = new Set(['.html', '.htm']);
@@ -329,6 +331,7 @@ export class LocalStorageAdapter {
       textFiles: [] as string[],
       imageFiles: [] as string[],
       videoFiles: [] as string[],
+      pdfFiles: [] as string[],
       docFiles: [] as string[],
       archiveFiles: [] as string[],
       htmlFiles: [] as string[],
@@ -367,6 +370,7 @@ export class LocalStorageAdapter {
         else if (!ext && !previewOnly && this.isLikelyTextFile(fullPath)) result.textFiles.push(fullPath);
         else if (imageExts.has(ext)) result.imageFiles.push(fullPath);
         else if (videoExts.has(ext)) result.videoFiles.push(fullPath);
+        else if (pdfExts.has(ext)) result.pdfFiles.push(fullPath);
         else if (docExts.has(ext)) result.docFiles.push(fullPath);
         else if (archiveExts.has(ext)) result.archiveFiles.push(fullPath);
         else if (htmlExts.has(ext)) result.htmlFiles.push(fullPath);
@@ -544,6 +548,28 @@ export class LocalStorageAdapter {
       note.attachedImages.push(dataUrl);
       usedSources.add(sourceKey);
       return true;
+    };
+
+    const sanitizePdfFileName = (value: string): string => {
+      const safe = String(value || '').replace(/[<>:"/\\|?*]/g, '').trim();
+      return safe || `documento-${Date.now()}.pdf`;
+    };
+
+    const cacheImportedPdf = (sourceFilePath: string): { localPath: string; fileName: string; size: number } => {
+      const importedPdfsDir = path.join(app.getPath('userData'), 'imported-pdfs');
+      if (!fs.existsSync(importedPdfsDir)) {
+        fs.mkdirSync(importedPdfsDir, { recursive: true });
+      }
+
+      const originalName = sanitizePdfFileName(path.basename(sourceFilePath));
+      const ext = path.extname(originalName) || '.pdf';
+      const baseName = path.basename(originalName, ext);
+      const stampedName = `${baseName}-${Date.now()}-${Math.floor(Math.random() * 100000)}${ext}`;
+      const targetPath = path.join(importedPdfsDir, stampedName);
+
+      fs.copyFileSync(sourceFilePath, targetPath);
+      const stat = fs.statSync(targetPath);
+      return { localPath: targetPath, fileName: originalName, size: stat.size };
     };
 
     // 1. Processar HTML primeiro (já tem lógica existente)
@@ -744,7 +770,44 @@ export class LocalStorageAdapter {
       }
     }
 
-    // 6. Listar arquivos não importáveis como warnings
+    // 6. Processar PDFs — cada PDF vira uma nota com anexo de arquivo
+    for (const pdfPath of scan.pdfFiles) {
+      try {
+        const title = path.basename(pdfPath, path.extname(pdfPath));
+        const noteId = baseId + noteIdx++;
+        const cachedPdf = previewOnly ? null : cacheImportedPdf(pdfPath);
+
+        const note: Note = {
+          id: noteId,
+          title,
+          content: cachedPdf ? `[PDF_SOURCE]${cachedPdf.localPath}[/PDF_SOURCE]` : `[Pré-visualização] PDF: ${path.basename(pdfPath)}`,
+          format: 'text',
+          tags: ['pdf-importado'],
+          attachments: cachedPdf
+            ? [
+                {
+                  id: `pdf-${noteId}`,
+                  noteId,
+                  type: 'file',
+                  url: cachedPdf.localPath,
+                  name: cachedPdf.fileName,
+                  size: cachedPdf.size,
+                  mimeType: 'application/pdf',
+                  created_at: now,
+                },
+              ]
+            : undefined,
+          created_at: now,
+          updated_at: now,
+        };
+        notes.push(note);
+      } catch {
+        skippedFiles.push(path.basename(pdfPath));
+        warnings.push(`Erro ao importar PDF: ${path.basename(pdfPath)}`);
+      }
+    }
+
+    // 7. Listar arquivos não importáveis como warnings
     for (const docPath of scan.docFiles) {
       skippedFiles.push(path.basename(docPath));
       warnings.push(`Documento Office ignorado (converta para .txt): ${path.basename(docPath)}`);
@@ -755,7 +818,7 @@ export class LocalStorageAdapter {
     }
     for (const otherPath of scan.otherFiles) {
       const ext = path.extname(otherPath).toLowerCase();
-      if (ext === '.json' || ext === '.enex') continue; // já tratados em outro fluxo
+      if (ext === '.json' || ext === '.enex' || ext === '.pdf') continue; // já tratados em outro fluxo
       skippedFiles.push(path.basename(otherPath));
     }
 
@@ -1001,7 +1064,7 @@ export class LocalStorageAdapter {
 
     // Fallback: detecção inteligente de arquivos mistos (txt, sql, imagens, html, etc.)
     const scan = this.scanAllFiles(tempDir, { previewOnly: options?.previewOnly });
-    const totalFiles = scan.textFiles.length + scan.imageFiles.length + scan.htmlFiles.length;
+    const totalFiles = scan.textFiles.length + scan.imageFiles.length + scan.htmlFiles.length + scan.pdfFiles.length;
 
     if (totalFiles > 0 || scan.videoFiles.length > 0 || scan.docFiles.length > 0) {
       const mixed = this.buildNotesFromMixedFiles(scan, { previewOnly: options?.previewOnly });
@@ -1065,7 +1128,7 @@ export class LocalStorageAdapter {
 
     // Fallback: detecção inteligente de arquivos mistos
     const scan = this.scanAllFiles(folderPath, { previewOnly: options?.previewOnly });
-    const totalFiles = scan.textFiles.length + scan.imageFiles.length + scan.htmlFiles.length;
+    const totalFiles = scan.textFiles.length + scan.imageFiles.length + scan.htmlFiles.length + scan.pdfFiles.length;
 
     if (totalFiles > 0 || scan.videoFiles.length > 0 || scan.docFiles.length > 0) {
       const mixed = this.buildNotesFromMixedFiles(scan, { previewOnly: options?.previewOnly });
