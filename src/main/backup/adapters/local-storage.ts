@@ -161,7 +161,11 @@ export class LocalStorageAdapter {
     return base.replace(/\.(html|htm)$/i, '');
   }
 
-  private extractHtmlImagesAsDataUrls(html: string, htmlFilePath: string): string[] {
+  private extractHtmlImagesAsDataUrls(
+    html: string,
+    htmlFilePath: string,
+    referencedImagePaths?: Set<string>,
+  ): string[] {
     try {
       const $ = cheerio.load(html || '', { xmlMode: false });
       const srcs = new Set<string>();
@@ -192,6 +196,7 @@ export class LocalStorageAdapter {
 
         const absPath = path.resolve(baseDir, decoded);
         if (!fs.existsSync(absPath)) continue;
+        referencedImagePaths?.add(this.normalizeFileSystemPath(absPath));
         const buf = fs.readFileSync(absPath);
         const mime = this.mimeFromExt(path.extname(absPath));
         out.push(`data:${mime};base64,${buf.toString('base64')}`);
@@ -410,6 +415,19 @@ export class LocalStorageAdapter {
       .replace(/\s+/g, ' ');
   }
 
+  private normalizeFileSystemPath(filePath: string): string {
+    return path.resolve(filePath).replace(/\\/g, '/').toLowerCase();
+  }
+
+  private normalizeFolderAssociationKey(folderName: string): string {
+    const normalized = this.normalizeAssociationKey(folderName);
+    const stripped = normalized
+      .replace(/\b(files?|images?|imgs?|assets?|anexos?|attachments?|pictures?|pics?|screenshots?)\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return stripped || normalized;
+  }
+
   private associationBaseKey(filePath: string): string {
     const normalized = this.normalizeAssociationKey(this.normalizeFileName(filePath));
     const stripped = normalized.replace(/(?:\s*(?:\(|\[)?(?:img|image|foto|photo|scan|pagina|page)?\s*\d+(?:\)|\])?)$/i, '').trim();
@@ -504,6 +522,29 @@ export class LocalStorageAdapter {
     // Mapas de associação imagem->nota
     const notesByName = new Map<string, number>();
     const notesByBaseName = new Map<string, number>();
+    const htmlImagePathToNoteIndex = new Map<string, number>();
+    const noteAttachedImageSources = new Map<number, Set<string>>();
+
+    const appendImageToNote = (noteIndex: number, imgPath: string): boolean => {
+      if (previewOnly) return true;
+      const note = notes[noteIndex];
+      if (!note) return false;
+
+      const sourceKey = this.normalizeFileSystemPath(imgPath);
+      let usedSources = noteAttachedImageSources.get(noteIndex);
+      if (!usedSources) {
+        usedSources = new Set<string>();
+        noteAttachedImageSources.set(noteIndex, usedSources);
+      }
+      if (usedSources.has(sourceKey)) return true;
+
+      const dataUrl = this.imageFileToDataUrl(imgPath);
+      if (!dataUrl) return false;
+      if (!note.attachedImages) note.attachedImages = [];
+      note.attachedImages.push(dataUrl);
+      usedSources.add(sourceKey);
+      return true;
+    };
 
     // 1. Processar HTML primeiro (já tem lógica existente)
     for (const htmlPath of scan.htmlFiles) {
@@ -515,7 +556,10 @@ export class LocalStorageAdapter {
         const content = previewOnly
           ? `[Pré-visualização] HTML: ${path.basename(htmlPath)}`
           : this.htmlToTextPreserveLines(html);
-        const attachedImages = previewOnly ? [] : this.extractHtmlImagesAsDataUrls(html, htmlPath);
+        const referencedImagePaths = new Set<string>();
+        const attachedImages = previewOnly
+          ? []
+          : this.extractHtmlImagesAsDataUrls(html, htmlPath, referencedImagePaths);
         const note: Note = {
           id: baseId + noteIdx++,
           title,
@@ -529,6 +573,12 @@ export class LocalStorageAdapter {
         notes.push(note);
         notesByName.set(this.normalizeAssociationKey(this.normalizeFileName(htmlPath)), idx);
         notesByBaseName.set(this.associationBaseKey(htmlPath), idx);
+        if (!previewOnly && referencedImagePaths.size > 0) {
+          noteAttachedImageSources.set(idx, new Set<string>(referencedImagePaths));
+          for (const imgPathKey of referencedImagePaths) {
+            htmlImagePathToNoteIndex.set(imgPathKey, idx);
+          }
+        }
       } catch {
         warnings.push(`Erro ao processar HTML: ${path.basename(htmlPath)}`);
       }
@@ -582,19 +632,37 @@ export class LocalStorageAdapter {
     for (const imgPath of scan.imageFiles) {
       const imgName = this.normalizeAssociationKey(this.normalizeFileName(imgPath));
       const imgBase = this.associationBaseKey(imgPath);
-      const parentFolderKey = this.normalizeAssociationKey(path.basename(path.dirname(imgPath)));
+      const imgPathKey = this.normalizeFileSystemPath(imgPath);
+      const parentFolderName = path.basename(path.dirname(imgPath));
+      const parentFolderKey = this.normalizeAssociationKey(parentFolderName);
+      const parentFolderBase = this.normalizeFolderAssociationKey(parentFolderName);
       let matched = false;
+
+      // Prioridade 0: imagem já referenciada pelo HTML da nota
+      if (htmlImagePathToNoteIndex.has(imgPathKey)) {
+        matched = true;
+      }
 
       // Prioridade 1: pasta da imagem com mesmo nome da nota
       if (parentFolderKey && notesByName.has(parentFolderKey)) {
         const noteIndex = notesByName.get(parentFolderKey)!;
-        const dataUrl = previewOnly ? null : this.imageFileToDataUrl(imgPath);
-        if (previewOnly || dataUrl) {
-          const note = notes[noteIndex]!;
-          if (!previewOnly) {
-            if (!note.attachedImages) note.attachedImages = [];
-            note.attachedImages.push(dataUrl!);
-          }
+        if (appendImageToNote(noteIndex, imgPath)) {
+          matched = true;
+        }
+      }
+
+      // Prioridade 1.1: pasta da imagem sem sufixos comuns (_files, images, etc)
+      if (!matched && parentFolderBase && notesByName.has(parentFolderBase)) {
+        const noteIndex = notesByName.get(parentFolderBase)!;
+        if (appendImageToNote(noteIndex, imgPath)) {
+          matched = true;
+        }
+      }
+
+      // Prioridade 1.2: mesma lógica usando chave base da nota
+      if (!matched && parentFolderBase && notesByBaseName.has(parentFolderBase)) {
+        const noteIndex = notesByBaseName.get(parentFolderBase)!;
+        if (appendImageToNote(noteIndex, imgPath)) {
           matched = true;
         }
       }
@@ -602,13 +670,7 @@ export class LocalStorageAdapter {
       // Prioridade 2: busca exata por nome
       if (!matched && notesByName.has(imgName)) {
         const noteIndex = notesByName.get(imgName)!;
-        const dataUrl = previewOnly ? null : this.imageFileToDataUrl(imgPath);
-        if (previewOnly || dataUrl) {
-          const note = notes[noteIndex]!;
-          if (!previewOnly) {
-            if (!note.attachedImages) note.attachedImages = [];
-            note.attachedImages.push(dataUrl!);
-          }
+        if (appendImageToNote(noteIndex, imgPath)) {
           matched = true;
         }
       }
@@ -616,13 +678,7 @@ export class LocalStorageAdapter {
       // Prioridade 3: nome base sem sufixos numéricos (ex.: "nota 1", "nota (2)")
       if (!matched && notesByBaseName.has(imgBase)) {
         const noteIndex = notesByBaseName.get(imgBase)!;
-        const dataUrl = previewOnly ? null : this.imageFileToDataUrl(imgPath);
-        if (previewOnly || dataUrl) {
-          const note = notes[noteIndex]!;
-          if (!previewOnly) {
-            if (!note.attachedImages) note.attachedImages = [];
-            note.attachedImages.push(dataUrl!);
-          }
+        if (appendImageToNote(noteIndex, imgPath)) {
           matched = true;
         }
       }
@@ -638,6 +694,13 @@ export class LocalStorageAdapter {
       if (!previewOnly && !dataUrl) continue;
       const baseName = path.basename(imgPath);
       const title = baseName.slice(0, baseName.length - path.extname(baseName).length);
+      const normalizedTitle = this.normalizeAssociationKey(title);
+      const looksGenericImageName = /^(?:image|img|screenshot|captura|foto|photo|scan|pic|picture)(?:\s*[\(\[]?\d+[\)\]]?)?$/i.test(normalizedTitle);
+      if (looksGenericImageName && notes.length > 0) {
+        skippedFiles.push(baseName);
+        warnings.push(`Imagem sem contexto ignorada para evitar nota solta: ${baseName}`);
+        continue;
+      }
       const note: Note = {
         id: baseId + noteIdx++,
         title,
