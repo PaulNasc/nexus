@@ -159,7 +159,7 @@ export const NotesMetricsPanel: React.FC = () => {
         textAlign: 'center',
         color: isDark ? '#888' : '#9CA3AF',
       }}>
-        <Activity size={32} style={{ margin: '0 auto 16px', opacity: 0.5, animation: 'spin 2s linear infinite' }} />
+        <BarChart3 size={32} style={{ margin: '0 auto 16px', opacity: 0.5 }} />
         <p>Carregando métricas...</p>
       </div>
     );
