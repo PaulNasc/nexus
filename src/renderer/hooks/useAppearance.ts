@@ -59,15 +59,6 @@ export const useAppearance = () => {
     const cardOpacityFloat = Math.max(0.8, Math.min(1, cardOpacity / 100));
     html.style.setProperty('--card-opacity', String(cardOpacityFloat));
     
-    // Log para debug
-    console.log('Configurações de aparência aplicadas:', {
-      fontSize,
-      highContrast: settings.highContrastMode,
-      reduceAnimations: settings.reduceAnimations,
-      density: settings.interfaceDensity,
-      opacity: cardOpacity
-    });
-    
   }, [
     settings.fontSizePx,
     settings.largeFontMode,

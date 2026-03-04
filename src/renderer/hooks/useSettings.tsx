@@ -309,6 +309,10 @@ const enforceModuleSettings = (base: UserSettings): UserSettings => {
   };
 };
 
+const areSettingsEqual = (a: UserSettings, b: UserSettings): boolean => {
+  return JSON.stringify(a) === JSON.stringify(b);
+};
+
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [settingsVersion, setSettingsVersion] = useState(0);
@@ -366,6 +370,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           // If userName is empty, use the display_name from auth profile
           if (!merged.userName && profileName) {
             merged.userName = profileName;
+          }
+
+          if (areSettingsEqual(prev, merged)) {
+            return prev;
           }
 
           localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged));
@@ -464,7 +472,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           updatedSettings.backupFrequency = 'weekly';
         }
 
-        setSettings(updatedSettings);
+        setSettings((prev) => (areSettingsEqual(prev, updatedSettings) ? prev : updatedSettings));
 
         // Salvar as configurações migradas
         localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updatedSettings));
@@ -572,6 +580,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const updateSettings = (newSettings: Partial<UserSettings>) => {
     const updatedSettings = enforceModuleSettings({ ...settings, ...newSettings });
+    if (areSettingsEqual(settings, updatedSettings)) {
+      return;
+    }
 
     setSettings(updatedSettings);
     setSettingsVersion(v => v + 1);

@@ -256,6 +256,21 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     return safeContent.slice(0, maxLength) + '...';
   }, []);
 
+  const getNotePreviewContent = useCallback((note: Note): string => {
+    const raw = typeof note.content === 'string' ? note.content : '';
+    const trimmed = raw.trim();
+
+    if (!trimmed) return '';
+
+    // Legacy imported PDF payloads can start with encoded [PDF_SOURCE] data.
+    // Show a clean, readable preview instead of encoded URLs/metadata.
+    if (trimmed.startsWith('[PDF_SOURCE]')) {
+      return 'Documento PDF importado. Abra a nota para ver os detalhes.';
+    }
+
+    return trimmed;
+  }, []);
+
   const filteredNotes = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
     let result = notes.filter((note) => {
@@ -1343,7 +1358,10 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
         )}
 
         {isLoading ? (
-          <div className="notes-loading"><div className="loading-spinner"></div></div>
+          <div className="notes-loading">
+            <div className="loading-spinner"></div>
+            <p className="notes-loading-text">Carregando notas...</p>
+          </div>
         ) : error ? (
           <div className="notes-error">
             <p className="error-message">Erro ao carregar notas: {error}</p>
@@ -1396,7 +1414,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                         </button>
                       </div>
 
-                      <p className="note-content">{truncateContent(note.content)}</p>
+                      <p className="note-content">{truncateContent(getNotePreviewContent(note))}</p>
                       <div className="note-footer">
                         {note.tags && note.tags.length > 0 && (
                           <div className="note-tags">
@@ -1434,7 +1452,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                             {note.sequential_id != null && <span style={{ color: 'var(--color-primary-teal)', fontSize: '12px', marginRight: '6px' }}>#{note.sequential_id}</span>}
                             {note.title}
                           </h3>
-                          <p className="note-list-text">{truncateContent(note.content, 90)}</p>
+                          <p className="note-list-text">{truncateContent(getNotePreviewContent(note), 90)}</p>
                           <div className="note-list-footer">
                             {note.tags && note.tags.length > 0 && (
                               <div className="note-list-tags">

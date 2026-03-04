@@ -111,6 +111,7 @@ interface NotesContextType {
 
 const NotesContext = createContext<NotesContextType | null>(null);
 const PDF_SOURCE_REGEX = /\[PDF_SOURCE\]([\s\S]*?)\[\/PDF_SOURCE\]/i;
+const PDF_PREVIEW_PLACEHOLDER = 'Documento PDF importado. Abra a nota para ver os detalhes.';
 
 export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -418,48 +419,92 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const rows = (data || []) as SupabaseNoteRow[];
     if (rows.length === 0) return [];
 
-    // Lazy load profiles only if needed (organization context)
+    // Lazy load profiles and task links in parallel to reduce total wait time
     const profileMap = new Map<string, string>();
-    if (activeOrg) {
-      const userIds = [...new Set(rows.map(r => r.user_id))];
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, display_name')
-          .in('id', userIds);
-        if (profiles) {
-          for (const p of profiles) {
-            profileMap.set(p.id, p.display_name || '');
-          }
-        }
-      }
-    }
-
-    // Lazy load task links only if dashboard is enabled
     const linkMap = new Map<number, number[]>();
+    const shouldLoadProfiles = !!activeOrg;
     const shouldLoadLinks = !NOTES_ONLY_RELEASE && settings.showDashboard;
-    if (shouldLoadLinks) {
-      const noteIds = rows.map(r => r.id);
-      const { data: links } = await supabase
-        .from('note_task_links')
-        .select('note_id, task_id')
-        .in('note_id', noteIds);
-      if (links) {
-        for (const link of links) {
-          const existing = linkMap.get(link.note_id) || [];
-          existing.push(link.task_id);
-          linkMap.set(link.note_id, existing);
-        }
-      }
+    const userIds = shouldLoadProfiles ? [...new Set(rows.map(r => r.user_id))] : [];
+    const noteIds = shouldLoadLinks ? rows.map(r => r.id) : [];
+
+    const [profilesResult, linksResult] = await Promise.all([
+      shouldLoadProfiles && userIds.length > 0
+        ? supabase.from('profiles').select('id, display_name').in('id', userIds)
+        : Promise.resolve({ data: null as unknown as Array<{ id: string; display_name: string | null }> | null }),
+      shouldLoadLinks && noteIds.length > 0
+        ? supabase.from('note_task_links').select('note_id, task_id').in('note_id', noteIds)
+        : Promise.resolve({ data: null as unknown as Array<{ note_id: number; task_id: number }> | null }),
+    ]);
+
+    const profiles = profilesResult?.data || [];
+    for (const p of profiles) {
+      profileMap.set(p.id, p.display_name || '');
     }
 
-    return rows.map(row => {
+    const links = linksResult?.data || [];
+    for (const link of links) {
+      const existing = linkMap.get(link.note_id) || [];
+      existing.push(link.task_id);
+      linkMap.set(link.note_id, existing);
+    }
+
+    const mappedNotes = rows.map(row => {
       const note = dbRowToNote(row, linkMap.get(row.id));
       if (activeOrg) {
         note.creator_display_name = profileMap.get(row.user_id) || undefined;
       }
       return note;
     });
+
+    const electron = getElectron();
+    if (!electron) {
+      return mappedNotes;
+    }
+
+    const repairedNotes = await Promise.all(mappedNotes.map(async (note) => {
+      const content = String(note.content || '').trim();
+      const hasPdfTag = Array.isArray(note.tags) && note.tags.some(tag => String(tag).toLowerCase() === 'pdf-importado');
+      if (!hasPdfTag || content !== PDF_PREVIEW_PLACEHOLDER) {
+        return note;
+      }
+
+      try {
+        const restored = await electron.invoke('pdf:restoreSourceByTitle', note.title) as {
+          success?: boolean;
+          localPath?: string;
+        };
+
+        const localPath = String(restored?.localPath || '').trim();
+        if (!restored?.success || !localPath) {
+          return note;
+        }
+
+        const restoredContent = `[PDF_SOURCE]${localPath}[/PDF_SOURCE]`;
+
+        // Persist repaired content so PDF opens normally on next loads.
+        await supabase
+          .from('notes')
+          .update({
+            content: restoredContent,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', note.id);
+
+        return {
+          ...note,
+          content: restoredContent,
+        };
+      } catch (err) {
+        console.warn('NotesContext.fetchNotesCloud pdf restore failed:', {
+          noteId: note.id,
+          title: note.title,
+          error: err instanceof Error ? err.message : err,
+        });
+        return note;
+      }
+    }));
+
+    return repairedNotes;
   }, [activeOrg, settings.showDashboard]);
 
   const createNoteCloud = useCallback(async (noteData: CreateNoteData): Promise<Note | null> => {
@@ -624,7 +669,10 @@ const fetchNotes = useCallback(async () => {
   }
 
   const promise = (async () => {
-    if (!initialLoadDone.current) setIsLoading(true);
+    const isContextSwitch = lastFetchKeyRef.current !== fetchKey;
+    if (!initialLoadDone.current || isContextSwitch || notes.length === 0) {
+      setIsLoading(true);
+    }
     setError(null);
     try {
       let result: Note[] = [];
@@ -662,7 +710,7 @@ const fetchNotes = useCallback(async () => {
       fetchInFlightRef.current = null;
     }
   }
-}, [useCloud, useLocal, fetchNotesCloud, fetchNotesLocal, activeOrg?.id]);
+}, [useCloud, useLocal, fetchNotesCloud, fetchNotesLocal, activeOrg?.id, notes.length]);
 
 const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | null> => {
   setError(null);

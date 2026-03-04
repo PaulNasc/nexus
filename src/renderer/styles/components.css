@@ -367,18 +367,6 @@
   background: transparent;
   color: var(--color-text-primary);
   font-weight: var(--font-weight-bold);
-  box-shadow: none;
-}
-
-.nav-button.active::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(135deg, #00D4AA, #7B3FF2);
-  border-radius: 0;
 }
 
 /* === UTILITY CLASSES PADRONIZADAS === */
@@ -726,8 +714,8 @@
   border-radius: 0;
   border: none;
   box-shadow: none;
-  border-bottom: 1px solid var(--color-border-primary);
-  padding-bottom: var(--space-2);
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .nav-button {
@@ -756,18 +744,6 @@
   color: var(--primary-500);
   background-color: transparent;
   box-shadow: none;
-}
-
-.nav-button.active::after {
-  content: '';
-  position: absolute;
-  bottom: 1px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 24px;
-  height: 2px;
-  background: linear-gradient(135deg, var(--primary-500) 0%, var(--secondary-500) 100%);
-  border-radius: var(--radius-full);
 }
 
 .header-right {
@@ -1518,9 +1494,17 @@
 
 .notes-loading {
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  height: 256px;
+  min-height: calc(100vh - 280px);
+  gap: 10px;
+}
+
+.notes-loading-text {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  font-weight: 500;
 }
 
 .notes-error {

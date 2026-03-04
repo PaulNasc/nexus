@@ -54,7 +54,6 @@ interface TabItem {
 
 interface AppHeaderProps {
   settings: UserSettings;
-  settingsVersion: number;
   navigation: AppNavigationState;
   systemInfo: { platform: string; version: string; };
   goToDashboard: () => void;
@@ -72,7 +71,6 @@ interface AppHeaderProps {
 
 const AppHeader: React.FC<AppHeaderProps> = ({
   settings,
-  settingsVersion,
   navigation,
   systemInfo,
   goToDashboard,
@@ -100,7 +98,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   ];
 
   return (
-    <header className="app-header" key={settingsVersion}>
+    <header className="app-header">
       <div className="header-content">
         <div className="header-left">
           <h1 className="app-title">Nexus</h1>
@@ -179,10 +177,19 @@ const App: React.FC<AppProps> = () => {
   }>({ platform: '', version: '' });
   const [dailyGoalReached, setDailyGoalReached] = useState(false);
 
+  const electronAPI = (window as Window & {
+    electronAPI?: {
+      updater?: { getVersion?: () => Promise<string> };
+      system?: { version?: string; platform?: string };
+      openDevTools?: () => void;
+      toggleDevTools?: () => void;
+    };
+  }).electronAPI;
+
   // Theme hook
   const { theme, effectiveMode, toggleMode } = useTheme();
   useI18n();
-  const { settings, settingsVersion, updateSettings } = useSettings();
+  const { settings, updateSettings } = useSettings();
 
   // Aplicar configurações de aparência
   useAppearance();
@@ -211,11 +218,6 @@ const App: React.FC<AppProps> = () => {
       showProgressInsights: settings.showProgressInsights
     }
   });
-
-  // Debug settings - only in development
-  if (process.env.NODE_ENV === 'development') {
-    console.log('App - settings:', settings);
-  }
 
   // Hook para notificações
   const { showToast, ToastContainer } = useToast();
@@ -269,14 +271,6 @@ const App: React.FC<AppProps> = () => {
     };
   }, []);
 
-  // Force re-render when settings change for hot reload - optimized
-  useEffect(() => {
-    // Only log in development and avoid unnecessary re-renders
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Settings changed, forcing re-render');
-    }
-  }, [settings, settingsVersion]); // Add settingsVersion to dependencies
-
   useEffect(() => {
     const loadApp = async () => {
       try {
@@ -284,10 +278,10 @@ const App: React.FC<AppProps> = () => {
         await requestPermission();
 
         // Get system information
-        if (window.electronAPI) {
-          const ver = await window.electronAPI.updater?.getVersion?.() || window.electronAPI.system.version || '';
+        if (electronAPI) {
+          const ver = await electronAPI.updater?.getVersion?.() || electronAPI.system?.version || '';
           setSystemInfo({
-            platform: window.electronAPI.system.platform,
+            platform: electronAPI.system?.platform || '',
             version: typeof ver === 'string' ? ver : String(ver)
           });
         }
@@ -300,7 +294,7 @@ const App: React.FC<AppProps> = () => {
     };
 
     loadApp();
-  }, [requestPermission]);
+  }, [requestPermission, electronAPI]);
 
   // Check for daily goal achievement
   useEffect(() => {
@@ -389,7 +383,7 @@ const App: React.FC<AppProps> = () => {
 
   // Task operations — TaskModal already handles create/update internally,
   // so this callback only shows the toast feedback.
-  const handleSaveTask = async (_savedTask: Task) => {
+  const handleSaveTask = async () => {
     if (editingTask) {
       showToast('Tarefa atualizada com sucesso!', 'success');
     } else {
@@ -436,19 +430,19 @@ const App: React.FC<AppProps> = () => {
 
   // Habilitar DevTools automaticamente em dev
   useEffect(() => {
-    if (process.env.NODE_ENV === 'development' && window.electronAPI?.openDevTools) {
-      window.electronAPI.openDevTools();
+    if (process.env.NODE_ENV === 'development' && electronAPI?.openDevTools) {
+      electronAPI.openDevTools();
     }
     const handleKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'i') {
-        if (window.electronAPI?.toggleDevTools) {
-          window.electronAPI.toggleDevTools();
+        if (electronAPI?.toggleDevTools) {
+          electronAPI.toggleDevTools();
         }
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, []);
+  }, [electronAPI]);
 
   const headerToggleButtonStyle: React.CSSProperties = settings.showAppHeader
     ? {
@@ -493,9 +487,7 @@ const App: React.FC<AppProps> = () => {
 
     return (
       <AppHeader
-        key={settingsVersion}
         settings={settings}
-        settingsVersion={settingsVersion}
         navigation={navigation}
         systemInfo={systemInfo}
         goToDashboard={goToDashboard}
@@ -620,7 +612,6 @@ const App: React.FC<AppProps> = () => {
       <main className="app-main">
         {navigation.currentScreen === 'dashboard' && (
           <Dashboard
-            key={settingsVersion}
             onViewTaskList={viewTaskList}
             // onOpenTaskModal={handleOpenTaskModal}
             onOpenTimer={settings.showTimer ? openTimer : undefined}

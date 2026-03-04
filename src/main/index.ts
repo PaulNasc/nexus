@@ -1344,6 +1344,54 @@ class MainApplication {
       }
     };
 
+    ipcMain.handle('pdf:restoreSourceByTitle', async (_event, rawTitle: string) => {
+      try {
+        const title = String(rawTitle || '').trim();
+        if (!title) return { success: false, error: 'Título inválido' };
+
+        const importedPdfsDir = path.join(app.getPath('userData'), 'imported-pdfs');
+        if (!fs.existsSync(importedPdfsDir)) {
+          return { success: false, error: 'Pasta de PDFs importados não encontrada' };
+        }
+
+        const normalizedTitle = sanitizePdfFileName(title).toLowerCase();
+        const entries = await fs.promises.readdir(importedPdfsDir, { withFileTypes: true });
+        const candidateNames = entries
+          .filter((entry) => entry.isFile() && path.extname(entry.name).toLowerCase() === '.pdf')
+          .map((entry) => entry.name)
+          .filter((name) => {
+            const baseName = path.basename(name, path.extname(name)).toLowerCase();
+            return baseName.startsWith(`${normalizedTitle}-`) || baseName === normalizedTitle;
+          });
+
+        if (candidateNames.length === 0) {
+          return { success: false, error: 'Nenhum PDF local compatível encontrado para esta nota' };
+        }
+
+        const withStats = await Promise.all(
+          candidateNames.map(async (name) => {
+            const fullPath = path.join(importedPdfsDir, name);
+            const stat = await fs.promises.stat(fullPath);
+            return { name, fullPath, mtime: stat.mtimeMs };
+          }),
+        );
+
+        withStats.sort((a, b) => b.mtime - a.mtime);
+        const best = withStats[0];
+        if (!best) {
+          return { success: false, error: 'Nenhum PDF local encontrado após ordenação' };
+        }
+
+        return {
+          success: true,
+          localPath: best.fullPath,
+          fileName: best.name,
+        };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
     const cacheImportedPdf = async (sourceFilePath: string): Promise<{ localPath: string; fileName: string; size: number }> => {
       const importedPdfsDir = path.join(app.getPath('userData'), 'imported-pdfs');
       if (!fs.existsSync(importedPdfsDir)) {
