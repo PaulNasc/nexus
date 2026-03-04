@@ -409,11 +409,9 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       query = query.is('organization_id', null);
     }
     
-    // Limit initial load to 100 most recent notes for performance
     const { data, error: fetchError } = await query
       .order('is_pinned', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(100);
+      .order('created_at', { ascending: false });
     
     if (fetchError) throw fetchError;
 

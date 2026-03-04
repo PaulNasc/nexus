@@ -14,14 +14,14 @@ import {
 interface MostViewedNote {
   id: number;
   title: string;
-  view_count: number;
+  updated_at: string;
 }
 
 interface UserLastOnline {
   user_id: string;
   display_name: string;
   email: string;
-  last_seen: string;
+  last_seen: string; // uses profiles.updated_at as best available proxy
 }
 
 interface NotesBySystemTag {
@@ -62,33 +62,47 @@ export const NotesMetricsPanel: React.FC = () => {
     const fetchMetrics = async () => {
       setLoading(true);
       try {
-        // Most viewed notes (simulated - would need view tracking table)
-        const mostViewed: MostViewedNote[] = notes
+        // Total real de notas via COUNT (não limitado pelo cache local)
+        const { count: totalCount } = await supabase
+          .from('notes')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', activeOrg!.id);
+
+        // Notas mais recentemente atualizadas (melhor proxy disponível sem view tracking)
+        const recentNotes = [...notes]
+          .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
           .slice(0, 5)
-          .map((note, idx) => ({
+          .map(note => ({
             id: note.id,
             title: note.title,
-            view_count: Math.max(1, 50 - idx * 10), // Mock view count
+            updated_at: note.updated_at || note.created_at,
           }));
 
-        // Users last online
+        // Batch fetch de todos os profiles de membros em UMA query (não N+1)
+        const memberIds = members.map(m => m.user_id);
         const usersLastOnline: UserLastOnline[] = [];
-        for (const member of members.slice(0, 10)) {
-          const { data: profile } = await supabase
+        if (memberIds.length > 0) {
+          const { data: profiles } = await supabase
             .from('profiles')
-            .select('last_seen_at')
-            .eq('id', member.user_id)
-            .single();
-          
-          usersLastOnline.push({
-            user_id: member.user_id,
-            display_name: member.display_name || 'Usuário',
-            email: member.email || '',
-            last_seen: profile?.last_seen_at || new Date().toISOString(),
-          });
+            .select('id, display_name, email, updated_at')
+            .in('id', memberIds);
+
+          const profileMap = new Map<string, { display_name: string; email: string; updated_at: string }>(
+            (profiles || []).map(p => [p.id, p])
+          );
+
+          for (const member of members.slice(0, 10)) {
+            const profile = profileMap.get(member.user_id);
+            usersLastOnline.push({
+              user_id: member.user_id,
+              display_name: profile?.display_name || member.display_name || 'Usuário',
+              email: profile?.email || member.email || '',
+              last_seen: profile?.updated_at || member.joined_at || '',
+            });
+          }
         }
 
-        // Notes by system tag
+        // Notas por tag de sistema
         const notesByTag: NotesBySystemTag[] = [];
         const activeSystemTags = systemTags.filter(tag => tag.is_active);
         for (const tag of activeSystemTags) {
@@ -104,8 +118,8 @@ export const NotesMetricsPanel: React.FC = () => {
         }
 
         setMetrics({
-          total_notes: notes.length,
-          most_viewed: mostViewed,
+          total_notes: totalCount ?? notes.length,
+          most_viewed: recentNotes,
           users_last_online: usersLastOnline,
           notes_by_system_tag: notesByTag,
         });
@@ -220,7 +234,7 @@ export const NotesMetricsPanel: React.FC = () => {
             gap: '6px',
           }}>
             <Eye size={14} color="#00D4AA" />
-            Notas Mais Visualizadas
+            Notas Recentes
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {metrics.most_viewed.slice(0, 5).map((note) => (
@@ -236,7 +250,7 @@ export const NotesMetricsPanel: React.FC = () => {
                   #{note.id} {note.title}
                 </span>
                 <span style={{ fontSize: '11px', color: isDark ? '#666' : '#9CA3AF', flexShrink: 0, marginLeft: '8px' }}>
-                  {note.view_count} views
+                  {formatRelativeTime(note.updated_at)}
                 </span>
               </div>
             ))}
