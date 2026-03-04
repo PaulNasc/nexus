@@ -401,58 +401,65 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // ── CLOUD (Supabase) helpers ──────────────────────────────────
   const fetchNotesCloud = useCallback(async (): Promise<Note[]> => {
-    // Fetch notes without JOIN to avoid FK name mismatch errors
-    let query = supabase.from('notes').select('*');
+    // Optimized: fetch only essential columns first, lazy load profiles
+    let query = supabase.from('notes').select('id, user_id, title, content, format, tags, attached_images, attached_videos, color, is_pinned, is_archived, created_at, updated_at, sequential_id, system_tag_id');
     if (activeOrg) {
       query = query.eq('organization_id', activeOrg.id);
     } else {
       query = query.is('organization_id', null);
     }
+    
+    // Limit initial load to 100 most recent notes for performance
     const { data, error: fetchError } = await query
       .order('is_pinned', { ascending: false })
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(100);
+    
     if (fetchError) throw fetchError;
 
     const rows = (data || []) as SupabaseNoteRow[];
+    if (rows.length === 0) return [];
 
-    const userIds = [...new Set(rows.map(r => r.user_id))];
+    // Lazy load profiles only if needed (organization context)
     const profileMap = new Map<string, string>();
-
-    const shouldLoadLinks = !NOTES_ONLY_RELEASE && settings.showDashboard;
-
-    const [profilesResult, linksResult] = await Promise.all([
-      userIds.length > 0
-        ? supabase
+    if (activeOrg) {
+      const userIds = [...new Set(rows.map(r => r.user_id))];
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
           .from('profiles')
           .select('id, display_name')
-          .in('id', userIds)
-        : Promise.resolve({ data: null }),
-      shouldLoadLinks
-        ? supabase
-          .from('note_task_links')
-          .select('note_id, task_id')
-        : Promise.resolve({ data: null }),
-    ]);
-
-    if (profilesResult.data) {
-      for (const p of profilesResult.data) {
-        profileMap.set(p.id, p.display_name || '');
+          .in('id', userIds);
+        if (profiles) {
+          for (const p of profiles) {
+            profileMap.set(p.id, p.display_name || '');
+          }
+        }
       }
     }
 
-    const links = linksResult.data;
+    // Lazy load task links only if dashboard is enabled
     const linkMap = new Map<number, number[]>();
-    if (links) {
-      for (const link of links) {
-        const existing = linkMap.get(link.note_id) || [];
-        existing.push(link.task_id);
-        linkMap.set(link.note_id, existing);
+    const shouldLoadLinks = !NOTES_ONLY_RELEASE && settings.showDashboard;
+    if (shouldLoadLinks) {
+      const noteIds = rows.map(r => r.id);
+      const { data: links } = await supabase
+        .from('note_task_links')
+        .select('note_id, task_id')
+        .in('note_id', noteIds);
+      if (links) {
+        for (const link of links) {
+          const existing = linkMap.get(link.note_id) || [];
+          existing.push(link.task_id);
+          linkMap.set(link.note_id, existing);
+        }
       }
     }
 
     return rows.map(row => {
       const note = dbRowToNote(row, linkMap.get(row.id));
-      note.creator_display_name = profileMap.get(row.user_id) || undefined;
+      if (activeOrg) {
+        note.creator_display_name = profileMap.get(row.user_id) || undefined;
+      }
       return note;
     });
   }, [activeOrg, settings.showDashboard]);
