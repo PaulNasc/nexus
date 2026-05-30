@@ -140,19 +140,27 @@ export class AppUpdater {
     const portablePattern = /^nexus-[\d.]+-x64\.exe$/i;
     const matchesPortableName = portablePattern.test(exeName);
 
-    // If uninstaller exists → NSIS. If exe matches portable pattern → portable.
-    // Fallback: no uninstaller + doesn't match portable name → assume portable.
-    const isPortable = !hasUninstaller || matchesPortableName;
+    // NSIS installs have an uninstaller → definitely installed mode.
+    // Portable: no uninstaller AND exe name matches portable pattern.
+    // Fallback (no uninstaller, name doesn't match): check if inside Program Files.
+    const inProgramFiles = exePath.toLowerCase().includes('program files');
+    const isPortable = !hasUninstaller && !inProgramFiles && matchesPortableName;
+    // Looser fallback: no uninstaller, not in Program Files, and not just 'nexus.exe'
+    const exeIsNsisDefault = exeName === 'nexus.exe' && !matchesPortableName;
+    const resolvedIsPortable = !hasUninstaller && !inProgramFiles && !exeIsNsisDefault;
 
     logger.info('Portable mode detection', 'updater', {
       exePath,
       exeName,
       hasUninstaller,
+      inProgramFiles,
       matchesPortableName,
-      result: isPortable ? 'portable' : 'nsis',
+      exeIsNsisDefault,
+      resolvedIsPortable,
+      result: resolvedIsPortable ? 'portable' : 'nsis',
     });
 
-    return isPortable;
+    return resolvedIsPortable;
   }
 
   // ─── Check for updates (works for both modes) ──────────────────
@@ -446,8 +454,11 @@ export class AppUpdater {
         autoUpdater.quitAndInstall(false, true);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        logger.error('NSIS quitAndInstall failed', 'updater', { error: msg });
-        this.setStatus({ state: 'error', error: `Erro ao iniciar instalador: ${msg}` });
+        logger.error('NSIS quitAndInstall failed, opening releases page as fallback', 'updater', { error: msg });
+        // Fallback: open the GitHub releases page so the user can download manually
+        const { shell } = require('electron');
+        shell.openExternal(`https://github.com/${GH_OWNER}/${GH_REPO}/releases/latest`);
+        this.setStatus({ state: 'error', error: `Erro ao iniciar instalador. Abrindo página de download...` });
       }
     }
   }
