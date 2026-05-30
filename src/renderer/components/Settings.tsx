@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 import { useSettings } from '../hooks/useSettings';
 import { useI18n } from '../hooks/useI18n';
@@ -10,7 +10,6 @@ import { useSystemTags } from '../contexts/SystemTagsContext';
 import { useStorageMode } from '../hooks/useStorageMode';
 import { isModuleLocked } from '../config/featureFlags';
 
-// import { CategoryManager } from './CategoryManager'; // Temporariamente desativado: seção removida de Configurações > Geral
 
 import { Button } from './ui/Button';
 import { ImportExportModal } from './ImportExportModal';
@@ -23,7 +22,6 @@ import {
   Eye,
   Keyboard,
   MousePointer,
-  Volume2,
   HardDrive,
   Users,
   Database,
@@ -38,9 +36,9 @@ import {
   Upload,
   Download,
   TestTube,
-  Type,
 } from 'lucide-react';
 import type { ImportResult, RestorePreview } from '../../shared/types/backup';
+import type { UserSettings } from '../hooks/useSettings';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 interface SettingsLogEntry {
@@ -346,7 +344,7 @@ interface SettingsProps {
   isOpen: boolean;
   onClose: () => void;
 }
-type TabType = 'geral' | 'aparencia' | 'notificacoes' | 'acessibilidade' | 'dados' | 'organizacoes' | 'logs' | 'atualizacoes' | 'sobre';
+type TabType = 'geral' | 'aparencia' | 'dados' | 'organizacoes' | 'logs' | 'atualizacoes' | 'sobre';
 
 export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
@@ -354,10 +352,9 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     settings,
     updateSettings,
     resetSettings,
-    clearAllData,
     systemInfo,
   } = useSettings();
-  const { t, currentLanguage, changeLanguage, getAvailableLanguages } = useI18n();
+  const { t, getAvailableLanguages } = useI18n();
   const { theme: rawTheme } = useTheme();
   const { showNotification } = useNotifications();
   const { createTask } = useTasks();
@@ -368,8 +365,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState<TabType>('geral');
   const [isResetting, setIsResetting] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [showClearDataConfirm, setShowClearDataConfirm] = useState(false);
-  const [isClearing, setIsClearing] = useState(false);
   const [isLegacySyncing, setIsLegacySyncing] = useState(false);
   const [importExportModalOpen, setImportExportModalOpen] = useState(false);
   const [importExportMode, setImportExportMode] = useState<'import' | 'export'>('export');
@@ -386,6 +381,23 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
   const isDark = resolvedMode === 'dark';
   const theme = { ...rawTheme, mode: resolvedMode };
+  const interfaceDensity = settings.interfaceDensity ?? 'normal';
+  const cardOpacity = settings.cardOpacity ?? 95;
+  const reduceAnimations = settings.reduceAnimations ?? false;
+
+  type VisibilitySettingKey = keyof Pick<
+    UserSettings,
+    'showDashboard' | 'showTimer' | 'showReports' | 'showNotes' | 'showQuickActions' | 'showTaskCounters'
+  >;
+
+  const visibilityComponents: Array<{ key: VisibilitySettingKey; label: string; desc: string }> = [
+    { key: 'showDashboard', label: 'Dashboard', desc: 'Exibir aba do dashboard e funcionalidades de tarefas' },
+    { key: 'showTimer', label: 'Timer Pomodoro', desc: 'Exibir funcionalidade de timer' },
+    { key: 'showReports', label: 'Relatórios', desc: 'Exibir aba de relatórios e estatísticas' },
+    { key: 'showNotes', label: 'Notas', desc: 'Exibir sistema de notas e anotações' },
+    { key: 'showQuickActions', label: 'Ações Rápidas', desc: 'Exibir botões de acesso rápido' },
+    { key: 'showTaskCounters', label: 'Contadores de Tarefas', desc: 'Exibir números e estatísticas nas tarefas' },
+  ];
 
   const getElectron = () => (window as unknown as { electronAPI: import('../../main/preload').ElectronAPI }).electronAPI;
 
@@ -598,31 +610,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       console.error('Error resetting settings:', error);
     } finally {
       setIsResetting(false);
-    }
-  };
-
-  const handleClearAllData = async () => {
-    if (!showClearDataConfirm) {
-      setShowClearDataConfirm(true);
-      return;
-    }
-
-    setIsClearing(true);
-    try {
-      const success = await clearAllData();
-      if (success) {
-        showToast(t('accessibility.clearDataSuccess'), 'success');
-        setShowClearDataConfirm(false);
-        // Reload page to reflect changes
-        window.location.reload();
-      } else {
-        showToast('Erro ao limpar dados', 'error');
-      }
-    } catch (error) {
-      console.error('Error clearing data:', error);
-      showToast('Erro ao limpar dados', 'error');
-    } finally {
-      setIsClearing(false);
     }
   };
 
@@ -955,8 +942,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   const tabs = [
     { id: 'geral', label: t('settings.general'), icon: <SettingsIcon size={16} strokeWidth={1.7} /> },
     { id: 'aparencia', label: t('settings.appearance'), icon: <Palette size={16} strokeWidth={1.7} /> },
-    { id: 'notificacoes', label: t('settings.notifications'), icon: <Bell size={16} strokeWidth={1.7} /> },
-    { id: 'acessibilidade', label: t('settings.accessibility'), icon: <Eye size={16} strokeWidth={1.7} /> },
     { id: 'dados', label: 'Dados & Armazenamento', icon: <HardDrive size={16} strokeWidth={1.7} /> },
     { id: 'organizacoes', label: 'Organizações', icon: <Users size={16} strokeWidth={1.7} /> },
     { id: 'logs', label: 'Logs', icon: <Database size={16} strokeWidth={1.7} /> },
@@ -1245,7 +1230,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </label>
                   <select
                     value={settings.language}
-                    onChange={(e) => updateSettings({ language: e.target.value as any })}
+                    onChange={(e) => updateSettings({ language: e.target.value as UserSettings['language'] })}
                     style={{
                       width: '100%',
                       padding: '12px',
@@ -1264,44 +1249,120 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </select>
                 </div>
 
-                {/* Removido por solicitação: seção "Meta Diária" */}
-                {/* <div>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '8px',
-                    fontSize: '14px',
-                    fontWeight: 500,
-                    color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)',
+                <div>
+                  <h3 style={{
+                    margin: '0 0 16px 0',
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    color: 'var(--color-text-primary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
                   }}>
-                    {t('settings.dailyGoal')}
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="50"
-                    value={settings.dailyGoal}
-                    onChange={(e) => updateSettings({ dailyGoal: parseInt(e.target.value) || 5 })}
-                    style={{
-                      width: '100%',
+                    <Bell size={18} />
+                    Notificações
+                  </h3>
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      cursor: 'pointer',
                       padding: '12px',
-                      backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : 'var(--color-bg-card)',
+                      backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : 'var(--color-bg-secondary)',
                       border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
                       borderRadius: '8px',
-                      color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)',
-                      fontSize: '14px',
-                    }}
-                  />
-                </div> */}
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={settings.showNotifications}
+                        onChange={(e) => updateSettings({ showNotifications: e.target.checked })}
+                        style={{ width: '18px', height: '18px', accentColor: '#00D4AA' }}
+                      />
+                      <span style={{ fontSize: '14px', color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)' }}>
+                        {t('settings.notifications.desktop')}
+                      </span>
+                    </label>
 
-                {/* Removido por solicitação: seção "Produtividade & Sugestões" */}
-                {/* 
-                  // Safe JSX comment
-                */}
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      cursor: 'pointer',
+                      padding: '12px',
+                      backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : 'var(--color-bg-secondary)',
+                      border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
+                      borderRadius: '8px',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={settings.playSound}
+                        onChange={(e) => updateSettings({ playSound: e.target.checked })}
+                        style={{ width: '18px', height: '18px', accentColor: '#00D4AA' }}
+                      />
+                      <span style={{ fontSize: '14px', color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)' }}>
+                        {t('settings.notifications.sound')}
+                      </span>
+                    </label>
 
-                {/* Removido por solicitação: seção "Produtividade & Sugestões" */}
-                {/* 
-                  // Safe JSX comment
-                */}
+                    {[
+                      { key: 'notifyTaskReminders' as const, label: 'Lembretes de tarefas' },
+                      { key: 'notifyTodayTasks' as const, label: 'Resumo de tarefas de hoje' },
+                      { key: 'notifyOverdueTasks' as const, label: 'Avisos de tarefas atrasadas' },
+                      { key: 'notifyProductivityInsights' as const, label: 'Insights de produtividade' },
+                    ].map((item) => (
+                      <label key={item.key} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        cursor: 'pointer',
+                        padding: '12px',
+                        backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : 'var(--color-bg-secondary)',
+                        border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
+                        borderRadius: '8px',
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={settings[item.key]}
+                          onChange={(e) => updateSettings({ [item.key]: e.target.checked })}
+                          style={{ width: '18px', height: '18px', accentColor: '#00D4AA' }}
+                        />
+                        <span style={{ fontSize: '14px', color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)' }}>
+                          {item.label}
+                        </span>
+                      </label>
+                    ))}
+
+                    <div>
+                      <button
+                        onClick={handleTestNotification}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '12px 20px',
+                          backgroundColor: '#00D4AA',
+                          color: '#FFFFFF',
+                          border: 'none',
+                          borderRadius: '8px',
+                          fontSize: '14px',
+                          fontWeight: 500,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#00B894';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = '#00D4AA';
+                        }}
+                      >
+                        <TestTube size={16} strokeWidth={1.7} />
+                        {t('settings.notifications.test')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
 
               </div>
             )}
@@ -1407,7 +1468,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     Densidade da Interface
                   </h4>
                   <div style={{ display: 'grid', gap: '8px' }}>
-                    {[
+                    {[ 
                       { key: 'compact', label: 'Compacta', desc: 'Mais informações em menos espaço' },
                       { key: 'normal', label: 'Normal', desc: 'Balanço ideal entre espaço e informação' },
                       { key: 'comfortable', label: 'Confortável', desc: 'Mais espaçamento para facilitar a leitura' }
@@ -1418,7 +1479,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         gap: '12px',
                         padding: '12px',
                         backgroundColor: isDark ? '#0A0A0A' : 'var(--color-bg-secondary)',
-                        border: `1px solid ${(settings as any).interfaceDensity === density.key ? 'var(--color-primary-teal)' : (isDark ? '#2A2A2A' : 'var(--color-border-primary)')}`,
+                        border: `1px solid ${interfaceDensity === density.key ? 'var(--color-primary-teal)' : (isDark ? '#2A2A2A' : 'var(--color-border-primary)')}`,
                         borderRadius: '8px',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
@@ -1427,7 +1488,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           type="radio"
                           name="density"
                           value={density.key}
-                          checked={(settings as any).interfaceDensity === density.key || (!((settings as any).interfaceDensity) && density.key === 'normal')}
+                          checked={interfaceDensity === density.key}
                           onChange={() => updateSettings({ interfaceDensity: density.key as 'compact' | 'normal' | 'comfortable' })}
                           style={{
                             accentColor: 'var(--color-primary-teal)',
@@ -1471,7 +1532,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       min="80"
                       max="100"
                       step="5"
-                      value={((settings as any).cardOpacity || 95)}
+                      value={cardOpacity}
                       onChange={(e) => {
                         const opacity = parseInt(e.target.value);
                         updateSettings({ cardOpacity: opacity });
@@ -1487,7 +1548,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       minWidth: '40px',
                       textAlign: 'right'
                     }}>
-                      {((settings as any).cardOpacity || 95)}%
+                      {cardOpacity}%
                     </span>
                   </div>
                   <p style={{
@@ -1565,7 +1626,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     }}>
                       <input
                         type="checkbox"
-                        checked={(settings as any).reduceAnimations}
+                        checked={reduceAnimations}
                         onChange={(e) => updateSettings({ reduceAnimations: e.target.checked })}
                         style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                       />
@@ -1589,6 +1650,85 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
+                <div>
+                  <h3 style={{
+                    margin: '20px 0 16px 0',
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    color: 'var(--color-text-primary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}>
+                    <Keyboard size={18} />
+                    Navegação e Interação
+                  </h3>
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      cursor: 'pointer',
+                      padding: '12px',
+                      backgroundColor: isDark ? '#0A0A0A' : 'var(--color-bg-secondary)',
+                      border: `1px solid ${isDark ? '#2A2A2A' : 'var(--color-border-primary)'}`,
+                      borderRadius: '8px',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={settings.keyboardNavigation !== false}
+                        onChange={(e) => updateSettings({ keyboardNavigation: e.target.checked })}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{
+                          fontSize: '14px',
+                          color: 'var(--color-text-primary)',
+                          fontWeight: 500,
+                          marginBottom: '4px',
+                        }}>
+                          Navegação por Teclado
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+                          Permite navegar com Tab, Enter e setas.
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      cursor: 'pointer',
+                      padding: '12px',
+                      backgroundColor: isDark ? '#0A0A0A' : 'var(--color-bg-secondary)',
+                      border: `1px solid ${isDark ? '#2A2A2A' : 'var(--color-border-primary)'}`,
+                      borderRadius: '8px',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={settings.focusIndicators !== false}
+                        onChange={(e) => updateSettings({ focusIndicators: e.target.checked })}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{
+                          fontSize: '14px',
+                          color: 'var(--color-text-primary)',
+                          fontWeight: 500,
+                          marginBottom: '4px',
+                        }}>
+                          <MousePointer size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
+                          Indicadores de Foco
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+                          Realça o elemento focado durante navegação por teclado.
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
                 {/* Componentes Visíveis */}
                 <div>
                   <h3 style={{
@@ -1604,16 +1744,10 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     Componentes da Interface
                   </h3>
                   <div style={{ display: 'grid', gap: '12px' }}>
-                    {[
-                      { key: 'showDashboard', label: 'Dashboard', desc: 'Exibir aba do dashboard e funcionalidades de tarefas' },
-                      { key: 'showTimer', label: 'Timer Pomodoro', desc: 'Exibir funcionalidade de timer' },
-                      { key: 'showReports', label: 'Relatórios', desc: 'Exibir aba de relatórios e estatísticas' },
-                      { key: 'showNotes', label: 'Notas', desc: 'Exibir sistema de notas e anotações' },
-                      { key: 'showQuickActions', label: 'Ações Rápidas', desc: 'Exibir botões de acesso rápido' },
-                      { key: 'showTaskCounters', label: 'Contadores de Tarefas', desc: 'Exibir números e estatísticas nas tarefas' }
-                    ].map((component) => (
+                    {visibilityComponents.map((component) => (
                       (() => {
                         const isLocked = isModuleLocked(component.key as 'showDashboard' | 'showTimer' | 'showReports');
+                        const isEnabled = settings[component.key];
                         return (
                           <label key={component.key} style={{
                             display: 'flex',
@@ -1629,9 +1763,12 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           }}>
                             <input
                               type="checkbox"
-                              checked={(settings as any)[component.key]}
+                              checked={isEnabled}
                               disabled={isLocked}
-                              onChange={(e) => updateSettings({ [component.key]: e.target.checked })}
+                              onChange={(e) => {
+                                const next: Partial<UserSettings> = { [component.key]: e.target.checked } as Partial<UserSettings>;
+                                updateSettings(next);
+                              }}
                               style={{
                                 accentColor: 'var(--color-primary-teal)',
                                 transform: 'scale(1.1)',
@@ -1660,94 +1797,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-              </div>
-            )}
-
-            {activeTab === 'notificacoes' && (
-              <div style={{ display: 'grid', gap: '24px' }}>
-                <div style={{ display: 'grid', gap: '12px' }}>
-                  <label style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    cursor: 'pointer',
-                    padding: '12px',
-                    backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : 'var(--color-bg-secondary)',
-                    border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
-                    borderRadius: '8px',
-                    transition: 'all var(--transition-theme)',
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={settings.showNotifications}
-                      onChange={(e) => updateSettings({ showNotifications: e.target.checked })}
-                      style={{
-                        width: '18px',
-                        height: '18px',
-                        accentColor: '#00D4AA',
-                      }}
-                    />
-                    <Bell size={16} strokeWidth={1.7} />
-                    <span style={{ fontSize: '14px', color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)' }}>
-                      {t('settings.notifications.desktop')}
-                    </span>
-                  </label>
-
-                  <label style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    cursor: 'pointer',
-                    padding: '12px',
-                    backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : 'var(--color-bg-secondary)',
-                    border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
-                    borderRadius: '8px',
-                    transition: 'all var(--transition-theme)',
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={settings.playSound}
-                      onChange={(e) => updateSettings({ playSound: e.target.checked })}
-                      style={{
-                        width: '18px',
-                        height: '18px',
-                        accentColor: '#00D4AA',
-                      }}
-                    />
-                    <span style={{ fontSize: '14px', color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)' }}>
-                      {t('settings.notifications.sound')}
-                    </span>
-                  </label>
-                </div>
-
-                <div>
-                  <button
-                    onClick={handleTestNotification}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '12px 20px',
-                      backgroundColor: '#00D4AA',
-                      color: '#FFFFFF',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#00B894';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = '#00D4AA';
-                    }}
-                  >
-                    <TestTube size={16} strokeWidth={1.7} />
-                    {t('settings.notifications.test')}
-                  </button>
-                </div>
               </div>
             )}
 
@@ -1873,432 +1922,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     <div style={{ fontSize: '12px', color: isDark ? '#93C5FD' : '#3B82F6', lineHeight: '1.5' }}>
                       <strong>Nota:</strong> Alterar o modo de armazenamento não migra dados automaticamente. Use Importar/Exportar para transferir dados entre modos.
                     </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-
-
-            {activeTab === 'acessibilidade' && (
-              <div style={{ display: 'grid', gap: '24px' }}>
-                {/* Visão e Leitura */}
-                <div style={{
-                  padding: '20px',
-                  backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                  borderRadius: '12px',
-                }}>
-                  <h4 style={{
-                    fontSize: '16px',
-                    fontWeight: 600,
-                    color: isDark ? '#FFFFFF' : '#1F2937',
-                    margin: '0 0 16px 0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}>
-                    <Eye size={16} />
-                    Visão e Leitura
-                  </h4>
-                  <div style={{ display: 'grid', gap: '12px' }}>
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      padding: '12px',
-                      backgroundColor: isDark ? '#141414' : '#FFFFFF',
-                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={settings.highContrastMode}
-                        onChange={(e) => updateSettings({ highContrastMode: e.target.checked })}
-                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontSize: '14px',
-                          color: 'var(--color-text-primary)',
-                          fontWeight: 500,
-                          marginBottom: '4px'
-                        }}>
-                          Modo Alto Contraste
-                        </div>
-                        <div style={{
-                          fontSize: '12px',
-                          color: 'var(--color-text-secondary)'
-                        }}>
-                          Aumenta o contraste entre texto e fundo para melhor visibilidade
-                        </div>
-                      </div>
-                    </label>
-
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      padding: '12px',
-                      backgroundColor: isDark ? '#141414' : '#FFFFFF',
-                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={(settings.fontSizePx ?? (settings.largeFontMode ? 16 : 14)) > 14}
-                        onChange={(e) => {
-                          const nextFontSize = e.target.checked ? 16 : 14;
-                          updateSettings({
-                            largeFontMode: e.target.checked,
-                            fontSizePx: nextFontSize,
-                          });
-                        }}
-                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontSize: '14px',
-                          color: 'var(--color-text-primary)',
-                          fontWeight: 500,
-                          marginBottom: '4px'
-                        }}>
-                          <Type size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
-                          Fonte Ampliada
-                        </div>
-                        <div style={{
-                          fontSize: '12px',
-                          color: 'var(--color-text-secondary)'
-                        }}>
-                          Aumenta o tamanho da fonte em toda a interface para facilitar a leitura
-                        </div>
-                      </div>
-                    </label>
-
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      padding: '12px',
-                      backgroundColor: isDark ? '#141414' : '#FFFFFF',
-                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={(settings as any).reduceAnimations}
-                        onChange={(e) => updateSettings({ reduceAnimations: e.target.checked })}
-                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontSize: '14px',
-                          color: 'var(--color-text-primary)',
-                          fontWeight: 500,
-                          marginBottom: '4px'
-                        }}>
-                          Animações e Transições
-                        </div>
-                        <div style={{
-                          fontSize: '12px',
-                          color: 'var(--color-text-secondary)'
-                        }}>
-                          Desabilite para reduzir movimento na tela (recomendado para sensibilidade a movimento)
-                        </div>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Navegação e Interação */}
-                <div style={{
-                  padding: '20px',
-                  backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                  borderRadius: '12px',
-                }}>
-                  <h4 style={{
-                    fontSize: '16px',
-                    fontWeight: 600,
-                    color: isDark ? '#FFFFFF' : '#1F2937',
-                    margin: '0 0 16px 0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}>
-                    <Keyboard size={16} />
-                    Navegação e Interação
-                  </h4>
-                  <div style={{ display: 'grid', gap: '12px' }}>
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      padding: '12px',
-                      backgroundColor: isDark ? '#141414' : '#FFFFFF',
-                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={settings.keyboardNavigation !== false}
-                        onChange={(e) => updateSettings({ keyboardNavigation: e.target.checked })}
-                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontSize: '14px',
-                          color: 'var(--color-text-primary)',
-                          fontWeight: 500,
-                          marginBottom: '4px'
-                        }}>
-                          Navegação por Teclado
-                        </div>
-                        <div style={{
-                          fontSize: '12px',
-                          color: 'var(--color-text-secondary)'
-                        }}>
-                          Permite navegar pela interface usando Tab, Enter e teclas de seta
-                        </div>
-                      </div>
-                    </label>
-
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      padding: '12px',
-                      backgroundColor: isDark ? '#141414' : '#FFFFFF',
-                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={settings.focusIndicators !== false}
-                        onChange={(e) => updateSettings({ focusIndicators: e.target.checked })}
-                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontSize: '14px',
-                          color: 'var(--color-text-primary)',
-                          fontWeight: 500,
-                          marginBottom: '4px'
-                        }}>
-                          <MousePointer size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
-                          Indicadores de Foco Visíveis
-                        </div>
-                        <div style={{
-                          fontSize: '12px',
-                          color: 'var(--color-text-secondary)'
-                        }}>
-                          Destaca visualmente o elemento focado ao navegar por teclado
-                        </div>
-                      </div>
-                    </label>
-
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      padding: '12px',
-                      backgroundColor: isDark ? '#141414' : '#FFFFFF',
-                      border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={settings.playSound}
-                        onChange={(e) => updateSettings({ playSound: e.target.checked })}
-                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontSize: '14px',
-                          color: 'var(--color-text-primary)',
-                          fontWeight: 500,
-                          marginBottom: '4px'
-                        }}>
-                          <Volume2 size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
-                          Feedback Sonoro
-                        </div>
-                        <div style={{
-                          fontSize: '12px',
-                          color: 'var(--color-text-secondary)'
-                        }}>
-                          Reproduz sons ao completar ações (notificações, timer, etc.)
-                        </div>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Removido por solicitação: seção "Atalhos de Teclado" */}
-                {/* <div style={{
-                  padding: '20px',
-                  backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                  borderRadius: '12px',
-                }}>
-                  <h4 style={{
-                    fontSize: '16px',
-                    fontWeight: 600,
-                    color: isDark ? '#FFFFFF' : '#1F2937',
-                    margin: '0 0 16px 0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}>
-                    <Keyboard size={16} />
-                    Atalhos de Teclado
-                  </h4>
-                  <div style={{ display: 'grid', gap: '8px' }}>
-                    {[
-                      { keys: 'Ctrl + N', desc: 'Nova tarefa' },
-                      { keys: 'Ctrl + Shift + N', desc: 'Nova nota' },
-                      { keys: 'Ctrl + ,', desc: 'Abrir configurações' },
-                      { keys: 'Ctrl + F', desc: 'Buscar' },
-                      { keys: 'Ctrl + B', desc: 'Abrir/fechar barra lateral' },
-                      { keys: 'Esc', desc: 'Fechar modal/diálogo' },
-                    ].map((shortcut) => (
-                      <div key={shortcut.keys} style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '10px 12px',
-                        backgroundColor: isDark ? '#141414' : '#FFFFFF',
-                        border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                        borderRadius: '8px',
-                      }}>
-                        <span style={{
-                          fontSize: '13px',
-                          color: isDark ? '#A0A0A0' : '#6B7280',
-                        }}>
-                          {shortcut.desc}
-                        </span>
-                        <code style={{
-                          fontSize: '12px',
-                          fontFamily: 'monospace',
-                          color: isDark ? '#00D4AA' : '#059669',
-                          backgroundColor: isDark ? '#1A1A1A' : '#ECFDF5',
-                          padding: '4px 8px',
-                          borderRadius: '4px',
-                          border: `1px solid ${isDark ? '#2A2A2A' : '#D1FAE5'}`,
-                        }}>
-                          {shortcut.keys}
-                        </code>
-                      </div>
-                    ))}
-                  </div>
-                </div> */}
-
-                {/* Seção de Limpeza de Dados */}
-                <div style={{
-                  padding: '20px',
-                  backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
-                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-                  borderRadius: '12px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                    <AlertCircle size={20} strokeWidth={1.7} color="#F59E0B" />
-                    <h4 style={{
-                      margin: 0,
-                      fontSize: '16px',
-                      fontWeight: 600,
-                      color: isDark ? '#FFFFFF' : '#1F2937',
-                    }}>
-                      {t('accessibility.clearData')}
-                    </h4>
-                  </div>
-                  <p style={{
-                    color: isDark ? '#A0A0A0' : '#6B7280',
-                    fontSize: '14px',
-                    margin: '0 0 16px 0',
-                    lineHeight: 1.5,
-                  }}>
-                    {t('accessibility.clearDataDesc')}
-                  </p>
-                  
-                  {showClearDataConfirm && (
-                    <div style={{
-                      padding: '16px',
-                      backgroundColor: isDark ? '#1A1A1A' : '#FEF3C7',
-                      border: `1px solid ${isDark ? '#3A3A3A' : '#F59E0B'}`,
-                      borderRadius: '8px',
-                      marginBottom: '16px',
-                    }}>
-                      <p style={{
-                        margin: '0 0 8px 0',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        color: isDark ? '#F59E0B' : '#92400E',
-                      }}>
-                        {t('accessibility.clearDataConfirm')}
-                      </p>
-                      <p style={{
-                        margin: 0,
-                        fontSize: '12px',
-                        color: isDark ? '#A0A0A0' : '#92400E',
-                      }}>
-                        {t('accessibility.clearDataWarning')}
-                      </p>
-                    </div>
-                  )}
-                  
-                  <div style={{ display: 'flex', gap: '12px' }}>
-                    <button
-                      onClick={handleClearAllData}
-                      disabled={isClearing}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '12px 20px',
-                        backgroundColor: showClearDataConfirm ? '#DC2626' : '#EF4444',
-                        color: '#FFFFFF',
-                        border: 'none',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        cursor: isClearing ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.2s ease',
-                        opacity: isClearing ? 0.6 : 1,
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isClearing) e.currentTarget.style.backgroundColor = showClearDataConfirm ? '#B91C1C' : '#DC2626';
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isClearing) e.currentTarget.style.backgroundColor = showClearDataConfirm ? '#DC2626' : '#EF4444';
-                      }}
-                    >
-                      <AlertCircle size={16} strokeWidth={1.7} />
-                      {isClearing ? 'Limpando...' : (showClearDataConfirm ? 'Confirmar Limpeza' : t('accessibility.clearData'))}
-                    </button>
-                    
-                    {showClearDataConfirm && (
-                      <button
-                        onClick={() => setShowClearDataConfirm(false)}
-                        style={{
-                          padding: '12px 20px',
-                          backgroundColor: 'transparent',
-                          color: isDark ? '#FFFFFF' : '#1F2937',
-                          border: `1px solid ${isDark ? '#3A3A3A' : '#E5E7EB'}`,
-                          borderRadius: '8px',
-                          fontSize: '14px',
-                          fontWeight: 500,
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease',
-                        }}
-                      >
-                        Cancelar
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>

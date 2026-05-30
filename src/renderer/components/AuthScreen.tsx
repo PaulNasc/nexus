@@ -4,6 +4,39 @@ import { Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle, Loader2, WifiO
 
 type AuthTab = 'login' | 'register' | 'forgot';
 
+type AuthErrorLike = {
+  message?: string;
+  status?: number;
+};
+
+const mapAuthErrorMessage = (authError: AuthErrorLike | null | undefined): string => {
+  const message = authError?.message ?? 'Erro de autenticação. Tente novamente.';
+  const lower = message.toLowerCase();
+  const status = authError?.status;
+
+  if (lower.includes('invalid login credentials')) {
+    return 'Email ou senha incorretos';
+  }
+
+  if (lower.includes('email not confirmed')) {
+    return 'Confirme seu email antes de fazer login. Verifique sua caixa de entrada.';
+  }
+
+  if (lower.includes('already registered')) {
+    return 'Este email já está cadastrado';
+  }
+
+  if (status === 429 || lower.includes('rate limit') || lower.includes('too many requests')) {
+    return 'Limite de tentativas atingido. Aguarde alguns minutos e tente novamente.';
+  }
+
+  if (lower.includes('invalid refresh token') || lower.includes('refresh token not found')) {
+    return 'Sessão antiga detectada. Tente novamente.';
+  }
+
+  return message;
+};
+
 const AuthScreen: React.FC = () => {
   const { signIn, signUp, signInWithGoogle, resetPassword, setOfflineMode } = useAuth();
 
@@ -27,7 +60,7 @@ const AuthScreen: React.FC = () => {
     const { error: authError } = await signInWithGoogle();
     setLoading(false);
     if (authError) {
-      setError(authError.message);
+      setError(mapAuthErrorMessage(authError));
     }
   };
 
@@ -45,13 +78,7 @@ const AuthScreen: React.FC = () => {
     setLoading(false);
 
     if (authError) {
-      if (authError.message.includes('Invalid login credentials')) {
-        setError('Email ou senha incorretos');
-      } else if (authError.message.includes('Email not confirmed')) {
-        setError('Confirme seu email antes de fazer login. Verifique sua caixa de entrada.');
-      } else {
-        setError(authError.message);
-      }
+      setError(mapAuthErrorMessage(authError));
     }
   };
 
@@ -74,11 +101,7 @@ const AuthScreen: React.FC = () => {
     setLoading(false);
 
     if (authError) {
-      if (authError.message.includes('already registered')) {
-        setError('Este email já está cadastrado');
-      } else {
-        setError(authError.message);
-      }
+      setError(mapAuthErrorMessage(authError));
     } else {
       setSuccess('Conta criada! Verifique seu email para confirmar o cadastro.');
       setTab('login');
@@ -99,7 +122,7 @@ const AuthScreen: React.FC = () => {
     setLoading(false);
 
     if (authError) {
-      setError(authError.message);
+      setError(mapAuthErrorMessage(authError));
     } else {
       setSuccess('Email de recuperação enviado! Verifique sua caixa de entrada.');
     }

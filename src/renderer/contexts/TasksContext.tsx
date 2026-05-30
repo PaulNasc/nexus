@@ -86,7 +86,17 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const initialLoadDone = useRef(false);
   const { settings } = useSettings();
   const { user, isOffline } = useAuth();
-  const { activeOrg } = useOrganization();
+  const { activeOrg, loading: orgLoading } = useOrganization();
+
+  // Reset initialLoadDone when organization changes so that loading stays true during transition
+  const lastOrgIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const currentOrgId = activeOrg?.id;
+    if (currentOrgId !== lastOrgIdRef.current) {
+      initialLoadDone.current = false;
+      lastOrgIdRef.current = currentOrgId;
+    }
+  }, [activeOrg?.id]);
 
   // Determine effective storage mode
   const storageMode = settings.storageMode || 'cloud';
@@ -607,7 +617,7 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const value = useMemo(() => ({
     tasks,
     stats,
-    loading,
+    loading: !initialLoadDone.current || loading || orgLoading,
     error,
     getAllTasks,
     getTasksByStatus,
@@ -619,7 +629,7 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     unlinkTaskFromNote,
     hideTaskFromOrg,
     moveToPersonal,
-  }), [tasks, stats, loading, error, getAllTasks, getTasksByStatus, createTask, updateTask, deleteTask, clearError, linkTaskToNote, unlinkTaskFromNote, hideTaskFromOrg, moveToPersonal]);
+  }), [tasks, stats, loading, orgLoading, error, getAllTasks, getTasksByStatus, createTask, updateTask, deleteTask, clearError, linkTaskToNote, unlinkTaskFromNote, hideTaskFromOrg, moveToPersonal]);
 
   return (
     <TasksContext.Provider value={value}>

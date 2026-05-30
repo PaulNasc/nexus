@@ -1501,10 +1501,24 @@
   gap: 10px;
 }
 
+.notes-loading-spinner {
+  width: 42px;
+  height: 42px;
+  color: var(--color-primary-teal);
+  animation: spin 1s linear infinite;
+  margin-bottom: var(--space-2);
+}
+
 .notes-loading-text {
   font-size: 14px;
   color: var(--color-text-muted);
   font-weight: 500;
+  animation: notes-pulse-opacity 2s ease-in-out infinite;
+}
+
+@keyframes notes-pulse-opacity {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
 }
 
 .notes-error {

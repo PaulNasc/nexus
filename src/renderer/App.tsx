@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNotifications } from './hooks/useNotifications';
+import { useNotes } from './contexts/NotesContext';
 
 import { useTheme } from './hooks/useTheme';
 import { useTasks } from './contexts/TasksContext';
@@ -21,7 +22,7 @@ import { useAppearance } from './hooks/useAppearance';
 import { Task, TaskStatus } from '../shared/types/task';
 import { Screen } from '../shared/types/navigation';
 import { UserSettings } from './hooks/useSettings';
-import { Settings as SettingsIcon, LogOut, StickyNote, Sun, Moon, ChevronUp, ChevronDown } from 'lucide-react';
+import { Settings as SettingsIcon, LogOut, StickyNote, Sun, Moon, ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { useOrganization } from './contexts/OrganizationContext';
 import ProactiveSuggestionsWidget from './components/ProactiveSuggestionsWidget';
@@ -69,7 +70,7 @@ interface AppHeaderProps {
   onSignOut: () => void;
 }
 
-const AppHeader: React.FC<AppHeaderProps> = ({
+const AppHeader: React.FC<AppHeaderProps> = React.memo(({
   settings,
   navigation,
   systemInfo,
@@ -160,7 +161,20 @@ const AppHeader: React.FC<AppHeaderProps> = ({
       </div>
     </header>
   );
-};
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.effectiveMode === nextProps.effectiveMode &&
+    prevProps.canViewMetrics === nextProps.canViewMetrics &&
+    prevProps.navigation.currentScreen === nextProps.navigation.currentScreen &&
+    prevProps.navigation.selectedList === nextProps.navigation.selectedList &&
+    prevProps.navigation.selectedNoteId === nextProps.navigation.selectedNoteId &&
+    prevProps.systemInfo.platform === nextProps.systemInfo.platform &&
+    prevProps.systemInfo.version === nextProps.systemInfo.version &&
+    prevProps.settings.showDashboard === nextProps.settings.showDashboard &&
+    prevProps.settings.showTimer === nextProps.settings.showTimer &&
+    prevProps.settings.showReports === nextProps.settings.showReports
+  );
+});
 
 const App: React.FC<AppProps> = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -197,6 +211,7 @@ const App: React.FC<AppProps> = () => {
   // Hooks centralizados via Context (instância única)
   const { signOut } = useAuth();
   const { myRole } = useOrganization();
+  const { isLoading: notesLoading } = useNotes();
   const canViewMetrics = myRole === 'admin' || myRole === 'owner';
   const {
     tasks,
@@ -306,41 +321,41 @@ const App: React.FC<AppProps> = () => {
   }, [stats?.concluido, dailyGoalReached, showDailyGoal, DAILY_GOAL]);
 
   // Navegação
-  const navigateTo = (screen: AppScreen, selectedList?: string) => {
+  const navigateTo = useCallback((screen: AppScreen, selectedList?: string) => {
     setNavigation({ currentScreen: screen, selectedList });
-  };
+  }, []);
 
-  const goToDashboard = () => {
+  const openNotes = useCallback(() => {
+    setNavigation({ currentScreen: 'notes' });
+  }, []);
+
+  const openNoteById = useCallback((noteId: number) => {
+    setNavigation({ currentScreen: 'notes', selectedNoteId: noteId });
+  }, []);
+
+  const goToDashboard = useCallback(() => {
     if (!settings.showDashboard) {
       openNotes();
       return;
     }
     navigateTo('dashboard');
-  };
+  }, [settings.showDashboard, openNotes, navigateTo]);
 
-  const viewTaskList = (status: string) => {
+  const viewTaskList = useCallback((status: string) => {
     navigateTo('task-list', status);
-  };
+  }, [navigateTo]);
 
-  const openTimer = () => {
+  const openTimer = useCallback(() => {
     navigateTo('timer');
-  };
+  }, [navigateTo]);
 
-  const openReports = () => {
+  const openReports = useCallback(() => {
     navigateTo('reports');
-  };
+  }, [navigateTo]);
 
-  const openNotes = () => {
-    setNavigation({ currentScreen: 'notes' });
-  };
-
-  const openNoteById = (noteId: number) => {
-    setNavigation({ currentScreen: 'notes', selectedNoteId: noteId });
-  };
-
-  const openMetrics = () => {
+  const openMetrics = useCallback(() => {
     navigateTo('metrics');
-  };
+  }, [navigateTo]);
 
   useEffect(() => {
     if (navigation.currentScreen === 'dashboard' && !settings.showDashboard) {
@@ -353,29 +368,25 @@ const App: React.FC<AppProps> = () => {
 
   // Modal functions
   // Hotfix: abertura direta de "Nova Tarefa" desativada por solicitação do usuário.
-  // const handleOpenTaskModal = () => {
-  //   setEditingTask(undefined);
-  //   setIsTaskModalOpen(true);
-  // };
 
-  const handleEditTask = (task: Task) => {
+  const handleEditTask = useCallback((task: Task) => {
     setEditingTask(task);
     setIsTaskModalOpen(true);
-  };
+  }, []);
 
-  const handleCloseTaskModal = () => {
+  const handleCloseTaskModal = useCallback(() => {
     setIsTaskModalOpen(false);
     setEditingTask(undefined);
-  };
+  }, []);
 
   // Settings functions
-  const handleOpenSettings = () => {
+  const handleOpenSettings = useCallback(() => {
     setIsSettingsOpen(true);
-  };
+  }, []);
 
-  const handleCloseSettings = () => {
+  const handleCloseSettings = useCallback(() => {
     setIsSettingsOpen(false);
-  };
+  }, []);
 
   const toggleHeaderVisibility = () => {
     updateSettings({ showAppHeader: !settings.showAppHeader });
@@ -519,11 +530,11 @@ const App: React.FC<AppProps> = () => {
     </button>
   );
 
-  if (isLoading || tasksLoading) {
+  if (isLoading || tasksLoading || notesLoading) {
     return (
       <div className="loading-screen">
         <div className="loading-content">
-          <div className="loading-spinner" />
+          <Loader2 className="notes-loading-spinner" />
           <h2 className="loading-title">Carregando Nexus...</h2>
           <p className="loading-subtitle">Preparando seu ambiente de produtividade</p>
         </div>
@@ -611,30 +622,33 @@ const App: React.FC<AppProps> = () => {
       {renderHeaderVisibilityToggle()}
       <main className="app-main">
         {navigation.currentScreen === 'dashboard' && (
-          <Dashboard
-            onViewTaskList={viewTaskList}
-            // onOpenTaskModal={handleOpenTaskModal}
-            onOpenTimer={settings.showTimer ? openTimer : undefined}
-            onOpenReports={settings.showReports ? openReports : undefined}
-            showQuickActions={settings.showQuickActions}
-            showTaskCounters={settings.showTaskCounters}
-          />
+          <div className="animate-screen">
+            <Dashboard
+              onViewTaskList={viewTaskList}
+              onOpenTimer={settings.showTimer ? openTimer : undefined}
+              onOpenReports={settings.showReports ? openReports : undefined}
+              showQuickActions={settings.showQuickActions}
+              showTaskCounters={settings.showTaskCounters}
+            />
+          </div>
         )}
         {navigation.currentScreen === 'timer' && settings.showTimer && (
-          <div style={{ padding: '24px' }}>
+          <div className="animate-screen" style={{ padding: '24px' }}>
             <Timer onBack={goToDashboard} />
           </div>
         )}
         {navigation.currentScreen === 'reports' && settings.showReports && (
-          <div style={{ padding: '24px' }}>
+          <div className="animate-screen" style={{ padding: '24px' }}>
             <Reports onClose={goToDashboard} onBack={goToDashboard} />
           </div>
         )}
         {navigation.currentScreen === 'notes' && (
-          <Notes initialNoteId={navigation.selectedNoteId} />
+          <div className="animate-screen" style={{ height: '100%' }}>
+            <Notes initialNoteId={navigation.selectedNoteId} />
+          </div>
         )}
         {navigation.currentScreen === 'metrics' && canViewMetrics && (
-          <div style={{ padding: '24px' }}>
+          <div className="animate-screen" style={{ padding: '24px' }}>
             <NotesMetricsPanel />
           </div>
         )}

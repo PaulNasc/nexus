@@ -15,6 +15,7 @@ import {
 import type { ElectronAPI } from '../../main/preload';
 import { Note, CreateNoteData } from '../../shared/types/note';
 import { parseVideoRef } from '../utils/videoAttachment';
+import { resolveImageUrl } from '../utils/image';
 
 interface NoteEditorProps {
   note?: Note | null;
@@ -507,7 +508,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(60px, 1fr))', gap: 6, maxHeight: 140, overflowY: 'auto' }}>
                     {attachedImages.map((image, index) => (
                       <div key={index} style={{ position: 'relative', borderRadius: 4, overflow: 'hidden', aspectRatio: '1', border: `1px solid ${isDark ? 'var(--color-border-primary)' : '#E5E7EB'}` }}>
-                        <img src={image} alt={`Anexo ${index + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <img src={resolveImageUrl(image)} alt={`Anexo ${index + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         <button onClick={() => removeImage(index)} style={{ position: 'absolute', top: 2, right: 2, width: 16, height: 16, borderRadius: '50%', background: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Remover">
                           <X size={10} />
                         </button>

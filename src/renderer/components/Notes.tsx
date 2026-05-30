@@ -273,8 +273,21 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
 
   const filteredNotes = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
+    // Pure numeric query: digits only or prefixed with # (e.g. "1", "#1", "42")
+    const isPureNumeric = /^[#]?\d+$/.test(term);
+    const numVal = isPureNumeric ? parseInt(term.replace('#', ''), 10) : null;
+
     let result = notes.filter((note) => {
       if (!term) return true;
+
+      if (isPureNumeric && numVal !== null) {
+        // When the user types a plain number, match ONLY by sequential_id.
+        // This prevents notes whose titles or content happen to contain that
+        // digit from showing up (e.g. searching "1" should NOT match note #211).
+        return note.sequential_id === numVal;
+      }
+
+      // Full-text fallback for non-numeric queries
       if (note.title.toLowerCase().includes(term)) return true;
       if (note.content.toLowerCase().includes(term)) return true;
       if (note.tags && note.tags.some((tag) => tag.toLowerCase().includes(term))) return true;
@@ -1359,7 +1372,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
 
         {isLoading ? (
           <div className="notes-loading">
-            <div className="loading-spinner"></div>
+            <Loader2 className="notes-loading-spinner" />
             <p className="notes-loading-text">Carregando notas...</p>
           </div>
         ) : error ? (

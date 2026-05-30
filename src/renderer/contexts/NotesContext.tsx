@@ -115,7 +115,7 @@ const PDF_PREVIEW_PLACEHOLDER = 'Documento PDF importado. Abra a nota para ver o
 
 export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notes, setNotes] = useState<Note[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const initialLoadDone = useRef(false);
   const fetchInFlightRef = useRef<Promise<void> | null>(null);
@@ -124,13 +124,18 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const nextSequentialIdRef = useRef<Map<string, number>>(new Map());
   const { settings } = useSettings();
   const { user, isOffline } = useAuth();
-  const { activeOrg } = useOrganization();
+  const { activeOrg, loading: orgLoading } = useOrganization();
 
   // Determine effective storage mode
   const storageMode = settings.storageMode || 'cloud';
   const isAuthenticated = !!user && !isOffline;
   const useCloud = (storageMode === 'cloud' || storageMode === 'hybrid') && isAuthenticated;
   const useLocal = storageMode === 'local' || storageMode === 'hybrid' || !isAuthenticated;
+
+  const currentOrgIdKey = activeOrg?.id ?? 'personal';
+  const fetchKey = `${currentOrgIdKey}|cloud:${useCloud}|local:${useLocal}`;
+  const isOrgChanged = lastFetchKeyRef.current !== fetchKey;
+  const computedIsLoading = !initialLoadDone.current || isOrgChanged || isLoading || orgLoading;
 
   const dedupeVideoRefs = useCallback((videoRefs: string[] | undefined): string[] | undefined => {
     if (!videoRefs || videoRefs.length === 0) return videoRefs;
@@ -461,50 +466,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return mappedNotes;
     }
 
-    const repairedNotes = await Promise.all(mappedNotes.map(async (note) => {
-      const content = String(note.content || '').trim();
-      const hasPdfTag = Array.isArray(note.tags) && note.tags.some(tag => String(tag).toLowerCase() === 'pdf-importado');
-      if (!hasPdfTag || content !== PDF_PREVIEW_PLACEHOLDER) {
-        return note;
-      }
-
-      try {
-        const restored = await electron.invoke('pdf:restoreSourceByTitle', note.title) as {
-          success?: boolean;
-          localPath?: string;
-        };
-
-        const localPath = String(restored?.localPath || '').trim();
-        if (!restored?.success || !localPath) {
-          return note;
-        }
-
-        const restoredContent = `[PDF_SOURCE]${localPath}[/PDF_SOURCE]`;
-
-        // Persist repaired content so PDF opens normally on next loads.
-        await supabase
-          .from('notes')
-          .update({
-            content: restoredContent,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', note.id);
-
-        return {
-          ...note,
-          content: restoredContent,
-        };
-      } catch (err) {
-        console.warn('NotesContext.fetchNotesCloud pdf restore failed:', {
-          noteId: note.id,
-          title: note.title,
-          error: err instanceof Error ? err.message : err,
-        });
-        return note;
-      }
-    }));
-
-    return repairedNotes;
+    return mappedNotes;
   }, [activeOrg, settings.showDashboard]);
 
   const createNoteCloud = useCallback(async (noteData: CreateNoteData): Promise<Note | null> => {
@@ -660,57 +622,96 @@ return created;
 }, [activeOrg, syncAttachedVideosToCloud, syncPdfSourceToCloud]);
 
 // ── PUBLIC API ────────────────────────────────────────────────
-const fetchNotes = useCallback(async () => {
-  const orgId = activeOrg?.id ?? 'personal';
-  const fetchKey = `${orgId}|cloud:${useCloud}|local:${useLocal}`;
+  const repairPdfNotesInBackground = useCallback(async (notesToRepair: Note[]) => {
+    const electron = getElectron();
+    if (!electron) return;
 
-  if (fetchInFlightRef.current && lastFetchKeyRef.current === fetchKey) {
-    return fetchInFlightRef.current;
-  }
+    const candidates = notesToRepair.filter(note => {
+      const content = String(note.content || '').trim();
+      const hasPdfTag = Array.isArray(note.tags) && note.tags.some(tag => String(tag).toLowerCase() === 'pdf-importado');
+      return hasPdfTag && content === PDF_PREVIEW_PLACEHOLDER;
+    });
 
-  const promise = (async () => {
-    const isContextSwitch = lastFetchKeyRef.current !== fetchKey;
-    if (!initialLoadDone.current || isContextSwitch || notes.length === 0) {
+    if (candidates.length === 0) return;
+
+    for (const note of candidates) {
+      try {
+        const restored = await electron.invoke('pdf:restoreSourceByTitle', note.title) as {
+          success?: boolean;
+          localPath?: string;
+        };
+
+        const localPath = String(restored?.localPath || '').trim();
+        if (!restored?.success || !localPath) continue;
+
+        const restoredContent = `[PDF_SOURCE]${localPath}[/PDF_SOURCE]`;
+
+        await supabase
+          .from('notes')
+          .update({
+            content: restoredContent,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', note.id);
+
+        setNotes(prev => prev.map(n => n.id === note.id ? { ...n, content: restoredContent } : n));
+      } catch (err) {
+        console.warn('Background PDF restore failed for note:', note.id, err);
+      }
+    }
+  }, []);
+
+  const fetchNotes = useCallback(async () => {
+    const orgId = activeOrg?.id ?? 'personal';
+    const fetchKey = `${orgId}|cloud:${useCloud}|local:${useLocal}`;
+
+    if (fetchInFlightRef.current && lastFetchKeyRef.current === fetchKey) {
+      return fetchInFlightRef.current;
+    }
+
+    const promise = (async () => {
       setIsLoading(true);
-    }
-    setError(null);
-    try {
-      let result: Note[] = [];
-      if (useCloud) {
-        result = await fetchNotesCloud();
-      } else if (useLocal) {
-        result = await fetchNotesLocal();
-      }
-      setNotes(result);
-    } catch (err) {
-      console.error('[NotesContext] fetchNotes error:', err);
-      setError(err instanceof Error ? err.message : 'Erro ao carregar notas');
-      // Fallback to local if cloud fails
-      if (useCloud && useLocal) {
-        try {
-          const localNotes = await fetchNotesLocal();
-          setNotes(localNotes);
-        } catch {
-          setNotes([]);
+      setError(null);
+      try {
+        let result: Note[] = [];
+        if (useCloud) {
+          result = await fetchNotesCloud();
+        } else if (useLocal) {
+          result = await fetchNotesLocal();
         }
+        setNotes(result);
+
+        if (useCloud) {
+          void repairPdfNotesInBackground(result);
+        }
+      } catch (err) {
+        console.error('[NotesContext] fetchNotes error:', err);
+        setError(err instanceof Error ? err.message : 'Erro ao carregar notas');
+        if (useCloud && useLocal) {
+          try {
+            const localNotes = await fetchNotesLocal();
+            setNotes(localNotes);
+          } catch {
+            setNotes([]);
+          }
+        }
+      } finally {
+        setIsLoading(false);
+        initialLoadDone.current = true;
       }
+    })();
+
+    lastFetchKeyRef.current = fetchKey;
+    fetchInFlightRef.current = promise;
+
+    try {
+      await promise;
     } finally {
-      setIsLoading(false);
-      initialLoadDone.current = true;
+      if (fetchInFlightRef.current === promise) {
+        fetchInFlightRef.current = null;
+      }
     }
-  })();
-
-  lastFetchKeyRef.current = fetchKey;
-  fetchInFlightRef.current = promise;
-
-  try {
-    await promise;
-  } finally {
-    if (fetchInFlightRef.current === promise) {
-      fetchInFlightRef.current = null;
-    }
-  }
-}, [useCloud, useLocal, fetchNotesCloud, fetchNotesLocal, activeOrg?.id, notes.length]);
+  }, [useCloud, useLocal, fetchNotesCloud, fetchNotesLocal, activeOrg?.id, repairPdfNotesInBackground]);
 
 const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | null> => {
   setError(null);
@@ -1097,7 +1098,7 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
 
   const value = useMemo(() => ({
     notes,
-    isLoading,
+    isLoading: computedIsLoading,
     error,
     fetchNotes,
     createNote,
@@ -1110,6 +1111,9 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
   }), [
     notes,
     isLoading,
+    orgLoading,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    activeOrg?.id,
     error,
     fetchNotes,
     createNote,

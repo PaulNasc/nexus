@@ -17,6 +17,9 @@
     "src/shared/**/*"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "src/renderer/**/__tests__/**/*",
+    "src/renderer/**/*.test.ts",
+    "src/renderer/**/*.test.tsx"
   ]
 } 

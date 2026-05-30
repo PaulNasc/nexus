@@ -2,6 +2,28 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { Session, User, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
+const SUPABASE_AUTH_STORAGE_KEY = 'nexus-supabase-auth';
+
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const maybeMessage = (error as { message?: unknown }).message;
+    return typeof maybeMessage === 'string' ? maybeMessage : '';
+  }
+  return '';
+};
+
+const isInvalidRefreshTokenError = (error: unknown): boolean => {
+  const msg = getErrorMessage(error).toLowerCase();
+  return msg.includes('invalid refresh token') || msg.includes('refresh token not found');
+};
+
+const clearPersistedAuthState = () => {
+  localStorage.removeItem(SUPABASE_AUTH_STORAGE_KEY);
+  localStorage.removeItem(`${SUPABASE_AUTH_STORAGE_KEY}-code-verifier`);
+  localStorage.removeItem('nexus-cached-user');
+};
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -34,11 +56,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Get initial session
     const initSession = async () => {
       try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        setSession(currentSession);
-        setUser(currentSession?.user ?? null);
+        const { data, error } = await supabase.auth.getSession();
+
+        if (error && isInvalidRefreshTokenError(error)) {
+          clearPersistedAuthState();
+          setSession(null);
+          setUser(null);
+
+          const { data: retryData } = await supabase.auth.getSession();
+          setSession(retryData.session);
+          setUser(retryData.session?.user ?? null);
+          return;
+        }
+
+        if (error) throw error;
+
+        setSession(data.session);
+        setUser(data.session?.user ?? null);
       } catch (err) {
         console.error('Error getting session:', err);
+
+        if (isInvalidRefreshTokenError(err)) {
+          clearPersistedAuthState();
+          setSession(null);
+          setUser(null);
+          return;
+        }
+
         // If we can't reach Supabase, check if we have a cached session
         const cachedUser = localStorage.getItem('nexus-cached-user');
         if (cachedUser) {
@@ -185,7 +229,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
-    localStorage.removeItem('nexus-cached-user');
+    clearPersistedAuthState();
     sessionStorage.removeItem('nexus-offline-mode');
     setIsOffline(false);
   }, []);

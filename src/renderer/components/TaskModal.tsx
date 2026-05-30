@@ -57,12 +57,24 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
   // Filtered notes for searchable dropdown
   const filteredNotes = useMemo(() => {
-    if (!noteSearch.trim()) return notes;
-    const q = noteSearch.toLowerCase();
-    return notes.filter(n =>
-      n.title.toLowerCase().includes(q) ||
-      (n.sequential_id && String(n.sequential_id).includes(q))
-    );
+    const q = noteSearch.toLowerCase().trim();
+    if (!q) return notes;
+
+    const isNumeric = /^[#]?\d+$/.test(q);
+    const numVal = isNumeric ? parseInt(q.replace('#', ''), 10) : null;
+    const numStr = numVal !== null ? String(numVal) : '';
+
+    return notes.filter(n => {
+      if (isNumeric && numVal !== null) {
+        if (n.sequential_id === numVal) return true;
+        const regex = new RegExp(`\\b${numStr}\\b`, 'i');
+        return regex.test(n.title);
+      }
+      return (
+        n.title.toLowerCase().includes(q) ||
+        (n.sequential_id != null && String(n.sequential_id).includes(q))
+      );
+    });
   }, [notes, noteSearch]);
 
   // Close note dropdown on outside click

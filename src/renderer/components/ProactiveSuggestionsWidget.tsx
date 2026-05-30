@@ -415,4 +415,21 @@ const ProactiveSuggestionsWidget: React.FC<Props> = ({ suggestions, settings }) 
   );
 };
 
-export default ProactiveSuggestionsWidget;
+export default React.memo(ProactiveSuggestionsWidget, (prevProps, nextProps) => {
+  if (prevProps.suggestions.length !== nextProps.suggestions.length) return false;
+  for (let i = 0; i < prevProps.suggestions.length; i++) {
+    if (prevProps.suggestions[i].id !== nextProps.suggestions[i].id) return false;
+    if (prevProps.suggestions[i].title !== nextProps.suggestions[i].title) return false;
+    if (prevProps.suggestions[i].body !== nextProps.suggestions[i].body) return false;
+    if (prevProps.suggestions[i].severity !== nextProps.suggestions[i].severity) return false;
+  }
+  
+  return (
+    prevProps.settings.fontSizePx === nextProps.settings.fontSizePx &&
+    prevProps.settings.cardOpacity === nextProps.settings.cardOpacity &&
+    prevProps.settings.reduceAnimations === nextProps.settings.reduceAnimations &&
+    prevProps.settings.interfaceDensity === nextProps.settings.interfaceDensity &&
+    prevProps.settings.widgetButtonOpacity === nextProps.settings.widgetButtonOpacity &&
+    prevProps.settings.widgetButtonSize === nextProps.settings.widgetButtonSize
+  );
+});

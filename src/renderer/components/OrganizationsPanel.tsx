@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useCategories } from '../contexts/CategoriesContext';
 import { useSystemTags } from '../contexts/SystemTagsContext';
 import {
   Building2,
   Plus,
-  Users,
   Mail,
   LogOut,
   Trash2,
@@ -18,12 +16,12 @@ import {
   Search,
   Copy,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Send,
   Clock,
   UserPlus,
-  Share2,
   Pencil,
-  Folder,
   Flag,
 } from 'lucide-react';
 
@@ -31,7 +29,7 @@ interface OrganizationsPanelProps {
   isDark: boolean;
 }
 
-type PanelView = 'list' | 'create' | 'details' | 'invite' | 'join';
+type PanelView = 'list' | 'create' | 'invite' | 'join';
 
 export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }) => {
   const {
@@ -60,10 +58,7 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
   } = useOrganization();
 
   const { user } = useAuth();
-  const { categories, createCategory, updateCategory, deleteCategory } = useCategories();
   const { tags: systemTags, createTag, updateTag, deactivateTag } = useSystemTags();
-
-  const sharedCategories = categories.filter(c => c.is_shared);
 
   const [view, setView] = useState<PanelView>('list');
   const [newOrgName, setNewOrgName] = useState('');
@@ -76,12 +71,8 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
   const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
-  // Shared category editor state
-  const [editingCatId, setEditingCatId] = useState<number | null>(null);
-  const [catName, setCatName] = useState('');
-  const [catColor, setCatColor] = useState('#7B3FF2');
-  const [catIcon, setCatIcon] = useState('Folder');
-  const [showNewCat, setShowNewCat] = useState(false);
+  const [membersCollapsed, setMembersCollapsed] = useState(false);
+  const [systemTagsCollapsed, setSystemTagsCollapsed] = useState(false);
   const [editingSystemTagId, setEditingSystemTagId] = useState<number | null>(null);
   const [systemTagName, setSystemTagName] = useState('');
   const [systemTagColor, setSystemTagColor] = useState('#00D4AA');
@@ -111,32 +102,6 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
     { value: '#F472B6', label: 'Rosa Magenta' },
     { value: '#FCD34D', label: 'Amarelo Limão' },
   ];
-
-  const catIconOptions = ['Folder', 'Star', 'Heart', 'Zap', 'Target', 'Flag', 'Bookmark', 'Tag'];
-
-  const handleSaveSharedCat = async () => {
-    if (!catName.trim()) return;
-    setActionLoading(true);
-    try {
-      if (editingCatId) {
-        await updateCategory(editingCatId, { name: catName.trim(), color: catColor, icon: catIcon });
-        showFeedback('success', 'Categoria atualizada');
-      } else {
-        await createCategory({ name: catName.trim(), color: catColor, icon: catIcon, is_shared: true });
-        showFeedback('success', 'Categoria compartilhada criada');
-      }
-      setCatName('');
-      setCatColor('#7B3FF2');
-      setCatIcon('Folder');
-      setEditingCatId(null);
-      setShowNewCat(false);
-    } catch (err) {
-      showFeedback('error', err instanceof Error ? err.message : 'Erro ao salvar categoria');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const activeSystemTags = systemTags.filter((tag) => tag.is_active);
 
   const handleEditSystemTag = (tag: { id: number; name: string; color: string }) => {
@@ -178,23 +143,6 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
     } finally {
       setActionLoading(false);
     }
-  };
-
-  const handleEditCat = (cat: { id: number; name: string; color: string; icon?: string }) => {
-    setEditingCatId(cat.id);
-    setCatName(cat.name);
-    setCatColor(cat.color);
-    setCatIcon(cat.icon || 'Folder');
-    setShowNewCat(true);
-  };
-
-  const handleDeleteSharedCat = async (id: number) => {
-    if (!confirm('Excluir esta categoria compartilhada?')) return;
-    setActionLoading(true);
-    const ok = await deleteCategory(id);
-    setActionLoading(false);
-    if (ok) showFeedback('success', 'Categoria excluída');
-    else showFeedback('error', 'Não é possível excluir esta categoria');
   };
 
   const showFeedback = (type: 'success' | 'error', msg: string) => {
@@ -497,12 +445,14 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    style={btnSecondary}
-                    onClick={() => setView('details')}
-                  >
-                    <Users size={14} /> Gerenciar
-                  </button>
+                  {(myRole === 'owner' || myRole === 'admin') && (
+                    <button
+                      style={btnSecondary}
+                      onClick={() => setView('invite')}
+                    >
+                      <Mail size={14} /> Convidar
+                    </button>
+                  )}
                   <button
                     style={btnSecondary}
                     onClick={() => setActiveOrg(null)}
@@ -728,14 +678,9 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
         </div>
       )}
 
-      {/* === DETAILS VIEW (manage active org) === */}
-      {view === 'details' && activeOrg && (
+      {/* === ACTIVE ORG DETAILS (expanded by default) === */}
+      {view === 'list' && activeOrg && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button style={btnSecondary} onClick={() => setView('list')}>← Voltar</button>
-            <span style={{ fontWeight: 600, color: isDark ? '#FFF' : '#111' }}>{activeOrg.name}</span>
-          </div>
-
           {/* Org info */}
           <div style={cardStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -768,8 +713,15 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
           {/* Members */}
           <div style={cardStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFF' : '#111' }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFF' : '#111', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 Membros ({members.length})
+                <button
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: isDark ? '#AAA' : '#6B7280', display: 'flex', alignItems: 'center' }}
+                  onClick={() => setMembersCollapsed((prev) => !prev)}
+                  title={membersCollapsed ? 'Expandir membros' : 'Recolher membros'}
+                >
+                  {membersCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                </button>
               </div>
               {(myRole === 'owner' || myRole === 'admin') && (
                 <button style={{ ...btnPrimary, padding: '6px 12px', fontSize: '12px' }} onClick={() => setView('invite')}>
@@ -778,7 +730,8 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
               )}
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {!membersCollapsed && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {members.map(m => (
                 <div key={m.id} style={{
                   display: 'flex',
@@ -832,7 +785,8 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                   )}
                 </div>
               ))}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Pending invites (admin/owner only) */}
@@ -916,141 +870,18 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
             </div>
           )}
 
-          {/* Shared Categories (admin/owner only) - TEMPORARIAMENTE DESABILITADO */}
-          {false && (myRole === 'owner' || myRole === 'admin') && (
-            <div style={cardStyle}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFF' : '#111', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Share2 size={16} color="#00D4AA" /> Categorias Compartilhadas ({sharedCategories.length})
-                </div>
-                <button
-                  style={{ ...btnPrimary, padding: '6px 12px', fontSize: '12px' }}
-                  onClick={() => { setShowNewCat(true); setEditingCatId(null); setCatName(''); setCatColor('#7B3FF2'); setCatIcon('Folder'); }}
-                >
-                  <Plus size={14} /> Nova
-                </button>
-              </div>
-
-              {/* Existing shared categories list */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: showNewCat ? '14px' : '0' }}>
-                {sharedCategories.length === 0 && !showNewCat && (
-                  <div style={{ textAlign: 'center', padding: '16px', color: isDark ? '#666' : '#9CA3AF', fontSize: '13px' }}>
-                    <Folder size={24} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
-                    Nenhuma categoria compartilhada criada.
-                  </div>
-                )}
-                {sharedCategories.map(cat => (
-                  <div key={cat.id} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '10px', borderRadius: '8px', backgroundColor: isDark ? '#111' : '#FFF',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: cat.color, flexShrink: 0 }} />
-                      <div>
-                        <div style={{ fontWeight: 500, fontSize: '13px', color: isDark ? '#FFF' : '#111' }}>
-                          {cat.name}
-                          {cat.isSystem && <span style={{ fontSize: '10px', color: '#F59E0B', marginLeft: '6px' }}>(sistema)</span>}
-                        </div>
-                        <div style={{ fontSize: '11px', color: isDark ? '#666' : '#9CA3AF' }}>
-                          {cat.task_count ?? 0} tarefa{(cat.task_count ?? 0) !== 1 ? 's' : ''}
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <button
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
-                        onClick={() => handleEditCat(cat)}
-                        title="Editar"
-                      >
-                        <Pencil size={14} color={isDark ? '#888' : '#6B7280'} />
-                      </button>
-                      {!cat.isSystem && (
-                        <button
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
-                          onClick={() => handleDeleteSharedCat(cat.id)}
-                          title="Excluir"
-                        >
-                          <Trash2 size={14} color="#EF4444" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* New / Edit shared category form */}
-              {showNewCat && (
-                <div style={{
-                  padding: '14px', borderRadius: '8px',
-                  backgroundColor: isDark ? '#111' : '#FFF',
-                  border: `1px solid ${isDark ? '#333' : '#D1D5DB'}`,
-                }}>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: isDark ? '#FFF' : '#111', marginBottom: '12px' }}>
-                    {editingCatId ? 'Editar Categoria' : 'Nova Categoria Compartilhada'}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <input
-                      style={inputStyle}
-                      placeholder="Nome da categoria"
-                      value={catName}
-                      onChange={e => setCatName(e.target.value)}
-                      autoFocus
-                    />
-                    <div>
-                      <label style={{ fontSize: '12px', color: isDark ? '#AAA' : '#6B7280', marginBottom: '6px', display: 'block' }}>Cor</label>
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        {catColorOptions.map(opt => (
-                          <button
-                            key={opt.value}
-                            onClick={() => setCatColor(opt.value)}
-                            title={opt.label}
-                            style={{
-                              width: '24px', height: '24px', borderRadius: '50%',
-                              backgroundColor: opt.value, border: catColor === opt.value ? '2px solid #FFF' : '2px solid transparent',
-                              cursor: 'pointer', boxShadow: catColor === opt.value ? `0 0 0 2px ${opt.value}` : 'none',
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '12px', color: isDark ? '#AAA' : '#6B7280', marginBottom: '6px', display: 'block' }}>Ícone</label>
-                      <select
-                        value={catIcon}
-                        onChange={e => setCatIcon(e.target.value)}
-                        style={{ ...inputStyle, cursor: 'pointer' }}
-                      >
-                        {catIconOptions.map(icon => (
-                          <option key={icon} value={icon}>{icon}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                      <button
-                        style={btnSecondary}
-                        onClick={() => { setShowNewCat(false); setEditingCatId(null); setCatName(''); }}
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        style={{ ...btnPrimary, padding: '8px 16px', fontSize: '13px', opacity: actionLoading || !catName.trim() ? 0.6 : 1 }}
-                        onClick={handleSaveSharedCat}
-                        disabled={actionLoading || !catName.trim()}
-                      >
-                        <Check size={14} /> {editingCatId ? 'Salvar' : 'Criar'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {(myRole === 'owner' || myRole === 'admin') && (
             <div style={cardStyle}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFF' : '#111', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Flag size={16} color="#00D4AA" /> Tags de Sistema ({activeSystemTags.length})
+                  <button
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: isDark ? '#AAA' : '#6B7280', display: 'flex', alignItems: 'center' }}
+                    onClick={() => setSystemTagsCollapsed((prev) => !prev)}
+                    title={systemTagsCollapsed ? 'Expandir tags de sistema' : 'Recolher tags de sistema'}
+                  >
+                    {systemTagsCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                  </button>
                 </div>
                 <button
                   style={{ ...btnPrimary, padding: '6px 12px', fontSize: '12px' }}
@@ -1060,72 +891,76 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                 </button>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: showSystemTagForm ? '14px' : '0' }}>
-                {activeSystemTags.length === 0 && !showSystemTagForm && (
-                  <div style={{ textAlign: 'center', padding: '16px', color: isDark ? '#666' : '#9CA3AF', fontSize: '13px' }}>
-                    Nenhuma tag de sistema criada.
-                  </div>
-                )}
+              {!systemTagsCollapsed && (
+                <>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: showSystemTagForm ? '14px' : '0' }}>
+                    {activeSystemTags.length === 0 && !showSystemTagForm && (
+                      <div style={{ textAlign: 'center', padding: '16px', color: isDark ? '#666' : '#9CA3AF', fontSize: '13px' }}>
+                        Nenhuma tag de sistema criada.
+                      </div>
+                    )}
 
-                {activeSystemTags.map((tag) => (
-                  <div
-                    key={tag.id}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px', borderRadius: '8px', backgroundColor: isDark ? '#111' : '#FFF' }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: tag.color, flexShrink: 0 }} />
-                      <div style={{ fontWeight: 500, fontSize: '13px', color: isDark ? '#FFF' : '#111' }}>{tag.name}</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }} onClick={() => handleEditSystemTag(tag)} title="Editar">
-                        <Pencil size={14} color={isDark ? '#888' : '#6B7280'} />
-                      </button>
-                      <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }} onClick={() => handleDeactivateSystemTag(tag.id)} title="Desativar">
-                        <Trash2 size={14} color="#EF4444" />
-                      </button>
-                    </div>
+                    {activeSystemTags.map((tag) => (
+                      <div
+                        key={tag.id}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px', borderRadius: '8px', backgroundColor: isDark ? '#111' : '#FFF' }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: tag.color, flexShrink: 0 }} />
+                          <div style={{ fontWeight: 500, fontSize: '13px', color: isDark ? '#FFF' : '#111' }}>{tag.name}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }} onClick={() => handleEditSystemTag(tag)} title="Editar">
+                            <Pencil size={14} color={isDark ? '#888' : '#6B7280'} />
+                          </button>
+                          <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }} onClick={() => handleDeactivateSystemTag(tag.id)} title="Desativar">
+                            <Trash2 size={14} color="#EF4444" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
 
-              {showSystemTagForm && (
-                <div style={{ padding: '14px', borderRadius: '8px', backgroundColor: isDark ? '#111' : '#FFF', border: `1px solid ${isDark ? '#333' : '#D1D5DB'}` }}>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: isDark ? '#FFF' : '#111', marginBottom: '12px' }}>
-                    {editingSystemTagId ? 'Editar Tag de Sistema' : 'Nova Tag de Sistema'}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <input style={inputStyle} placeholder="Nome da tag" value={systemTagName} onChange={(e) => setSystemTagName(e.target.value)} autoFocus />
-                    <div>
-                      <label style={{ fontSize: '12px', color: isDark ? '#AAA' : '#6B7280', marginBottom: '6px', display: 'block' }}>Cor</label>
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        {catColorOptions.map((opt) => (
-                          <button
-                            key={opt.value}
-                            onClick={() => setSystemTagColor(opt.value)}
-                            title={opt.label}
-                            style={{
-                              width: '24px',
-                              height: '24px',
-                              borderRadius: '50%',
-                              backgroundColor: opt.value,
-                              border: systemTagColor === opt.value ? '2px solid #FFF' : '2px solid transparent',
-                              cursor: 'pointer',
-                              boxShadow: systemTagColor === opt.value ? `0 0 0 2px ${opt.value}` : 'none',
-                            }}
-                          />
-                        ))}
+                  {showSystemTagForm && (
+                    <div style={{ padding: '14px', borderRadius: '8px', backgroundColor: isDark ? '#111' : '#FFF', border: `1px solid ${isDark ? '#333' : '#D1D5DB'}` }}>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: isDark ? '#FFF' : '#111', marginBottom: '12px' }}>
+                        {editingSystemTagId ? 'Editar Tag de Sistema' : 'Nova Tag de Sistema'}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <input style={inputStyle} placeholder="Nome da tag" value={systemTagName} onChange={(e) => setSystemTagName(e.target.value)} autoFocus />
+                        <div>
+                          <label style={{ fontSize: '12px', color: isDark ? '#AAA' : '#6B7280', marginBottom: '6px', display: 'block' }}>Cor</label>
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {catColorOptions.map((opt) => (
+                              <button
+                                key={opt.value}
+                                onClick={() => setSystemTagColor(opt.value)}
+                                title={opt.label}
+                                style={{
+                                  width: '24px',
+                                  height: '24px',
+                                  borderRadius: '50%',
+                                  backgroundColor: opt.value,
+                                  border: systemTagColor === opt.value ? '2px solid #FFF' : '2px solid transparent',
+                                  cursor: 'pointer',
+                                  boxShadow: systemTagColor === opt.value ? `0 0 0 2px ${opt.value}` : 'none',
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                          <button style={btnSecondary} onClick={() => { setShowSystemTagForm(false); setEditingSystemTagId(null); setSystemTagName(''); }}>
+                            Cancelar
+                          </button>
+                          <button style={{ ...btnPrimary, padding: '8px 16px', fontSize: '13px', opacity: actionLoading || !systemTagName.trim() ? 0.6 : 1 }} onClick={handleSaveSystemTag} disabled={actionLoading || !systemTagName.trim()}>
+                            <Check size={14} /> {editingSystemTagId ? 'Salvar' : 'Criar'}
+                          </button>
+                        </div>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                      <button style={btnSecondary} onClick={() => { setShowSystemTagForm(false); setEditingSystemTagId(null); setSystemTagName(''); }}>
-                        Cancelar
-                      </button>
-                      <button style={{ ...btnPrimary, padding: '8px 16px', fontSize: '13px', opacity: actionLoading || !systemTagName.trim() ? 0.6 : 1 }} onClick={handleSaveSystemTag} disabled={actionLoading || !systemTagName.trim()}>
-                        <Check size={14} /> {editingSystemTagId ? 'Salvar' : 'Criar'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -1150,7 +985,7 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
       {view === 'invite' && activeOrg && (
         <div style={cardStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
-            <button style={btnSecondary} onClick={() => setView('details')}>← Voltar</button>
+            <button style={btnSecondary} onClick={() => setView('list')}>← Voltar</button>
             <span style={{ fontWeight: 600, color: isDark ? '#FFF' : '#111' }}>Convidar para {activeOrg.name}</span>
           </div>
 

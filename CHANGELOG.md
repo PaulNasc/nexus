@@ -1,5 +1,15 @@
 ## Changelog
 
+### v1.3.1
+- Search: Busca por número puro (`1`, `#1`, `42`) agora retorna apenas a nota com o `sequential_id` exato, eliminando falsos positivos em notas cujo conteúdo contém o dígito.
+- Loading: Indicador de carregamento agora é exibido corretamente ao abrir o programa e ao trocar de organização, enquanto as notas ainda estão sendo carregadas do Supabase.
+- Context: `isOrgChanged` agora é corretamente propagado via `computedIsLoading` no `NotesContext`, garantindo que a tela de carregamento persista até a fetch da nova org completar.
+- Performance: Remoção de verificação redundante de `orgLoading` no `App.tsx` — já encapsulada dentro de `notesLoading`.
+- Bugfix: Removidos componentes legados (`CategoryManager`, `LogViewer`, `ConfirmDeleteNoteModal`, `BackupPanel`) e código comentado sem serventia.
+- Images: URLs `via.placeholder.com` agora são interceptadas e substituídas por SVG inline, eliminando o erro de rede no console.
+- PDF: Indicador de carregamento exibido durante download do arquivo do R2 e renderização do iframe.
+- UI: Transição suave entre abas com animação `screenFadeInSlide`; aba ativa com indicador teal animado.
+
 ### v1.1.8
 - Updater (Portable): Improved relaunch reliability after update by switching to Electron relaunch flow.
 - Updater (Portable): Expanded shortcut retargeting to Desktop, Start Menu, and pinned shortcuts.

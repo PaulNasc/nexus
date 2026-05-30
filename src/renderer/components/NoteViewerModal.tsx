@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from './ui/Button';
-import { X, Image as ImageIcon, FileText, FileCode2, Pin, Video, Download, Copy, Play, ExternalLink } from 'lucide-react';
+import { X, Image as ImageIcon, FileText, FileCode2, Pin, Video, Download, Copy, Play, ExternalLink, Loader2 } from 'lucide-react';
 import type { ElectronAPI } from '../../main/preload';
 import { Note, NoteAttachment } from '../../shared/types/note';
 import { supabase } from '../lib/supabase';
 import { parseVideoRef } from '../utils/videoAttachment';
 import { parsePdfRef } from '../utils/pdfAttachment';
 import { downloadVideoBlobFromR2Signed } from '../lib/r2Videos';
+import { resolveImageUrl } from '../utils/image';
 
 interface NoteViewerModalProps {
   isOpen: boolean;
@@ -45,7 +46,9 @@ function renderMarkdownToHtml(md: string): string {
   // Inline code
   html = html.replace(/`([^`]+)`/g, '<code class="note-inline-code">$1</code>');
   // Images
-  html = html.replace(/!\[([^\]]*)\]\(([^\)]+)\)/g, '<img src="$2" alt="$1" class="note-md-img" />');
+  html = html.replace(/!\[([^\]]*)\]\(([^\)]+)\)/g, (_match, alt, src) => {
+    return `<img src="${resolveImageUrl(src)}" alt="${alt}" class="note-md-img" />`;
+  });
   // Links
   html = html.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, '<a href="$2" class="note-md-link">$1</a>');
   // Headings
@@ -83,6 +86,26 @@ function renderMarkdownToHtml(md: string): string {
   return html;
 }
 
+const PDF_PREVIEW_PLACEHOLDER = 'Documento PDF importado. Abra a nota para ver os detalhes.';
+
+const isPlaceholderContent = (content: string): boolean => {
+  const trimmed = String(content || '').trim();
+  if (!trimmed) return true;
+  
+  // Check if it's a file attachment tag
+  if (/^\[(vídeo|video|pdf|arquivo)\s+anexado:\s*.*?\]$/i.test(trimmed)) return true;
+  
+  // Check if it's the PDF import placeholder
+  if (trimmed === PDF_PREVIEW_PLACEHOLDER) return true;
+  if (/^não foi possível extrair texto automaticamente de/i.test(trimmed)) return true;
+  if (/^não foi possível extrair texto de/i.test(trimmed)) return true;
+  
+  // Check if it looks like a raw file path
+  if (/^(file:\/\/\/|[a-zA-Z]:\\|\/)/i.test(trimmed) && /\.(pdf|mp4|webm|ogg|mov|avi|mkv)$/i.test(trimmed)) return true;
+  
+  return false;
+};
+
 const getElectron = (): ElectronAPI | null => {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI || null;
 };
@@ -98,6 +121,9 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
   const [pdfCandidateUrls, setPdfCandidateUrls] = useState<string[]>([]);
   const [pdfCandidateIndex, setPdfCandidateIndex] = useState(0);
   const [pdfLoadError, setPdfLoadError] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [isIframeLoading, setIsIframeLoading] = useState(false);
+  const [downloadingVideos, setDownloadingVideos] = useState<Record<string, boolean>>({});
   const tempVideoObjectUrlsRef = useRef<Set<string>>(new Set());
   const tempPdfObjectUrlsRef = useRef<Set<string>>(new Set());
 
@@ -138,7 +164,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
   const primaryPdf = pdfAttachments[0] || null;
   const primaryPdfSource = primaryPdf?.url || contentPdfSource || '';
   const primaryPdfUrl = pdfCandidateUrls[pdfCandidateIndex] || '';
-  const hasPdfAttachment = Boolean(primaryPdfUrl);
+  const hasPdfAttachment = Boolean(primaryPdfSource);
 
   const hasVideos = useMemo(() => {
     return note?.attachedVideos && note.attachedVideos.length > 0;
@@ -186,16 +212,19 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
           setPdfCandidateUrls([]);
           setPdfCandidateIndex(0);
           setPdfLoadError(false);
+          setIsDownloadingPdf(false);
         }
         return;
       }
 
+      setIsDownloadingPdf(true);
       const candidates: string[] = [];
       const parsedPdf = parsePdfRef(primaryPdfSource);
 
       if (parsedPdf.storagePath) {
         try {
           const blob = await downloadVideoBlobFromR2Signed(parsedPdf.storagePath);
+          if (canceled) return;
           const blobUrl = URL.createObjectURL(blob);
           nextPdfObjectUrls.add(blobUrl);
           candidates.push(blobUrl);
@@ -238,6 +267,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       setPdfCandidateUrls(candidates);
       setPdfCandidateIndex(0);
       setPdfLoadError(false);
+      setIsDownloadingPdf(false);
     };
 
     resolvePdfCandidates();
@@ -255,7 +285,17 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     };
   }, [isOpen, primaryPdfSource]);
 
+  // Trigger iframe loading state when primaryPdfUrl changes
+  useEffect(() => {
+    if (primaryPdfUrl) {
+      setIsIframeLoading(true);
+    } else {
+      setIsIframeLoading(false);
+    }
+  }, [primaryPdfUrl]);
+
   const handlePdfIframeError = () => {
+    setIsIframeLoading(false);
     setPdfCandidateIndex((current) => {
       if (current < pdfCandidateUrls.length - 1) {
         setPdfLoadError(false);
@@ -267,6 +307,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
   };
 
   const handlePdfIframeLoad = () => {
+    setIsIframeLoading(false);
     setPdfLoadError(false);
   };
 
@@ -326,6 +367,9 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
 
           if (candidateStoragePaths.size > 0) {
             try {
+              if (!canceled) {
+                setDownloadingVideos(prev => ({ ...prev, [videoRef]: true }));
+              }
               for (const objectKey of candidateStoragePaths) {
                 let downloadedBlob: Blob;
                 try {
@@ -337,6 +381,8 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                   continue;
                 }
 
+                if (canceled) return;
+
                 const objectUrl = URL.createObjectURL(downloadedBlob);
                 urls[videoRef] = objectUrl;
                 paths[videoRef] = '[temporario em memoria]';
@@ -346,6 +392,10 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
               }
             } catch (downloadError) {
               lastDownloadError = downloadError instanceof Error ? downloadError.message : String(downloadError);
+            } finally {
+              if (!canceled) {
+                setDownloadingVideos(prev => ({ ...prev, [videoRef]: false }));
+              }
             }
 
             if (!downloaded && lastDownloadError) {
@@ -396,8 +446,22 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     return byArray || byAttachments;
   }, [note]);
 
+  const hasNoRealContent = useMemo(() => {
+    return isPlaceholderContent(sanitizedNoteContent);
+  }, [sanitizedNoteContent]);
+
   const hasAttachments = hasVideos || hasImages;
-  const showAttachmentSidebar = hasVideos || (hasImages && !hasPdfAttachment);
+  const showAttachmentSidebar = useMemo(() => {
+    if (hasNoRealContent) {
+      if (hasPdfAttachment) {
+        return hasVideos || hasImages;
+      } else if (hasVideos) {
+        return hasImages;
+      }
+      return false;
+    }
+    return hasVideos || (hasImages && !hasPdfAttachment);
+  }, [hasNoRealContent, hasPdfAttachment, hasVideos, hasImages]);
 
   if (!isOpen || !note) return null;
 
@@ -530,75 +594,265 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
         {/* Content: text left, attachments right */}
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
           {/* Text area — expanded */}
-          <div style={{ flex: 1, overflow: 'auto', padding: 'var(--space-5) var(--space-6)', minWidth: 0 }}>
-            {hasPdfAttachment && (
-              <div style={{
-                border: '1px solid var(--color-border-primary)',
-                borderRadius: 10,
-                background: 'var(--color-bg-secondary)',
-                overflow: 'hidden',
-                marginBottom: 14,
-              }}>
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '8px 10px',
-                  borderBottom: '1px solid var(--color-border-primary)',
-                }}>
-                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {primaryPdf?.name || 'PDF anexado'}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button
-                      onClick={() => setPdfLightboxSrc(primaryPdfUrl)}
-                      disabled={!primaryPdfUrl}
-                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
-                    >
-                      <ExternalLink size={12} /> Expandir
-                    </button>
-                    <button
-                      onClick={() => handleOpenPdfExternal(primaryPdfUrl)}
-                      disabled={!primaryPdfUrl}
-                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
-                    >
-                      <Play size={12} /> Abrir
-                    </button>
-                    <button
-                      onClick={() => handleDownloadPdf(primaryPdfUrl, primaryPdf?.name)}
-                      disabled={!primaryPdfUrl}
-                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
-                    >
-                      <Download size={12} /> Baixar
-                    </button>
-                  </div>
-                </div>
-                <div style={{ width: '100%', height: '52vh', background: '#0b0b0b' }}>
-                  {pdfLoadError && (
-                    <div style={{ padding: 10, fontSize: 12, color: 'var(--color-text-secondary)', borderBottom: '1px solid var(--color-border-primary)' }}>
-                      PDF não encontrado neste dispositivo. Caminhos locais de outra máquina podem não existir aqui.
+          <div style={{ flex: 1, overflow: 'auto', padding: 'var(--space-5) var(--space-6)', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+            {hasNoRealContent ? (
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                {hasPdfAttachment ? (
+                  <div style={{
+                    border: '1px solid var(--color-border-primary)',
+                    borderRadius: 10,
+                    background: 'var(--color-bg-secondary)',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    flex: 1,
+                    height: '62vh'
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 10px',
+                      borderBottom: '1px solid var(--color-border-primary)',
+                    }}>
+                      <div
+                        style={{ fontSize: 12, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'help' }}
+                        title={primaryPdfSource}
+                      >
+                        📄 PDF Anexado (Passe o mouse para ver o caminho)
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          onClick={() => setPdfLightboxSrc(primaryPdfUrl)}
+                          disabled={!primaryPdfUrl}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                        >
+                          <ExternalLink size={12} /> Expandir
+                        </button>
+                        <button
+                          onClick={() => handleOpenPdfExternal(primaryPdfUrl)}
+                          disabled={!primaryPdfUrl}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                        >
+                          <Play size={12} /> Abrir
+                        </button>
+                        <button
+                          onClick={() => handleDownloadPdf(primaryPdfUrl, primaryPdf?.name)}
+                          disabled={!primaryPdfUrl}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                        >
+                          <Download size={12} /> Baixar
+                        </button>
+                      </div>
                     </div>
-                  )}
-                  <iframe
-                    src={primaryPdfUrl}
-                    title={primaryPdf?.name || 'PDF'}
-                    style={{ width: '100%', height: '100%', border: 0 }}
-                    onLoad={handlePdfIframeLoad}
-                    onError={handlePdfIframeError}
-                  />
-                </div>
+                    <div style={{ width: '100%', flex: 1, background: '#0b0b0b', position: 'relative', minHeight: '50vh' }}>
+                      {(isDownloadingPdf || isIframeLoading) && (
+                        <div style={{
+                          position: 'absolute',
+                          inset: 0,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 12,
+                          background: 'rgba(10, 10, 10, 0.85)',
+                          zIndex: 10
+                        }}>
+                          <Loader2 className="notes-utilities-spin" size={28} color="var(--color-primary-teal)" />
+                          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', animation: 'notes-pulse-opacity 2s ease-in-out infinite' }}>
+                            {isDownloadingPdf ? 'Carregando arquivo PDF do R2...' : 'Renderizando PDF...'}
+                          </span>
+                        </div>
+                      )}
+                      {pdfLoadError && (
+                        <div style={{ padding: 10, fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                          PDF não encontrado neste dispositivo. Caminhos locais de outra máquina podem não existirem aqui.
+                        </div>
+                      )}
+                      {primaryPdfUrl && (
+                        <iframe
+                          src={primaryPdfUrl}
+                          title={primaryPdf?.name || 'PDF'}
+                          style={{ width: '100%', height: '100%', border: 0, opacity: (isDownloadingPdf || isIframeLoading) ? 0 : 1, transition: 'opacity 0.2s ease' }}
+                          onLoad={handlePdfIframeLoad}
+                          onError={handlePdfIframeError}
+                        />
+                      )}
+                    </div>
+                  </div>
+                ) : hasVideos ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
+                    {note.attachedVideos!.map((videoRef, idx) => {
+                      const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
+                      const displayVideoName = localVideoName.replace(/^\d+-/, '');
+                      const videoUrl = videoUrls[videoRef] || '';
+                      const isDownloading = downloadingVideos[videoRef];
+                      const isMissing = videoMissing[videoRef];
+
+                      return (
+                        <div key={`main-video-${idx}`} style={{
+                          borderRadius: 10,
+                          border: '1px solid var(--color-border-primary)',
+                          backgroundColor: 'var(--color-bg-secondary)',
+                          overflow: 'hidden',
+                          display: 'flex',
+                          flexDirection: 'column'
+                        }}>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '8px 12px',
+                            borderBottom: '1px solid var(--color-border-primary)'
+                          }}>
+                            <div
+                              style={{ fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'help', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                              title={videoPaths[videoRef] || videoRef}
+                            >
+                              🎥 Vídeo: {displayVideoName} (Passe o mouse para ver o caminho)
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              {isMissing && (
+                                <button
+                                  onClick={() => handleRelinkVideo(videoRef)}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                                >
+                                  <Download size={12} /> Localizar
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleCopyVideoPath(videoRef)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: copiedPath === videoRef ? 'var(--color-primary-teal)' : 'var(--color-bg-hover)', color: copiedPath === videoRef ? '#fff' : 'var(--color-text-secondary)', cursor: 'pointer' }}
+                              >
+                                <Copy size={12} /> {copiedPath === videoRef ? 'Copiado!' : 'Caminho'}
+                              </button>
+                              <button
+                                onClick={() => handleOpenVideoExternal(videoRef)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                              >
+                                <ExternalLink size={12} /> Abrir Externo
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{ position: 'relative', width: '100%', height: '52vh', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {isDownloading ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                                <Loader2 className="notes-utilities-spin" size={32} color="#fff" />
+                                <span style={{ color: '#fff', fontSize: 13, background: 'rgba(0,0,0,0.7)', padding: '4px 10px', borderRadius: 6, animation: 'notes-pulse-opacity 2s ease-in-out infinite' }}>Baixando vídeo do R2...</span>
+                              </div>
+                            ) : isMissing ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 20, textAlign: 'center' }}>
+                                <span style={{ color: '#fff', fontSize: 14, background: 'rgba(0,0,0,0.5)', padding: '8px 16px', borderRadius: 8 }}>Vídeo não localizado nesta máquina</span>
+                                <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Caminho esperado: {videoPaths[videoRef]}</span>
+                              </div>
+                            ) : (
+                              <video
+                                controls
+                                preload="metadata"
+                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                src={videoUrl}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
-            )}
-            {note.format === 'markdown' ? (
-              <div
-                className="note-viewer-markdown"
-                dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(sanitizedNoteContent) }}
-              />
             ) : (
-              <div className="note-viewer-plaintext">
-                {sanitizedNoteContent}
-              </div>
+              <>
+                {hasPdfAttachment && (
+                  <div style={{
+                    border: '1px solid var(--color-border-primary)',
+                    borderRadius: 10,
+                    background: 'var(--color-bg-secondary)',
+                    overflow: 'hidden',
+                    marginBottom: 14,
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 10px',
+                      borderBottom: '1px solid var(--color-border-primary)',
+                    }}>
+                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {primaryPdf?.name || 'PDF anexado'}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          onClick={() => setPdfLightboxSrc(primaryPdfUrl)}
+                          disabled={!primaryPdfUrl}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                        >
+                          <ExternalLink size={12} /> Expandir
+                        </button>
+                        <button
+                          onClick={() => handleOpenPdfExternal(primaryPdfUrl)}
+                          disabled={!primaryPdfUrl}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                        >
+                          <Play size={12} /> Abrir
+                        </button>
+                        <button
+                          onClick={() => handleDownloadPdf(primaryPdfUrl, primaryPdf?.name)}
+                          disabled={!primaryPdfUrl}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                        >
+                          <Download size={12} /> Baixar
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ width: '100%', height: '52vh', background: '#0b0b0b', position: 'relative' }}>
+                      {(isDownloadingPdf || isIframeLoading) && (
+                        <div style={{
+                          position: 'absolute',
+                          inset: 0,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 12,
+                          background: 'rgba(10, 10, 10, 0.85)',
+                          zIndex: 10
+                        }}>
+                          <Loader2 className="notes-utilities-spin" size={28} color="var(--color-primary-teal)" />
+                          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', animation: 'notes-pulse-opacity 2s ease-in-out infinite' }}>
+                            {isDownloadingPdf ? 'Carregando arquivo PDF do R2...' : 'Renderizando PDF...'}
+                          </span>
+                        </div>
+                      )}
+                      {pdfLoadError && (
+                        <div style={{ padding: 10, fontSize: 12, color: 'var(--color-text-secondary)', borderBottom: '1px solid var(--color-border-primary)' }}>
+                          PDF não encontrado neste dispositivo. Caminhos locais de outra máquina podem não existir aqui.
+                        </div>
+                      )}
+                      {primaryPdfUrl && (
+                        <iframe
+                          src={primaryPdfUrl}
+                          title={primaryPdf?.name || 'PDF'}
+                          style={{ width: '100%', height: '100%', border: 0, opacity: (isDownloadingPdf || isIframeLoading) ? 0 : 1, transition: 'opacity 0.2s ease' }}
+                          onLoad={handlePdfIframeLoad}
+                          onError={handlePdfIframeError}
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
+                {note.format === 'markdown' ? (
+                  <div
+                    className="note-viewer-markdown"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(sanitizedNoteContent) }}
+                  />
+                ) : (
+                  <div className="note-viewer-plaintext">
+                    {sanitizedNoteContent}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -610,7 +864,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
               backgroundColor: 'var(--color-bg-secondary)',
             }}>
               {/* Videos */}
-              {hasVideos && (
+              {hasVideos && !(hasNoRealContent && !hasPdfAttachment) && (
                 <div>
                   <div className="note-viewer-section-title">
                     <Video size={16} />
@@ -624,9 +878,9 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                       <div key={`video-${idx}`} style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid var(--color-border-primary)', backgroundColor: 'var(--color-bg-primary)' }}>
                         {/* Thumbnail / mini player */}
                         <div
-                          style={{ position: 'relative', cursor: videoMissing[videoRef] ? 'default' : 'pointer', backgroundColor: '#000' }}
-                          onClick={() => !videoMissing[videoRef] && setVideoLightbox(videoRef)}
-                          title={videoMissing[videoRef] ? 'Arquivo nao encontrado' : 'Clique para expandir'}
+                          style={{ position: 'relative', cursor: videoMissing[videoRef] ? 'default' : (downloadingVideos[videoRef] ? 'default' : 'pointer'), backgroundColor: '#000' }}
+                          onClick={() => !videoMissing[videoRef] && !downloadingVideos[videoRef] && setVideoLightbox(videoRef)}
+                          title={videoMissing[videoRef] ? 'Arquivo nao encontrado' : (downloadingVideos[videoRef] ? 'Baixando do R2...' : 'Clique para expandir')}
                         >
                           <video
                             preload="metadata"
@@ -637,7 +891,12 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                             position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
                             background: 'rgba(0,0,0,0.3)', transition: 'background 0.2s',
                           }}>
-                            {videoMissing[videoRef] ? (
+                            {downloadingVideos[videoRef] ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                                <Loader2 className="notes-utilities-spin" size={20} color="#fff" />
+                                <span style={{ color: '#fff', fontSize: 10, background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: 4, animation: 'notes-pulse-opacity 2s ease-in-out infinite' }}>Baixando do R2...</span>
+                              </div>
+                            ) : videoMissing[videoRef] ? (
                               <span style={{ color: '#fff', fontSize: 12, background: 'rgba(0,0,0,0.5)', padding: '4px 8px', borderRadius: 6 }}>Arquivo nao encontrado</span>
                             ) : (
                               <Play size={32} color="#fff" fill="#fff" style={{ opacity: 0.9 }} />
@@ -714,7 +973,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                         onClick={() => setLightboxSrc(src)}
                         title="Ampliar imagem"
                       >
-                        <img src={src} className="note-image" alt={`Anexo ${idx + 1}`} />
+                        <img src={resolveImageUrl(src)} className="note-image" alt={`Anexo ${idx + 1}`} />
                       </button>
                     ))}
                     {(note.attachments || [])
@@ -726,7 +985,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                           onClick={() => setLightboxSrc(a.url)}
                           title={a.name || 'Ampliar imagem'}
                         >
-                          <img src={a.url} className="note-image" alt={a.name || `Anexo ${idx + 1}`} />
+                          <img src={resolveImageUrl(a.url)} className="note-image" alt={a.name || `Anexo ${idx + 1}`} />
                         </button>
                       ))}
                   </div>
@@ -742,7 +1001,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
             <button className="note-image-lightbox-close" onClick={() => setLightboxSrc(null)} aria-label="Fechar">
               <X size={18} />
             </button>
-            <img src={lightboxSrc} className="note-image-lightbox-img" alt="Imagem ampliada" />
+            <img src={resolveImageUrl(lightboxSrc)} className="note-image-lightbox-img" alt="Imagem ampliada" />
           </div>
         )}
 

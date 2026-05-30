@@ -25,6 +25,11 @@ class MainApplication {
   private cloudSyncManager: CloudSyncManager;
 
   constructor() {
+    // Configurar switches do Chromium para reduzir consumo de memória e CPU
+    app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256');
+    app.commandLine.appendSwitch('enable-gpu-rasterization');
+    app.commandLine.appendSwitch('enable-zero-copy');
+
     this.database = DatabaseManager.getInstance();
     this.logger = SecureLogger.getInstance();
     this.appUpdater = AppUpdater.getInstance();
