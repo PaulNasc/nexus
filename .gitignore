@@ -35,6 +35,10 @@ out/
 *.swp
 *.swo
 
+# Ferramentas de agente / IA (locais, não versionadas)
+.agent/
+.windsurf/
+
 # OS
 .DS_Store
 Thumbs.db
