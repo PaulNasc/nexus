@@ -1026,6 +1026,12 @@ html[data-density="comfortable"] {
 /* Scrollbars para cards de tarefas */
 .task-card-container {
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.task-card-container:hover {
+  scrollbar-color: rgba(0, 212, 170, 0.2) transparent;
 }
 
 .task-card-container::-webkit-scrollbar {
@@ -1038,55 +1044,85 @@ html[data-density="comfortable"] {
 }
 
 .task-card-container::-webkit-scrollbar-thumb {
-  background: rgba(0, 212, 170, 0.2);
+  background-color: transparent;
   border-radius: 2px;
+  transition: background-color 0.2s ease;
+}
+
+.task-card-container:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 212, 170, 0.2);
 }
 
 .task-card-container::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 212, 170, 0.4);
+  background-color: rgba(0, 212, 170, 0.4);
 }
 
 /* Scrollbars para listas de notas */
 .notes-list-container {
   overflow-y: auto;
   max-height: calc(100vh - 200px);
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.notes-list-container:hover {
+  scrollbar-color: rgba(0, 212, 170, 0.3) transparent;
 }
 
 .notes-list-container::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 
 .notes-list-container::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.05);
-  border-radius: 3px;
+  background: transparent;
 }
 
 .notes-list-container::-webkit-scrollbar-thumb {
-  background: rgba(0, 212, 170, 0.5);
+  background-color: transparent;
   border-radius: 3px;
+  transition: background-color 0.2s ease;
+}
+
+.notes-list-container:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 212, 170, 0.25);
 }
 
 .notes-list-container::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 212, 170, 0.7);
+  background-color: rgba(0, 212, 170, 0.45);
 }
 
 /* Scrollbars para modais */
 .modal-scrollable {
   overflow-y: auto;
   max-height: 80vh;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.modal-scrollable:hover {
+  scrollbar-color: rgba(123, 63, 242, 0.3) transparent;
 }
 
 .modal-scrollable::-webkit-scrollbar {
   width: 4px;
 }
 
+.modal-scrollable::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .modal-scrollable::-webkit-scrollbar-thumb {
-  background: rgba(123, 63, 242, 0.2);
+  background-color: transparent;
   border-radius: 2px;
+  transition: background-color 0.2s ease;
+}
+
+.modal-scrollable:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(123, 63, 242, 0.2);
 }
 
 .modal-scrollable::-webkit-scrollbar-thumb:hover {
-  background: rgba(123, 63, 242, 0.4);
+  background-color: rgba(123, 63, 242, 0.4);
 }
 
 /* Scrollbar sutil para modal de Settings */

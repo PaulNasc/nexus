@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from './ui/Button';
-import { X, Image as ImageIcon, FileText, FileCode2, Pin, Video, Download, Copy, Play, ExternalLink, Loader2 } from 'lucide-react';
+import { X, Image as ImageIcon, FileText, FileCode2, Pin, Video, Download, Copy, Play, ExternalLink, Loader2, ArrowUp } from 'lucide-react';
 import type { ElectronAPI } from '../../main/preload';
 import { Note, NoteAttachment } from '../../shared/types/note';
 import { parseVideoRef } from '../utils/videoAttachment';
@@ -102,9 +102,10 @@ const isPlaceholderContent = (content: string): boolean => {
   if (trimmed === PDF_PREVIEW_PLACEHOLDER) return true;
   if (/^não foi possível extrair texto automaticamente de/i.test(trimmed)) return true;
   if (/^não foi possível extrair texto de/i.test(trimmed)) return true;
+  if (/^imagem\s+importada:\s*.*?$/i.test(trimmed)) return true;
   
   // Check if it looks like a raw file path
-  if (/^(file:\/\/\/|[a-zA-Z]:\\|\/)/i.test(trimmed) && /\.(pdf|mp4|webm|ogg|mov|avi|mkv)$/i.test(trimmed)) return true;
+  if (/^(file:\/\/\/|[a-zA-Z]:\\|\/)/i.test(trimmed) && /\.(pdf|mp4|webm|ogg|mov|avi|mkv|jpg|jpeg|png|gif|webp)$/i.test(trimmed)) return true;
   
   return false;
 };
@@ -129,6 +130,52 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
   const [downloadingVideos, setDownloadingVideos] = useState<Record<string, boolean>>({});
   const tempVideoObjectUrlsRef = useRef<Set<string>>(new Set());
   const tempPdfObjectUrlsRef = useRef<Set<string>>(new Set());
+
+  const modalScrollRef = useRef<HTMLDivElement | null>(null);
+  const [showModalScrollTop, setShowModalScrollTop] = useState(false);
+
+  const handleModalScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (e.currentTarget.scrollTop > 200) {
+      setShowModalScrollTop(true);
+    } else {
+      setShowModalScrollTop(false);
+    }
+  };
+
+  const handleModalScrollToTop = () => {
+    if (modalScrollRef.current) {
+      modalScrollRef.current.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  const handleOpenImageExternal = (imageUrl: string) => {
+    if (!imageUrl) return;
+    window.open(imageUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleDownloadImage = (imageUrl: string, fileName?: string) => {
+    if (!imageUrl) return;
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = fileName || 'imagem.png';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.click();
+  };
+
+  const handleCopyImagePath = async (path: string, key: string) => {
+    try {
+      const decoded = decodeFileLikePath(path);
+      await navigator.clipboard.writeText(decoded);
+      setCopiedPath(key);
+      setTimeout(() => setCopiedPath(null), 2000);
+    } catch (err) {
+      console.error('Erro ao copiar caminho:', err);
+    }
+  };
 
   const toPdfViewerUrl = (rawUrl: string): string => {
     const value = String(rawUrl || '').trim();
@@ -435,14 +482,46 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     };
   }, [isOpen, note?.attachedVideos, note?.id, ownerId, orgId]);
 
-  const hasImages = useMemo(() => {
-    if (!note) return false;
-    const byArray = (note.attachedImages && note.attachedImages.length > 0);
-    const byAttachments = (note.attachments || []).some(
-      (a: NoteAttachment) => a.type === 'image' && Boolean(a.url)
-    );
-    return byArray || byAttachments;
+  const allImages = useMemo(() => {
+    if (!note) return [];
+    const list: { name: string; url: string }[] = [];
+    
+    if (note.attachments) {
+      note.attachments.forEach((a) => {
+        if (a.type === 'image' && a.url) {
+          list.push({
+            name: a.name || 'imagem.png',
+            url: a.url
+          });
+        }
+      });
+    }
+    
+    if (note.attachedImages) {
+      note.attachedImages.forEach((src, idx) => {
+        if (!list.some((item) => item.url === src)) {
+          let name = 'imagem.png';
+          if (src.startsWith('file://') || src.includes('/') || src.includes('\\')) {
+            const normalized = src.replace(/\\/g, '/');
+            const parts = normalized.split('/');
+            name = parts[parts.length - 1] || 'imagem.png';
+          } else {
+            name = `Imagem Anexa ${idx + 1}`;
+          }
+          list.push({
+            name,
+            url: src
+          });
+        }
+      });
+    }
+    
+    return list;
   }, [note]);
+
+  const hasImages = useMemo(() => {
+    return allImages.length > 0;
+  }, [allImages]);
 
   const hasNoRealContent = useMemo(() => {
     return isPlaceholderContent(sanitizedNoteContent);
@@ -590,9 +669,14 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
         </div>
 
         {/* Content: text left, attachments right */}
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0, position: 'relative' }}>
           {/* Text area — expanded */}
-          <div style={{ flex: 1, overflow: 'auto', padding: 'var(--space-5) var(--space-6)', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          <div
+            ref={modalScrollRef}
+            onScroll={handleModalScroll}
+            className="subtle-scrollbar"
+            style={{ flex: 1, overflow: 'auto', padding: 'var(--space-5) var(--space-6)', minWidth: 0, display: 'flex', flexDirection: 'column' }}
+          >
             {hasNoRealContent ? (
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
                 {hasPdfAttachment ? (
@@ -757,6 +841,77 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                       );
                     })}
                   </div>
+                ) : hasImages ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
+                    {allImages.map((img, idx) => {
+                      const displayName = img.name || `Imagem ${idx + 1}`;
+                      const displayPath = img.url || '';
+                      const resolvedUrl = resolveImageUrl(img.url);
+                      return (
+                        <div key={`main-image-${idx}`} style={{
+                          borderRadius: 10,
+                          border: '1px solid var(--color-border-primary)',
+                          backgroundColor: 'var(--color-bg-secondary)',
+                          overflow: 'hidden',
+                          display: 'flex',
+                          flexDirection: 'column'
+                        }}>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '8px 12px',
+                            borderBottom: '1px solid var(--color-border-primary)'
+                          }}>
+                            <div
+                              style={{ fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'help', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                              title={displayPath}
+                            >
+                              🖼️ Imagem: {displayName} (Passe o mouse para ver o caminho)
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                onClick={() => setLightboxSrc(img.url)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                              >
+                                <ExternalLink size={12} /> Expandir
+                              </button>
+                              {displayPath.startsWith('file://') && (
+                                <button
+                                  onClick={() => handleCopyImagePath(displayPath, `img-${idx}`)}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: copiedPath === `img-${idx}` ? 'var(--color-primary-teal)' : 'var(--color-bg-hover)', color: copiedPath === `img-${idx}` ? '#fff' : 'var(--color-text-secondary)', cursor: 'pointer' }}
+                                >
+                                  <Copy size={12} /> {copiedPath === `img-${idx}` ? 'Copiado!' : 'Caminho'}
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleOpenImageExternal(resolvedUrl)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                              >
+                                <Play size={12} /> Abrir
+                              </button>
+                              <button
+                                onClick={() => handleDownloadImage(resolvedUrl, displayName)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                              >
+                                <Download size={12} /> Baixar
+                              </button>
+                            </div>
+                          </div>
+                          <div
+                            style={{ position: 'relative', width: '100%', height: '52vh', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                            onClick={() => setLightboxSrc(img.url)}
+                          >
+                            <img
+                              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                              src={resolvedUrl}
+                              alt={displayName}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 ) : null}
               </div>
             ) : (
@@ -856,11 +1011,14 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
 
           {/* Right sidebar — attachments */}
           {showAttachmentSidebar && (
-            <div style={{
-              width: 320, minWidth: 320, borderLeft: '1px solid var(--color-border-primary)',
-              overflow: 'auto', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 16,
-              backgroundColor: 'var(--color-bg-secondary)',
-            }}>
+            <div
+              className="subtle-scrollbar"
+              style={{
+                width: 320, minWidth: 320, borderLeft: '1px solid var(--color-border-primary)',
+                overflow: 'auto', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 16,
+                backgroundColor: 'var(--color-bg-secondary)',
+              }}
+            >
               {/* Videos */}
               {hasVideos && !(hasNoRealContent && !hasPdfAttachment) && (
                 <div>
@@ -990,6 +1148,24 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                 </div>
               )}
             </div>
+          )}
+          
+          {showModalScrollTop && (
+            <button
+              onClick={handleModalScrollToTop}
+              className="scroll-to-top-btn"
+              style={{
+                position: 'absolute',
+                bottom: 20,
+                right: showAttachmentSidebar ? 340 : 20,
+                width: 36,
+                height: 36,
+                zIndex: 90
+              }}
+              title="Voltar ao topo"
+            >
+              <ArrowUp size={16} />
+            </button>
           )}
         </div>
 

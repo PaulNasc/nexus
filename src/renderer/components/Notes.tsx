@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNotes } from '../contexts/NotesContext';
 import { useSettings } from '../hooks/useSettings';
 import { useSystemTags } from '../contexts/SystemTagsContext';
@@ -19,7 +19,7 @@ import { Badge } from './ui/Badge';
 import { Input } from './ui/Input';
 import { NoteEditor } from './NoteEditor';
 import { LinkedTasksModal } from './LinkedTasksModal';
-import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, Pencil, CheckSquare, Square, Filter, X, ArrowUpDown, Users, FolderOpen, FileText, Upload, Download, FolderPlus, Folder, ArrowLeft, ChevronRight, Check, Loader2 } from 'lucide-react';
+import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, Pencil, CheckSquare, Square, Filter, X, ArrowUpDown, Users, FolderOpen, FileText, Upload, Download, FolderPlus, Folder, ArrowLeft, ChevronRight, Check, Loader2, ArrowUp } from 'lucide-react';
 
 import { NoteViewerModal } from './NoteViewerModal';
 
@@ -28,7 +28,7 @@ export interface NotesProps {
 }
 
 export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
-  const { notes, isLoading, error, fetchNotes, deleteNote, createNote, updateNote } = useNotes();
+  const { notes, isLoading, error, fetchNotes, deleteNote, createNote, updateNote, hasMore, isFetchingMore, loadMoreNotes } = useNotes();
   const { settings, getGreeting } = useSettings();
   const { tags: systemTags } = useSystemTags();
   const { activeOrg } = useOrganization();
@@ -39,6 +39,35 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+  const notesContainerRef = useRef<HTMLDivElement | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  const handleContainerScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    if (target.scrollTop > 300) {
+      setShowScrollTop(true);
+    } else {
+      setShowScrollTop(false);
+    }
+
+    // Infinite scroll pagination
+    const { scrollTop, scrollHeight, clientHeight } = target;
+    if (scrollHeight - scrollTop - clientHeight < 100) {
+      if (hasMore && !isFetchingMore) {
+        loadMoreNotes();
+      }
+    }
+  }, [hasMore, isFetchingMore, loadMoreNotes]);
+
+  const handleScrollToTop = () => {
+    if (notesContainerRef.current) {
+      notesContainerRef.current.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    }
+  };
   const [linkedTasksModal, setLinkedTasksModal] = useState<{
     isOpen: boolean;
     noteId: number;
@@ -1399,7 +1428,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
             )}
           </div>
         ) : (
-          <div className="notes-list notes-list-container">
+          <div className="notes-list notes-list-container" ref={notesContainerRef} onScroll={handleContainerScroll}>
             {viewMode === 'grid' ? (
               <div className="notes-grid">
                 {filteredNotes.map((note) => (
@@ -1519,6 +1548,17 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
           setViewer(prev => prev.note?.id === note.id ? { ...prev, note: { ...note, is_pinned: !note.is_pinned } } : prev);
         }}
       />
+
+      {showScrollTop && (
+        <button
+          onClick={handleScrollToTop}
+          className="scroll-to-top-btn"
+          title="Voltar ao topo"
+          style={{ zIndex: 95 }}
+        >
+          <ArrowUp size={18} />
+        </button>
+      )}
     </div>
   );
 };

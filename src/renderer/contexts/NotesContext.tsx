@@ -95,9 +95,18 @@ const dbRowToNote = (row: SupabaseNoteRow, linkedTaskIds?: number[]): Note => ({
   creator_display_name: row.creator_display_name ?? undefined,
 });
 
+/** Number of notes fetched per page on the first (cloud) load. */
+const NOTES_PAGE_SIZE = 40;
+
 interface NotesContextType {
   notes: Note[];
   isLoading: boolean;
+  /** True when there are more cloud notes beyond the initial page. */
+  hasMore: boolean;
+  /** True while fetching the next page (for skeleton loaders). */
+  isFetchingMore: boolean;
+  /** Call to load the next batch of cloud notes (used by infinite-scroll). */
+  loadMoreNotes: () => Promise<void>;
   error: string | null;
   fetchNotes: () => Promise<void>;
   createNote: (noteData: CreateNoteData) => Promise<Note | null>;
@@ -116,12 +125,15 @@ const PDF_PREVIEW_PLACEHOLDER = 'Documento PDF importado. Abra a nota para ver o
 export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const initialLoadDone = useRef(false);
   const fetchInFlightRef = useRef<Promise<void> | null>(null);
   const lastFetchKeyRef = useRef<string>('');
   const hasSystemTagColumnRef = useRef(true);
   const nextSequentialIdRef = useRef<Map<string, number>>(new Map());
+  const currentPageRef = useRef(0);
   const { settings } = useSettings();
   const { user, isOffline } = useAuth();
   const { activeOrg, loading: orgLoading } = useOrganization();
@@ -406,20 +418,30 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   // ── CLOUD (Supabase) helpers ──────────────────────────────────
-  const fetchNotesCloud = useCallback(async (): Promise<Note[]> => {
-    // Optimized: fetch only essential columns first, lazy load profiles
-    let query = supabase.from('notes').select('id, user_id, title, content, format, tags, attached_images, attached_videos, color, is_pinned, is_archived, created_at, updated_at, sequential_id, system_tag_id');
+  const fetchNotesCloud = useCallback(async (page = 0): Promise<Note[]> => {
+    // Paginated fetch: load NOTES_PAGE_SIZE rows per call.
+    // Page 0 = first load (fast); subsequent pages triggered by infinite scroll.
+    let query = supabase
+      .from('notes')
+      .select('id, user_id, title, content, format, tags, attached_images, attached_videos, color, is_pinned, is_archived, created_at, updated_at, sequential_id, system_tag_id', { count: 'exact' });
     if (activeOrg) {
       query = query.eq('organization_id', activeOrg.id);
     } else {
       query = query.is('organization_id', null);
     }
-    
-    const { data, error: fetchError } = await query
+
+    const from = page * NOTES_PAGE_SIZE;
+    const to = from + NOTES_PAGE_SIZE - 1;
+    const { data, error: fetchError, count } = await query
       .order('is_pinned', { ascending: false })
-      .order('created_at', { ascending: false });
-    
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
     if (fetchError) throw fetchError;
+
+    // Expose whether there are more notes beyond this page
+    const totalCount = count ?? 0;
+    setHasMore(from + NOTES_PAGE_SIZE < totalCount);
 
     const rows = (data || []) as SupabaseNoteRow[];
     if (rows.length === 0) return [];
@@ -662,11 +684,9 @@ return created;
   }, []);
 
   const fetchNotes = useCallback(async () => {
-    // Guard: do not fetch while the organization list is still being loaded.
-    // Fetching with an incomplete org state causes a redundant second fetch
-    // immediately after, doubling Supabase reads on every org switch.
-    if (orgLoading) return;
-
+    // No orgLoading guard here: we allow the initial fetch to proceed in parallel
+    // with org detection. If the org changes later, the fetchKey changes and triggers
+    // a new fetch automatically (via useEffect dependency on fetchNotes).
     const orgId = activeOrg?.id ?? 'personal';
     const fetchKey = `${orgId}|cloud:${useCloud}|local:${useLocal}`;
 
@@ -676,6 +696,8 @@ return created;
 
     const promise = (async () => {
       setIsLoading(true);
+      setHasMore(false);
+      currentPageRef.current = 0; // reset pagination on every full fetch
       setError(null);
       try {
         let result: Note[] = [];
@@ -716,7 +738,30 @@ return created;
         fetchInFlightRef.current = null;
       }
     }
-  }, [useCloud, useLocal, fetchNotesCloud, fetchNotesLocal, activeOrg?.id, orgLoading, repairPdfNotesInBackground]);
+  }, [useCloud, useLocal, fetchNotesCloud, fetchNotesLocal, activeOrg?.id, repairPdfNotesInBackground]);
+
+  /**
+   * Load the next page of cloud notes and append to the current list.
+   * Called by the IntersectionObserver in Notes.tsx when user reaches the bottom.
+   */
+  const loadMoreNotes = useCallback(async () => {
+    if (!hasMore || isFetchingMore || !useCloud) return;
+    setIsFetchingMore(true);
+    try {
+      const nextPage = currentPageRef.current + 1;
+      const moreNotes = await fetchNotesCloud(nextPage);
+      currentPageRef.current = nextPage;
+      setNotes(prev => {
+        // Deduplicate by id in case of realtime inserts during pagination
+        const existingIds = new Set(prev.map(n => n.id));
+        return [...prev, ...moreNotes.filter(n => !existingIds.has(n.id))];
+      });
+    } catch (err) {
+      console.error('[NotesContext] loadMoreNotes error:', err);
+    } finally {
+      setIsFetchingMore(false);
+    }
+  }, [hasMore, isFetchingMore, useCloud, fetchNotesCloud]);
 
 const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | null> => {
   setError(null);
@@ -1104,6 +1149,9 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
   const value = useMemo(() => ({
     notes,
     isLoading: computedIsLoading,
+    hasMore,
+    isFetchingMore,
+    loadMoreNotes,
     error,
     fetchNotes,
     createNote,
@@ -1116,6 +1164,9 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
   }), [
     notes,
     computedIsLoading,  // use computed value so org-switch loading state propagates
+    hasMore,
+    isFetchingMore,
+    loadMoreNotes,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     activeOrg?.id,
     error,

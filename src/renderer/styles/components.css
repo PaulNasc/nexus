@@ -2742,4 +2742,39 @@
   .property-label {
     min-width: auto;
   }
+}
+
+/* === BACK TO TOP BUTTON === */
+.scroll-to-top-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(30, 30, 30, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 99;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.scroll-to-top-btn:hover {
+  transform: translateY(-4px);
+  color: var(--color-primary-teal);
+  border-color: rgba(0, 212, 170, 0.5);
+  background: rgba(0, 212, 170, 0.1);
+  box-shadow: 0 0 20px rgba(0, 212, 170, 0.25), 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.scroll-to-top-btn:active {
+  transform: translateY(0);
 } 
