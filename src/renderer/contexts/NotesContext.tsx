@@ -662,6 +662,11 @@ return created;
   }, []);
 
   const fetchNotes = useCallback(async () => {
+    // Guard: do not fetch while the organization list is still being loaded.
+    // Fetching with an incomplete org state causes a redundant second fetch
+    // immediately after, doubling Supabase reads on every org switch.
+    if (orgLoading) return;
+
     const orgId = activeOrg?.id ?? 'personal';
     const fetchKey = `${orgId}|cloud:${useCloud}|local:${useLocal}`;
 
@@ -711,7 +716,7 @@ return created;
         fetchInFlightRef.current = null;
       }
     }
-  }, [useCloud, useLocal, fetchNotesCloud, fetchNotesLocal, activeOrg?.id, repairPdfNotesInBackground]);
+  }, [useCloud, useLocal, fetchNotesCloud, fetchNotesLocal, activeOrg?.id, orgLoading, repairPdfNotesInBackground]);
 
 const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | null> => {
   setError(null);
@@ -1110,8 +1115,7 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
     unlinkTaskFromNote,
   }), [
     notes,
-    isLoading,
-    orgLoading,
+    computedIsLoading,  // use computed value so org-switch loading state propagates
     // eslint-disable-next-line react-hooks/exhaustive-deps
     activeOrg?.id,
     error,

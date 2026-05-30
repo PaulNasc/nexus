@@ -3,6 +3,7 @@ import { useNotes } from '../contexts/NotesContext';
 import { useSettings } from '../hooks/useSettings';
 import { useSystemTags } from '../contexts/SystemTagsContext';
 import { useOrganization } from '../contexts/OrganizationContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useI18n } from '../hooks/useI18n';
 import {
   deleteUtilityObjectFromR2,
@@ -31,6 +32,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
   const { settings, getGreeting } = useSettings();
   const { tags: systemTags } = useSystemTags();
   const { activeOrg } = useOrganization();
+  const { user } = useAuth();
   const { t } = useI18n();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -1506,7 +1508,17 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
         <LinkedTasksModal isOpen={linkedTasksModal.isOpen} onClose={closeLinkedTasksModal} noteId={linkedTasksModal.noteId} noteTitle={linkedTasksModal.noteTitle} linkedTaskIds={linkedTasksModal.linkedTaskIds} />
       )}
 
-      <NoteViewerModal isOpen={viewer.isOpen} note={viewer.note} onClose={() => setViewer({ isOpen: false, note: null })} onTogglePin={async (note: Note) => { await updateNote(note.id, { is_pinned: !note.is_pinned }); setViewer(prev => prev.note?.id === note.id ? { ...prev, note: { ...note, is_pinned: !note.is_pinned } } : prev); }} />
+      <NoteViewerModal
+        isOpen={viewer.isOpen}
+        note={viewer.note}
+        onClose={() => setViewer({ isOpen: false, note: null })}
+        ownerId={user?.id ?? null}
+        orgId={activeOrg?.id ?? null}
+        onTogglePin={async (note: Note) => {
+          await updateNote(note.id, { is_pinned: !note.is_pinned });
+          setViewer(prev => prev.note?.id === note.id ? { ...prev, note: { ...note, is_pinned: !note.is_pinned } } : prev);
+        }}
+      />
     </div>
   );
 };

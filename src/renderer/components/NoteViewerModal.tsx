@@ -3,7 +3,6 @@ import { Button } from './ui/Button';
 import { X, Image as ImageIcon, FileText, FileCode2, Pin, Video, Download, Copy, Play, ExternalLink, Loader2 } from 'lucide-react';
 import type { ElectronAPI } from '../../main/preload';
 import { Note, NoteAttachment } from '../../shared/types/note';
-import { supabase } from '../lib/supabase';
 import { parseVideoRef } from '../utils/videoAttachment';
 import { parsePdfRef } from '../utils/pdfAttachment';
 import { downloadVideoBlobFromR2Signed } from '../lib/r2Videos';
@@ -14,6 +13,10 @@ interface NoteViewerModalProps {
   note: Note | null;
   onClose: () => void;
   onTogglePin?: (note: Note) => void;
+  /** Owner user_id — pass from AuthContext to avoid redundant Supabase query */
+  ownerId?: string | null;
+  /** Organization id — pass from OrganizationContext to avoid redundant Supabase query */
+  orgId?: string | null;
 }
 
 function stripMarkdown(markdown: string): string {
@@ -110,7 +113,7 @@ const getElectron = (): ElectronAPI | null => {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI || null;
 };
 
-export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, onClose, onTogglePin }) => {
+export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, onClose, onTogglePin, ownerId, orgId }) => {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [videoLightbox, setVideoLightbox] = useState<string | null>(null);
   const [pdfLightboxSrc, setPdfLightboxSrc] = useState<string | null>(null);
@@ -326,15 +329,10 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     const nextTempObjectUrls = new Set<string>();
 
     const resolve = async () => {
-      const { data: noteScopeData } = await supabase
-        .from('notes')
-        .select('user_id, organization_id')
-        .eq('id', note.id)
-        .maybeSingle();
-
-      const noteScope = noteScopeData as { user_id?: string | null; organization_id?: string | null } | null;
-      const noteOwnerId = noteScope?.user_id || null;
-      const noteOrgId = noteScope?.organization_id || null;
+      // Use props directly — no Supabase round-trip needed.
+      // ownerId/orgId are already known from AuthContext + OrganizationContext.
+      const noteOwnerId = ownerId ?? null;
+      const noteOrgId = orgId ?? null;
 
       const urls: Record<string, string> = {};
       const paths: Record<string, string> = {};
@@ -435,7 +433,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       }
       clearTempVideoObjectUrls();
     };
-  }, [isOpen, note?.attachedVideos, note?.id]);
+  }, [isOpen, note?.attachedVideos, note?.id, ownerId, orgId]);
 
   const hasImages = useMemo(() => {
     if (!note) return false;
