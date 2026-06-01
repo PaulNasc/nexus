@@ -28,7 +28,7 @@ export interface NotesProps {
 }
 
 export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
-  const { notes, isLoading, error, fetchNotes, deleteNote, createNote, updateNote, hasMore, isFetchingMore, loadMoreNotes } = useNotes();
+  const { notes, totalNotesCount, isLoading, error, fetchNotes, deleteNote, createNote, updateNote, hasMore, isFetchingMore, loadMoreNotes } = useNotes();
   const { settings, getGreeting } = useSettings();
   const { tags: systemTags } = useSystemTags();
   const { activeOrg } = useOrganization();
@@ -376,6 +376,16 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
 
     return result;
   }, [notes, searchTerm, filterColor, filterPinned, filterTags, filterSystemTagIds, sortBy, systemTagById, resolveEffectiveNoteColor]);
+
+  const isFilteringActive = useMemo(() => {
+    return Boolean(
+      searchTerm.trim() ||
+      filterColor ||
+      filterPinned ||
+      filterTags.length > 0 ||
+      filterSystemTagIds.length > 0
+    );
+  }, [searchTerm, filterColor, filterPinned, filterTags, filterSystemTagIds]);
 
   const availableTags = useMemo(() => {
     const set = new Set<string>();
@@ -839,7 +849,9 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                 <Users size={12} /> {activeOrg.name}
               </span>
             )}
-            <Badge variant="secondary" className="notes-count">{filteredNotes.length}</Badge>
+            <Badge variant="secondary" className="notes-count">
+              {isFilteringActive ? filteredNotes.length : totalNotesCount}
+            </Badge>
           </div>
         </div>
 

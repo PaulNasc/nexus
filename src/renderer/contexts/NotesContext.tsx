@@ -100,6 +100,7 @@ const NOTES_PAGE_SIZE = 40;
 
 interface NotesContextType {
   notes: Note[];
+  totalNotesCount: number;
   isLoading: boolean;
   /** True when there are more cloud notes beyond the initial page. */
   hasMore: boolean;
@@ -124,6 +125,7 @@ const PDF_PREVIEW_PLACEHOLDER = 'Documento PDF importado. Abra a nota para ver o
 
 export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notes, setNotes] = useState<Note[]>([]);
+  const [totalNotesCount, setTotalNotesCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
@@ -442,6 +444,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Expose whether there are more notes beyond this page
     const totalCount = count ?? 0;
     setHasMore(from + NOTES_PAGE_SIZE < totalCount);
+    setTotalNotesCount(totalCount);
 
     const rows = (data || []) as SupabaseNoteRow[];
     if (rows.length === 0) return [];
@@ -705,6 +708,7 @@ return created;
           result = await fetchNotesCloud();
         } else if (useLocal) {
           result = await fetchNotesLocal();
+          setTotalNotesCount(result.length);
         }
         setNotes(result);
 
@@ -718,6 +722,7 @@ return created;
           try {
             const localNotes = await fetchNotesLocal();
             setNotes(localNotes);
+            setTotalNotesCount(localNotes.length);
           } catch {
             setNotes([]);
           }
@@ -775,7 +780,14 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
     }
 
     if (created) {
-      setNotes(prev => (prev.some(n => n.id === created!.id) ? prev : [created, ...prev]));
+      setNotes(prev => {
+        const alreadyExists = prev.some(n => n.id === created!.id);
+        if (!alreadyExists) {
+          setTotalNotesCount(c => c + 1);
+          return [created, ...prev];
+        }
+        return prev;
+      });
     }
 
     return created;
@@ -998,7 +1010,14 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
         await deleteNoteLocal(id);
       }
 
-      setNotes(prev => prev.filter(n => n.id !== id));
+      setNotes(prev => {
+        const existed = prev.some(n => n.id === id);
+        if (existed) {
+          return prev.filter(n => n.id !== id);
+        }
+        return prev;
+      });
+      setTotalNotesCount(prev => Math.max(0, prev - 1));
       return true;
     } catch (err) {
       console.error('NotesContext.deleteNote error:', err);
@@ -1122,6 +1141,7 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
             const deletedId = (oldRow as Record<string, unknown>)?.id as number;
             if (!deletedId) return;
             setNotes(prev => prev.filter(n => n.id !== deletedId));
+            setTotalNotesCount(c => Math.max(0, c - 1));
             return;
           }
 
@@ -1131,6 +1151,7 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
             const note = dbRowToNote(newRow as unknown as SupabaseNoteRow);
             setNotes(prev => {
               if (prev.some(n => n.id === note.id)) return prev;
+              setTotalNotesCount(c => c + 1);
               return [note, ...prev];
             });
           } else if (eventType === 'UPDATE') {
@@ -1148,6 +1169,7 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
 
   const value = useMemo(() => ({
     notes,
+    totalNotesCount,
     isLoading: computedIsLoading,
     hasMore,
     isFetchingMore,
@@ -1163,6 +1185,7 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
     unlinkTaskFromNote,
   }), [
     notes,
+    totalNotesCount,
     computedIsLoading,  // use computed value so org-switch loading state propagates
     hasMore,
     isFetchingMore,

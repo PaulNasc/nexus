@@ -80,6 +80,8 @@ export class AppUpdater {
       }
 
       this.setupListeners();
+    } else {
+      this.cleanOldPortableVersions();
     }
 
     this.setupIpcHandlers();
@@ -161,6 +163,64 @@ export class AppUpdater {
     });
 
     return resolvedIsPortable;
+  }
+
+  /**
+   * Cleans up any old version binaries (e.g. Nexus-1.3.1-x64.exe) or temporary .update files
+   * left behind after a portable auto-update restart. Runs asynchronously on startup.
+   */
+  private cleanOldPortableVersions(): void {
+    if (!this._isPortable) return;
+
+    const currentExePath = app.getPath('exe');
+    const exeDir = path.dirname(currentExePath);
+    const currentExeName = path.basename(currentExePath).toLowerCase();
+
+    // Pattern for portable binaries: Nexus-{version}-x64.exe
+    const portablePattern = /^nexus-[\d.]+-x64\.exe$/i;
+
+    fs.readdir(exeDir, (err, files) => {
+      if (err) {
+        logger.error('Failed to read directory for portable cleanup', 'updater', { error: err.message });
+        return;
+      }
+
+      files.forEach((file) => {
+        const lowerName = file.toLowerCase();
+        const isOldExe = portablePattern.test(lowerName) && lowerName !== currentExeName;
+        const isTempUpdate = lowerName.endsWith('.exe.update');
+
+        if (isOldExe || isTempUpdate) {
+          const filePath = path.join(exeDir, file);
+          logger.info('Found old portable file to clean up', 'updater', { file, isOldExe, isTempUpdate });
+
+          let attempts = 0;
+          const maxAttempts = 5;
+          const tryDelete = () => {
+            attempts++;
+            fs.unlink(filePath, (unlinkErr) => {
+              if (unlinkErr) {
+                if (unlinkErr.code === 'ENOENT') {
+                  logger.info(`Old portable file ${file} already removed`, 'updater');
+                  return;
+                }
+                if (attempts < maxAttempts) {
+                  logger.warn(`Failed to delete old portable file ${file} (attempt ${attempts}/${maxAttempts}), retrying in 2s...`, 'updater', { error: unlinkErr.message });
+                  setTimeout(tryDelete, 2000);
+                } else {
+                  logger.error(`Failed to delete old portable file ${file} after ${maxAttempts} attempts`, 'updater', { error: unlinkErr.message });
+                }
+              } else {
+                logger.info(`Successfully deleted old portable file ${file}`, 'updater');
+              }
+            });
+          };
+
+          // Wait a short moment to let the old process terminate completely
+          setTimeout(tryDelete, 1500);
+        }
+      });
+    });
   }
 
   // ─── Check for updates (works for both modes) ──────────────────
