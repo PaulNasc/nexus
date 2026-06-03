@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNotes } from '../contexts/NotesContext';
+import { useNotes, SortOption } from '../contexts/NotesContext';
 import { useSettings } from '../hooks/useSettings';
 import { useSystemTags } from '../contexts/SystemTagsContext';
 import { useOrganization } from '../contexts/OrganizationContext';
@@ -28,14 +28,37 @@ export interface NotesProps {
 }
 
 export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
-  const { notes, totalNotesCount, isLoading, error, fetchNotes, deleteNote, createNote, updateNote, hasMore, isFetchingMore, loadMoreNotes } = useNotes();
+  const {
+    notes,
+    totalNotesCount,
+    isLoading,
+    error,
+    fetchNotes,
+    deleteNote,
+    createNote,
+    updateNote,
+    hasMore,
+    isFetchingMore,
+    loadMoreNotes,
+    searchTerm,
+    setSearchTerm,
+    filterColor,
+    setFilterColor,
+    filterPinned,
+    setFilterPinned,
+    filterTags,
+    setFilterTags,
+    filterSystemTagIds,
+    setFilterSystemTagIds,
+    sortBy,
+    setSortBy,
+    useCloud,
+  } = useNotes();
   const { settings, getGreeting } = useSettings();
   const { tags: systemTags } = useSystemTags();
   const { activeOrg } = useOrganization();
   const { user } = useAuth();
   const { t } = useI18n();
-
-  const [searchTerm, setSearchTerm] = useState('');
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -85,11 +108,6 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
 
-  // Color filter state
-  const [filterColor, setFilterColor] = useState<string | null>(null);
-  const [filterPinned, setFilterPinned] = useState(false);
-  const [filterTags, setFilterTags] = useState<string[]>([]);
-  const [filterSystemTagIds, setFilterSystemTagIds] = useState<number[]>([]);
   const [showFilters, setShowFilters] = useState(false);
 
   // Utilities panel state
@@ -114,9 +132,6 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     | null
   >(null);
 
-  // Sort state
-  type SortOption = 'date_desc' | 'date_asc' | 'alpha_asc' | 'alpha_desc' | 'id_asc' | 'id_desc';
-  const [sortBy, setSortBy] = useState<SortOption>('date_desc');
   const [showSortMenu, setShowSortMenu] = useState(false);
 
   const activeSystemTags = useMemo(
@@ -850,7 +865,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
               </span>
             )}
             <Badge variant="secondary" className="notes-count">
-              {isFilteringActive ? filteredNotes.length : totalNotesCount}
+              {useCloud ? totalNotesCount : (isFilteringActive ? filteredNotes.length : totalNotesCount)}
             </Badge>
           </div>
         </div>

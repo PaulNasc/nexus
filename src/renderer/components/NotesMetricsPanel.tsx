@@ -3,25 +3,24 @@ import { useOrganization } from '../contexts/OrganizationContext';
 import { useNotes } from '../contexts/NotesContext';
 import { useSystemTags } from '../contexts/SystemTagsContext';
 import { useTheme } from '../hooks/useTheme';
+import { useAuth } from '../contexts/AuthContext';
+import { useSettings } from '../hooks/useSettings';
 import { supabase } from '../lib/supabase';
 import {
   BarChart3,
   Users,
   Eye,
   Tag,
+  Pin,
+  Paperclip,
+  Activity,
+  Notebook,
 } from 'lucide-react';
 
 interface MostViewedNote {
   id: number;
   title: string;
   updated_at: string;
-}
-
-interface UserLastOnline {
-  user_id: string;
-  display_name: string;
-  email: string;
-  last_seen: string; // uses profiles.updated_at as best available proxy
 }
 
 interface NotesBySystemTag {
@@ -33,42 +32,48 @@ interface NotesBySystemTag {
 
 interface NotesMetrics {
   total_notes: number;
+  pinned_notes: number;
+  attachment_notes: number;
   most_viewed: MostViewedNote[];
-  users_last_online: UserLastOnline[];
+  online_users_count: number;
   notes_by_system_tag: NotesBySystemTag[];
 }
 
 export const NotesMetricsPanel: React.FC = () => {
-  const { activeOrg, myRole, members } = useOrganization();
+  const { activeOrg, members } = useOrganization();
   const { notes } = useNotes();
   const { tags: systemTags } = useSystemTags();
   const { theme } = useTheme();
+  const { user, isOffline } = useAuth();
+  const { settings } = useSettings();
   const isDark = theme.mode === 'dark';
 
   const [metrics, setMetrics] = useState<NotesMetrics | null>(null);
+  const [chartData, setChartData] = useState<Array<{ date: string; count: number }>>([]);
   const [loading, setLoading] = useState(true);
+  const [animateChart, setAnimateChart] = useState(false);
 
-  // Verificar se usuário é admin da organização
-  const isOrgAdmin = useMemo(() => {
-    return activeOrg && (myRole === 'admin' || myRole === 'owner');
-  }, [activeOrg, myRole]);
+  // Determine storage mode (identical to NotesContext)
+  const storageMode = settings.storageMode || 'cloud';
+  const isAuthenticated = !!user && !isOffline;
+  const useCloud = (storageMode === 'cloud' || storageMode === 'hybrid') && isAuthenticated;
 
   useEffect(() => {
-    if (!isOrgAdmin || !activeOrg) {
-      setLoading(false);
-      return;
-    }
+    const activeSystemTags = systemTags.filter(tag => tag.is_active);
+    const systemTagById = new Map(activeSystemTags.map(tag => [tag.id, tag]));
 
     const fetchMetrics = async () => {
       setLoading(true);
-      try {
-        // Total real de notas via COUNT (não limitado pelo cache local)
-        const { count: totalCount } = await supabase
-          .from('notes')
-          .select('id', { count: 'exact', head: true })
-          .eq('organization_id', activeOrg!.id);
+      
+      if (!useCloud) {
+        // Local calculation (offline or local storage mode)
+        const totalCount = notes.length;
+        const pinnedCount = notes.filter(n => n.is_pinned).length;
+        const attachmentCount = notes.filter(n => 
+          (n.attachedImages && n.attachedImages.length > 0) || 
+          (n.attachedVideos && n.attachedVideos.length > 0)
+        ).length;
 
-        // Notas mais recentemente atualizadas (melhor proxy disponível sem view tracking)
         const recentNotes = [...notes]
           .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
           .slice(0, 5)
@@ -78,33 +83,7 @@ export const NotesMetricsPanel: React.FC = () => {
             updated_at: note.updated_at || note.created_at,
           }));
 
-        // Batch fetch de todos os profiles de membros em UMA query (não N+1)
-        const memberIds = members.map(m => m.user_id);
-        const usersLastOnline: UserLastOnline[] = [];
-        if (memberIds.length > 0) {
-          const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, display_name, email, updated_at')
-            .in('id', memberIds);
-
-          const profileMap = new Map<string, { display_name: string; email: string; updated_at: string }>(
-            (profiles || []).map(p => [p.id, p])
-          );
-
-          for (const member of members.slice(0, 10)) {
-            const profile = profileMap.get(member.user_id);
-            usersLastOnline.push({
-              user_id: member.user_id,
-              display_name: profile?.display_name || member.display_name || 'Usuário',
-              email: profile?.email || member.email || '',
-              last_seen: profile?.updated_at || member.joined_at || '',
-            });
-          }
-        }
-
-        // Notas por tag de sistema
         const notesByTag: NotesBySystemTag[] = [];
-        const activeSystemTags = systemTags.filter(tag => tag.is_active);
         for (const tag of activeSystemTags) {
           const count = notes.filter(note => note.system_tag_id === tag.id).length;
           if (count > 0) {
@@ -117,64 +96,233 @@ export const NotesMetricsPanel: React.FC = () => {
           }
         }
 
+        // Group local notes by day for the last 7 days
+        const last7Days = Array.from({ length: 7 }).map((_, i) => {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          return d.toISOString().split('T')[0];
+        }).reverse();
+
+        const countsByDay = last7Days.reduce((acc, day) => {
+          acc[day] = 0;
+          return acc;
+        }, {} as Record<string, number>);
+
+        notes.forEach(note => {
+          if (note.created_at) {
+            const day = note.created_at.split('T')[0];
+            if (day in countsByDay) {
+              countsByDay[day]++;
+            }
+          }
+        });
+
+        const localChartData = last7Days.map(day => ({
+          date: day,
+          count: countsByDay[day]
+        }));
+
         setMetrics({
-          total_notes: totalCount ?? notes.length,
+          total_notes: totalCount,
+          pinned_notes: pinnedCount,
+          attachment_notes: attachmentCount,
           most_viewed: recentNotes,
-          users_last_online: usersLastOnline,
+          online_users_count: 1,
           notes_by_system_tag: notesByTag,
         });
+        setChartData(localChartData);
+        setLoading(false);
+        return;
+      }
+
+      // Cloud calculation (online cloud or hybrid storage mode)
+      try {
+        // Construct queries
+        let totalQuery = supabase
+          .from('notes')
+          .select('id', { count: 'exact', head: true });
+        
+        let pinnedQuery = supabase
+          .from('notes')
+          .select('id', { count: 'exact', head: true })
+          .eq('is_pinned', true);
+
+        let attachmentQuery = supabase
+          .from('notes')
+          .select('attached_images, attached_videos');
+
+        let recentQuery = supabase
+          .from('notes')
+          .select('id, title, updated_at, created_at')
+          .order('updated_at', { ascending: false })
+          .limit(5);
+
+        let tagCountQuery = supabase
+          .from('notes')
+          .select('system_tag_id')
+          .not('system_tag_id', 'is', null);
+
+        // Filter last 7 days for the chart to avoid fetching everything
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        sevenDaysAgo.setHours(0, 0, 0, 0);
+        let dateQuery = supabase
+          .from('notes')
+          .select('created_at')
+          .gte('created_at', sevenDaysAgo.toISOString());
+
+        // Apply organization scopes
+        if (activeOrg) {
+          totalQuery = totalQuery.eq('organization_id', activeOrg.id);
+          pinnedQuery = pinnedQuery.eq('organization_id', activeOrg.id);
+          attachmentQuery = attachmentQuery.eq('organization_id', activeOrg.id);
+          recentQuery = recentQuery.eq('organization_id', activeOrg.id);
+          tagCountQuery = tagCountQuery.eq('organization_id', activeOrg.id);
+          dateQuery = dateQuery.eq('organization_id', activeOrg.id);
+        } else {
+          totalQuery = totalQuery.is('organization_id', null);
+          pinnedQuery = pinnedQuery.is('organization_id', null);
+          attachmentQuery = attachmentQuery.is('organization_id', null);
+          recentQuery = recentQuery.is('organization_id', null);
+          tagCountQuery = tagCountQuery.is('organization_id', null);
+          dateQuery = dateQuery.is('organization_id', null);
+        }
+
+        // Online count query: only count profiles updated in the last 5 minutes
+        const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+        const onlineCountQuery = activeOrg && members.length > 0
+          ? supabase
+              .from('profiles')
+              .select('id', { count: 'exact', head: true })
+              .in('id', members.map(m => m.user_id))
+              .gte('updated_at', fiveMinsAgo)
+          : Promise.resolve({ count: 1 });
+
+        // Run queries in parallel to eliminate waterfalls
+        const [
+          totalRes,
+          pinnedRes,
+          attachmentRes,
+          recentRes,
+          tagRes,
+          dateRes,
+          onlineCountRes
+        ] = await Promise.all([
+          totalQuery,
+          pinnedQuery,
+          attachmentQuery,
+          recentQuery,
+          tagCountQuery,
+          dateQuery,
+          onlineCountQuery
+        ]);
+
+        if (totalRes.error) throw totalRes.error;
+        if (pinnedRes.error) throw pinnedRes.error;
+        if (attachmentRes.error) throw attachmentRes.error;
+        if (recentRes.error) throw recentRes.error;
+        if (tagRes.error) throw tagRes.error;
+        if (dateRes.error) throw dateRes.error;
+
+        const totalCount = totalRes.count ?? 0;
+        const pinnedCount = pinnedRes.count ?? 0;
+
+        const attachmentCount = (attachmentRes.data || []).filter(n => 
+          (n.attached_images && n.attached_images.length > 0) || 
+          (n.attached_videos && n.attached_videos.length > 0)
+        ).length;
+
+        const recentNotes = (recentRes.data || []).map(r => ({
+          id: r.id,
+          title: r.title,
+          updated_at: r.updated_at || r.created_at,
+        }));
+
+        const notesByTag: NotesBySystemTag[] = [];
+        for (const tag of activeSystemTags) {
+          const count = (tagRes.data || []).filter(note => note.system_tag_id === tag.id).length;
+          if (count > 0) {
+            notesByTag.push({
+              tag_id: tag.id,
+              tag_name: tag.name,
+              tag_color: tag.color,
+              note_count: count,
+            });
+          }
+        }
+
+        const last7Days = Array.from({ length: 7 }).map((_, i) => {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          return d.toISOString().split('T')[0];
+        }).reverse();
+
+        const countsByDay = last7Days.reduce((acc, day) => {
+          acc[day] = 0;
+          return acc;
+        }, {} as Record<string, number>);
+
+        if (dateRes.data) {
+          dateRes.data.forEach(n => {
+            if (n.created_at) {
+              const day = n.created_at.split('T')[0];
+              if (day in countsByDay) {
+                countsByDay[day]++;
+              }
+            }
+          });
+        }
+
+        const cloudChartData = last7Days.map(day => ({
+          date: day,
+          count: countsByDay[day]
+        }));
+
+        setMetrics({
+          total_notes: totalCount,
+          pinned_notes: pinnedCount,
+          attachment_notes: attachmentCount,
+          most_viewed: recentNotes,
+          online_users_count: onlineCountRes.count ?? 0,
+          notes_by_system_tag: notesByTag,
+        });
+        setChartData(cloudChartData);
       } catch (error) {
-        console.error('Erro ao buscar métricas:', error);
+        console.error('Erro ao buscar métricas da nuvem:', error);
       } finally {
         setLoading(false);
       }
     };
 
     fetchMetrics();
-  }, [isOrgAdmin, activeOrg, notes, members, systemTags]);
+  }, [useCloud, activeOrg, notes, members, systemTags, user, settings.userName]);
+
+  useEffect(() => {
+    if (metrics) {
+      const timer = setTimeout(() => setAnimateChart(true), 150);
+      return () => clearTimeout(timer);
+    }
+  }, [metrics]);
 
   const formatRelativeTime = (dateString: string): string => {
     const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Online';
-    if (diffMins < 60) return `${diffMins}min`;
-    if (diffHours < 24) return `${diffHours}h`;
-    if (diffDays < 7) return `${diffDays}d`;
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   };
-
-  if (!isOrgAdmin) {
-    return (
-      <div style={{
-        padding: '40px',
-        textAlign: 'center',
-        color: isDark ? '#888' : '#9CA3AF',
-      }}>
-        <BarChart3 size={48} style={{ margin: '0 auto 16px', opacity: 0.5 }} />
-        <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '8px', color: isDark ? '#FFF' : '#111' }}>
-          Acesso Restrito
-        </h3>
-        <p style={{ fontSize: '14px' }}>
-          Apenas administradores da organização podem visualizar as métricas.
-        </p>
-      </div>
-    );
-  }
 
   if (loading) {
     return (
       <div style={{
-        padding: '40px',
+        padding: '80px 40px',
         textAlign: 'center',
         color: isDark ? '#888' : '#9CA3AF',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '16px',
       }}>
-        <BarChart3 size={32} style={{ margin: '0 auto 16px', opacity: 0.5 }} />
-        <p>Carregando métricas...</p>
+        <BarChart3 size={32} className="pulse-dot" color="var(--color-primary-teal)" />
+        <p style={{ fontSize: '14px', fontWeight: 500 }}>Carregando dados do Dashboard...</p>
       </div>
     );
   }
@@ -182,115 +330,317 @@ export const NotesMetricsPanel: React.FC = () => {
   if (!metrics) {
     return (
       <div style={{
-        padding: '40px',
+        padding: '80px 40px',
         textAlign: 'center',
         color: isDark ? '#888' : '#9CA3AF',
       }}>
-        <p>Nenhuma métrica disponível</p>
+        <p>Nenhum dado de Dashboard disponível</p>
       </div>
     );
   }
 
   const cardStyle: React.CSSProperties = {
-    background: isDark ? '#1A1A1A' : '#FFFFFF',
-    border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-    borderRadius: '8px',
-    padding: '14px',
+    background: isDark ? 'rgba(26, 26, 26, 0.45)' : 'rgba(255, 255, 255, 0.85)',
+    backdropFilter: 'blur(12px)',
+    border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(15, 23, 42, 0.08)'}`,
+    borderRadius: '12px',
+    padding: '20px',
+    boxShadow: isDark ? '0 8px 32px rgba(0, 0, 0, 0.3)' : '0 8px 32px rgba(15, 23, 42, 0.05)',
+  };
+
+  const statsCards = [
+    {
+      label: 'Total Notas',
+      value: metrics.total_notes,
+      icon: <Notebook size={20} />,
+      gradient: 'linear-gradient(135deg, #00D4AA 0%, #00876C 100%)',
+    },
+    {
+      label: 'Notas Fixadas',
+      value: metrics.pinned_notes,
+      icon: <Pin size={20} />,
+      gradient: 'linear-gradient(135deg, #7B3FF2 0%, #4c1d95 100%)',
+    },
+    {
+      label: 'Com Anexos',
+      value: metrics.attachment_notes,
+      icon: <Paperclip size={20} />,
+      gradient: 'linear-gradient(135deg, #3B82F6 0%, #1e3a8a 100%)',
+    },
+    {
+      label: 'Usuários Online',
+      value: metrics.online_users_count,
+      icon: <Activity size={20} />,
+      gradient: 'linear-gradient(135deg, #EC4899 0%, #9d174d 100%)',
+    },
+  ];
+
+  const renderChart = () => {
+    if (!chartData || chartData.length === 0) return null;
+
+    const maxCount = Math.max(...chartData.map(d => d.count), 1);
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%' }}>
+        <h3 style={{
+          fontSize: '13px',
+          fontWeight: 600,
+          color: isDark ? '#FFF' : '#111',
+          marginBottom: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+        }}>
+          <BarChart3 size={16} color="var(--color-primary-teal)" />
+          Atividade Semanal (Notas Criadas)
+        </h3>
+        
+        {/* SVG/CSS Chart */}
+        <div style={{
+          flex: 1,
+          minHeight: '220px',
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          padding: '24px 16px 12px',
+          background: isDark ? 'rgba(10, 10, 10, 0.4)' : '#F9FAFB',
+          border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+          borderRadius: '8px',
+          gap: '12px',
+          position: 'relative',
+        }}>
+          {chartData.map((d) => {
+            const heightPercent = (d.count / maxCount) * 80;
+            const formattedDate = new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' });
+            
+            return (
+              <div key={d.date} style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '8px',
+                height: '100%',
+                justifyContent: 'flex-end',
+                position: 'relative',
+              }}>
+                {/* Tooltip on Hover */}
+                <div className="chart-tooltip" style={{
+                  position: 'absolute',
+                  bottom: `calc(${heightPercent}% + 32px)`,
+                  background: 'var(--color-accent-purple)',
+                  color: '#fff',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  opacity: 0,
+                  transition: 'opacity 0.2s, transform 0.2s',
+                  transform: 'translateY(4px)',
+                  pointerEvents: 'none',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                  zIndex: 10,
+                }}>
+                  {d.count} {d.count === 1 ? 'nota' : 'notas'}
+                </div>
+
+                {/* Animated Bar */}
+                <div
+                  className="chart-bar"
+                  style={{
+                    width: '100%',
+                    maxWidth: '32px',
+                    height: animateChart ? `${heightPercent}%` : '0%',
+                    background: 'linear-gradient(180deg, var(--color-primary-teal) 0%, var(--color-accent-purple) 100%)',
+                    borderRadius: '6px 6px 0 0',
+                    cursor: 'pointer',
+                    transition: 'height 0.8s cubic-bezier(0.4, 0, 0.2, 1), filter 0.2s, transform 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    const tooltip = e.currentTarget.previousSibling as HTMLDivElement;
+                    if (tooltip) {
+                      tooltip.style.opacity = '1';
+                      tooltip.style.transform = 'translateY(0)';
+                    }
+                    e.currentTarget.style.filter = 'brightness(1.15)';
+                    e.currentTarget.style.transform = 'scaleX(1.05)';
+                  }}
+                  onMouseLeave={(e) => {
+                    const tooltip = e.currentTarget.previousSibling as HTMLDivElement;
+                    if (tooltip) {
+                      tooltip.style.opacity = '0';
+                      tooltip.style.transform = 'translateY(4px)';
+                    }
+                    e.currentTarget.style.filter = 'none';
+                    e.currentTarget.style.transform = 'none';
+                  }}
+                />
+
+                {/* Date Label */}
+                <span style={{
+                  fontSize: '10px',
+                  color: isDark ? '#888' : '#6B7280',
+                  textAlign: 'center',
+                  textTransform: 'capitalize',
+                  fontWeight: 500,
+                }}>
+                  {formattedDate.replace('.', '')}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px', maxWidth: '1200px', margin: '0 auto' }}>
+      
+      {/* CSS Animado Pulsante Keyframes */}
+      <style>{`
+        @keyframes ping {
+          75%, 100% {
+            transform: scale(2.2);
+            opacity: 0;
+          }
+        }
+        .pulse-dot {
+          animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+      `}</style>
+
       {/* Header */}
-      <div style={{ marginBottom: '8px' }}>
+      <div style={{ marginBottom: '4px' }}>
         <h2 style={{
-          fontSize: '18px',
-          fontWeight: 600,
+          fontSize: '20px',
+          fontWeight: 700,
           color: isDark ? '#FFF' : '#111',
           marginBottom: '2px',
         }}>
-          Métricas — {activeOrg?.name}
+          Dashboard — {activeOrg?.name || 'Pessoal'}
         </h2>
         <p style={{ fontSize: '12px', color: isDark ? '#666' : '#9CA3AF' }}>
-          {metrics?.total_notes || 0} notas na organização
+          Visão geral de atividades e membros da organização
         </p>
       </div>
 
-      {/* Compact Grid */}
+      {/* Stats Cards Row */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-        gap: '12px',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gap: '16px',
+        marginBottom: '4px',
       }}>
+        {statsCards.map((card, i) => (
+          <div key={i} style={{
+            ...cardStyle,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px',
+            transition: 'transform 0.2s, box-shadow 0.2s',
+            cursor: 'default',
+          }}
+          className="metric-card"
+          onMouseEnter={e => {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = isDark ? '0 12px 36px rgba(0,0,0,0.45)' : '0 12px 36px rgba(15,23,42,0.08)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.transform = 'none';
+            e.currentTarget.style.boxShadow = isDark ? '0 8px 32px rgba(0, 0, 0, 0.3)' : '0 8px 32px rgba(15, 23, 42, 0.05)';
+          }}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '44px',
+              height: '44px',
+              borderRadius: '10px',
+              background: card.gradient,
+              color: '#fff',
+              flexShrink: 0,
+            }}>
+              {card.icon}
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: isDark ? '#777' : '#888', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                {card.label}
+              </div>
+              <div style={{ fontSize: '24px', fontWeight: 700, color: isDark ? '#FFF' : '#111', marginTop: '2px' }}>
+                {card.value}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
 
-        {/* Most Viewed Notes */}
+      {/* Main Grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+        gap: '16px',
+      }}>
+        {/* Weekly activity Chart */}
+        <div style={cardStyle}>
+          {renderChart()}
+        </div>
+
+        {/* Recent Notes */}
         <div style={cardStyle}>
           <h3 style={{
             fontSize: '13px',
             fontWeight: 600,
             color: isDark ? '#FFF' : '#111',
-            marginBottom: '10px',
+            marginBottom: '14px',
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
+            gap: '8px',
           }}>
-            <Eye size={14} color="#00D4AA" />
+            <Eye size={14} color="var(--color-primary-teal)" />
             Notas Recentes
           </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {metrics.most_viewed.slice(0, 5).map((note) => (
-              <div key={note.id} style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '6px 8px',
-                borderRadius: '4px',
-                background: isDark ? '#0A0A0A' : '#F9FAFB',
-              }}>
-                <span style={{ fontSize: '12px', color: isDark ? '#CCC' : '#374151', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  #{note.id} {note.title}
-                </span>
-                <span style={{ fontSize: '11px', color: isDark ? '#666' : '#9CA3AF', flexShrink: 0, marginLeft: '8px' }}>
-                  {formatRelativeTime(note.updated_at)}
-                </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {metrics.most_viewed.length === 0 ? (
+              <div style={{ padding: '20px', textAlign: 'center', fontSize: '12px', color: isDark ? '#666' : '#9CA3AF' }}>
+                Nenhuma nota recente encontrada
               </div>
-            ))}
+            ) : (
+              metrics.most_viewed.slice(0, 5).map((note) => (
+                <div key={note.id} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  background: isDark ? 'rgba(10, 10, 10, 0.4)' : '#F9FAFB',
+                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      color: 'var(--color-primary-teal)',
+                      background: isDark ? 'rgba(0, 212, 170, 0.1)' : 'rgba(0, 212, 170, 0.05)',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      border: '1px solid rgba(0, 212, 170, 0.2)',
+                    }}>
+                      #{note.id}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '11px', color: isDark ? '#666' : '#9CA3AF', flexShrink: 0, marginLeft: '8px' }}>
+                    {formatRelativeTime(note.updated_at)}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
-        {/* Users Last Online */}
-        <div style={cardStyle}>
-          <h3 style={{
-            fontSize: '13px',
-            fontWeight: 600,
-            color: isDark ? '#FFF' : '#111',
-            marginBottom: '10px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}>
-            <Users size={14} color="#00D4AA" />
-            Última Vez Online
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {metrics.users_last_online.slice(0, 8).map((user) => (
-              <div key={user.user_id} style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '6px 8px',
-                borderRadius: '4px',
-                background: isDark ? '#0A0A0A' : '#F9FAFB',
-              }}>
-                <span style={{ fontSize: '12px', color: isDark ? '#CCC' : '#374151', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {user.display_name}
-                </span>
-                <span style={{ fontSize: '11px', color: isDark ? '#666' : '#9CA3AF', flexShrink: 0, marginLeft: '8px' }}>
-                  {formatRelativeTime(user.last_seen)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+
 
         {/* Notes by System Tag */}
         <div style={cardStyle}>
@@ -298,17 +648,17 @@ export const NotesMetricsPanel: React.FC = () => {
             fontSize: '13px',
             fontWeight: 600,
             color: isDark ? '#FFF' : '#111',
-            marginBottom: '10px',
+            marginBottom: '14px',
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
+            gap: '8px',
           }}>
-            <Tag size={14} color="#00D4AA" />
-            Notas por Tag de Sistema
+            <Tag size={14} color="var(--color-primary-teal)" />
+            Distribuição por Tags
           </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {metrics.notes_by_system_tag.length === 0 ? (
-              <div style={{ padding: '12px', textAlign: 'center', fontSize: '11px', color: isDark ? '#666' : '#9CA3AF' }}>
+              <div style={{ padding: '20px', textAlign: 'center', fontSize: '12px', color: isDark ? '#666' : '#9CA3AF' }}>
                 Nenhuma tag de sistema em uso
               </div>
             ) : (
@@ -317,17 +667,25 @@ export const NotesMetricsPanel: React.FC = () => {
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  padding: '6px 8px',
-                  borderRadius: '4px',
-                  background: isDark ? '#0A0A0A' : '#F9FAFB',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  background: isDark ? 'rgba(10, 10, 10, 0.4)' : '#F9FAFB',
+                  border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: tag.tag_color, flexShrink: 0 }} />
-                    <span style={{ fontSize: '12px', color: isDark ? '#CCC' : '#374151', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '12px', color: isDark ? '#CCC' : '#374151', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {tag.tag_name}
                     </span>
                   </div>
-                  <span style={{ fontSize: '11px', color: isDark ? '#666' : '#9CA3AF', flexShrink: 0, marginLeft: '8px' }}>
+                  <span style={{
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    color: isDark ? '#888' : '#6B7280',
+                    background: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                  }}>
                     {tag.note_count} {tag.note_count === 1 ? 'nota' : 'notas'}
                   </span>
                 </div>
@@ -340,3 +698,5 @@ export const NotesMetricsPanel: React.FC = () => {
     </div>
   );
 };
+
+export default NotesMetricsPanel;

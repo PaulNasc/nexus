@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useSettings } from '../hooks/useSettings';
 import { useAuth } from './AuthContext';
 import { useOrganization } from './OrganizationContext';
+import { useSystemTags } from './SystemTagsContext';
 import type { Note, CreateNoteData, UpdateNoteData, NoteStats } from '../../shared/types/note';
 import type { ElectronAPI } from '../../main/preload';
 import { base64ToUint8Array, buildCloudVideoRef, parseVideoRef } from '../utils/videoAttachment';
@@ -98,6 +99,8 @@ const dbRowToNote = (row: SupabaseNoteRow, linkedTaskIds?: number[]): Note => ({
 /** Number of notes fetched per page on the first (cloud) load. */
 const NOTES_PAGE_SIZE = 40;
 
+export type SortOption = 'date_desc' | 'date_asc' | 'alpha_asc' | 'alpha_desc' | 'id_asc' | 'id_desc';
+
 interface NotesContextType {
   notes: Note[];
   totalNotesCount: number;
@@ -117,6 +120,21 @@ interface NotesContextType {
   getNoteStats: () => Promise<NoteStats | null>;
   linkTaskToNote: (taskId: number, noteId: number) => Promise<boolean>;
   unlinkTaskFromNote: (taskId: number) => Promise<boolean>;
+
+  // Search/Filters
+  searchTerm: string;
+  setSearchTerm: React.Dispatch<React.SetStateAction<string>>;
+  filterColor: string | null;
+  setFilterColor: React.Dispatch<React.SetStateAction<string | null>>;
+  filterPinned: boolean;
+  setFilterPinned: React.Dispatch<React.SetStateAction<boolean>>;
+  filterTags: string[];
+  setFilterTags: React.Dispatch<React.SetStateAction<string[]>>;
+  filterSystemTagIds: number[];
+  setFilterSystemTagIds: React.Dispatch<React.SetStateAction<number[]>>;
+  sortBy: SortOption;
+  setSortBy: React.Dispatch<React.SetStateAction<SortOption>>;
+  useCloud: boolean;
 }
 
 const NotesContext = createContext<NotesContextType | null>(null);
@@ -139,6 +157,33 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const { settings } = useSettings();
   const { user, isOffline } = useAuth();
   const { activeOrg, loading: orgLoading } = useOrganization();
+  const { tags: systemTags } = useSystemTags();
+
+  // Search/Filters states
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [filterColor, setFilterColor] = useState<string | null>(null);
+  const [filterPinned, setFilterPinned] = useState(false);
+  const [filterTags, setFilterTags] = useState<string[]>([]);
+  const [filterSystemTagIds, setFilterSystemTagIds] = useState<number[]>([]);
+  const [sortBy, setSortBy] = useState<SortOption>('date_desc');
+
+  // Debounce search term changes
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  const activeSystemTags = useMemo(
+    () => systemTags.filter((tag) => tag.is_active).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+    [systemTags],
+  );
+
+  const systemTagById = useMemo(() => {
+    return new Map(activeSystemTags.map((tag) => [tag.id, tag]));
+  }, [activeSystemTags]);
 
   // Determine effective storage mode
   const storageMode = settings.storageMode || 'cloud';
@@ -420,7 +465,15 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   // ── CLOUD (Supabase) helpers ──────────────────────────────────
-  const fetchNotesCloud = useCallback(async (page = 0): Promise<Note[]> => {
+  const fetchNotesCloud = useCallback(async (
+    page = 0,
+    searchVal = debouncedSearch,
+    colorVal = filterColor,
+    pinnedVal = filterPinned,
+    tagsVal = filterTags,
+    sysTagsVal = filterSystemTagIds,
+    sortVal = sortBy
+  ): Promise<Note[]> => {
     // Paginated fetch: load NOTES_PAGE_SIZE rows per call.
     // Page 0 = first load (fast); subsequent pages triggered by infinite scroll.
     let query = supabase
@@ -432,12 +485,82 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       query = query.is('organization_id', null);
     }
 
+    // Apply search query
+    const term = searchVal.toLowerCase().trim();
+    if (term) {
+      const isPureNumeric = /^[#]?\d+$/.test(term);
+      const numVal = isPureNumeric ? parseInt(term.replace('#', ''), 10) : null;
+      if (isPureNumeric && numVal !== null) {
+        query = query.eq('sequential_id', numVal);
+      } else {
+        query = query.or(`title.ilike.%${term}%,content.ilike.%${term}%`);
+      }
+    }
+
+    // Apply color filter (notes' own color or system tag color)
+    if (colorVal) {
+      const matchingSystemTagIds = activeSystemTags
+        .filter(tag => (tag.color || '').toLowerCase() === colorVal.toLowerCase())
+        .map(tag => tag.id);
+      
+      if (matchingSystemTagIds.length > 0) {
+        query = query.or(`color.eq.${colorVal},system_tag_id.in.(${matchingSystemTagIds.join(',')})`);
+      } else {
+        query = query.eq('color', colorVal);
+      }
+    }
+
+    // Apply pinned filter
+    if (pinnedVal) {
+      query = query.eq('is_pinned', true);
+    }
+
+    // Apply tags filter
+    if (tagsVal.length > 0) {
+      query = query.overlaps('tags', tagsVal);
+    }
+
+    // Apply system tags filter
+    if (sysTagsVal.length > 0) {
+      const matchingTagNames = sysTagsVal
+        .map(id => systemTagById.get(id)?.name)
+        .filter(Boolean) as string[];
+      
+      if (matchingTagNames.length > 0) {
+        query = query.or(`system_tag_id.in.(${sysTagsVal.join(',')}),tags.ov.{${matchingTagNames.map(name => `"${name}"`).join(',')}}`);
+      } else {
+        query = query.in('system_tag_id', sysTagsVal);
+      }
+    }
+
+    // Apply ordering: pinned float to top
+    query = query.order('is_pinned', { ascending: false });
+
+    switch (sortVal) {
+      case 'alpha_asc':
+        query = query.order('title', { ascending: true });
+        break;
+      case 'alpha_desc':
+        query = query.order('title', { ascending: false });
+        break;
+      case 'id_asc':
+        query = query.order('sequential_id', { ascending: true });
+        break;
+      case 'id_desc':
+        query = query.order('sequential_id', { ascending: false });
+        break;
+      case 'date_asc':
+        query = query.order('created_at', { ascending: true });
+        break;
+      case 'date_desc':
+      default:
+        query = query.order('created_at', { ascending: false });
+        break;
+    }
+
     const from = page * NOTES_PAGE_SIZE;
     const to = from + NOTES_PAGE_SIZE - 1;
-    const { data, error: fetchError, count } = await query
-      .order('is_pinned', { ascending: false })
-      .order('created_at', { ascending: false })
-      .range(from, to);
+    const { data, error: fetchError, count } = await query.range(from, to);
 
     if (fetchError) throw fetchError;
 
@@ -492,7 +615,18 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     return mappedNotes;
-  }, [activeOrg, settings.showDashboard]);
+  }, [
+    activeOrg,
+    settings.showDashboard,
+    debouncedSearch,
+    filterColor,
+    filterPinned,
+    filterTags,
+    filterSystemTagIds,
+    sortBy,
+    activeSystemTags,
+    systemTagById
+  ]);
 
   const createNoteCloud = useCallback(async (noteData: CreateNoteData): Promise<Note | null> => {
     const { data: userData } = await supabase.auth.getUser();
@@ -1183,6 +1317,21 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
     getNoteStats,
     linkTaskToNote,
     unlinkTaskFromNote,
+
+    // Search/Filters
+    searchTerm,
+    setSearchTerm,
+    filterColor,
+    setFilterColor,
+    filterPinned,
+    setFilterPinned,
+    filterTags,
+    setFilterTags,
+    filterSystemTagIds,
+    setFilterSystemTagIds,
+    sortBy,
+    setSortBy,
+    useCloud,
   }), [
     notes,
     totalNotesCount,
@@ -1201,6 +1350,15 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
     getNoteStats,
     linkTaskToNote,
     unlinkTaskFromNote,
+
+    // Search/Filters deps
+    searchTerm,
+    filterColor,
+    filterPinned,
+    filterTags,
+    filterSystemTagIds,
+    sortBy,
+    useCloud,
   ]);
 
   return (

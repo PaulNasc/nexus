@@ -92,8 +92,8 @@ const AppHeader: React.FC<AppHeaderProps> = React.memo(({
 
   const tabs = [
     { key: 'notes', label: 'Notas', onClick: openNotes },
-    ...(canViewMetrics ? [{ key: 'metrics', label: 'Métricas', onClick: openMetrics }] : []),
-    ...(settings.showDashboard ? [{ key: 'dashboard', label: 'Dashboard', onClick: goToDashboard }] : []),
+    { key: 'metrics', label: 'Dashboard', onClick: openMetrics },
+    ...(settings.showDashboard ? [{ key: 'dashboard', label: 'Tarefas', onClick: goToDashboard }] : []),
     ...(settings.showTimer ? [{ key: 'timer', label: 'Timer', onClick: openTimer }] : []),
     ...(settings.showReports ? [{ key: 'reports', label: 'Relatórios', onClick: openReports }] : [])
   ];
@@ -361,10 +361,7 @@ const App: React.FC<AppProps> = () => {
     if (navigation.currentScreen === 'dashboard' && !settings.showDashboard) {
       openNotes();
     }
-    if (navigation.currentScreen === 'metrics' && !canViewMetrics) {
-      openNotes();
-    }
-  }, [navigation.currentScreen, settings.showDashboard, canViewMetrics]);
+  }, [navigation.currentScreen, settings.showDashboard]);
 
   // Modal functions
   // Hotfix: abertura direta de "Nova Tarefa" desativada por solicitação do usuário.
@@ -647,7 +644,7 @@ const App: React.FC<AppProps> = () => {
             <Notes initialNoteId={navigation.selectedNoteId} />
           </div>
         )}
-        {navigation.currentScreen === 'metrics' && canViewMetrics && (
+        {navigation.currentScreen === 'metrics' && (
           <div className="animate-screen" style={{ padding: '24px' }}>
             <NotesMetricsPanel />
           </div>

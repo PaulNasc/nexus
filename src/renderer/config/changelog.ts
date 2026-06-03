@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.3.3',
+    date: '2026-06-03',
+    highlights: [
+      { category: 'performance', text: 'Otimização do Dashboard: carregamento paralelo de consultas e limite de 7 dias na atividade semanal' },
+      { category: 'performance', text: 'Eliminação da query de perfis de membros para contagem de usuários online' },
+      { category: 'fix', text: 'Correção do loop de refresh token no console que causava erro HTTP 400' },
+      { category: 'fix', text: 'Correção do contador de notas da organização para exibir o total real do banco de dados na busca/filtros' },
+      { category: 'improvement', text: 'Dashboard unificado e liberado para todos os usuários com layout minimalista de 3 colunas' },
+    ],
+  },
+  {
     version: '1.3.2',
     date: '2026-05-30',
     highlights: [

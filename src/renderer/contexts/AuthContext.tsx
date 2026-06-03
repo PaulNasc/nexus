@@ -101,7 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, newSession) => {
+      (event, newSession) => {
         setSession(newSession);
         setUser(newSession?.user ?? null);
 
@@ -110,6 +110,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           localStorage.setItem('nexus-cached-user', JSON.stringify(newSession.user));
         } else {
           localStorage.removeItem('nexus-cached-user');
+          if (event === 'SIGNED_OUT' || !newSession) {
+            clearPersistedAuthState();
+          }
         }
       }
     );
