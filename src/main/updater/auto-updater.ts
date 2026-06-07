@@ -92,6 +92,19 @@ export class AppUpdater {
       isPortable: this._isPortable,
       exePath: app.getPath('exe'),
     });
+
+    if (app.isPackaged && process.platform === 'win32') {
+      setTimeout(() => {
+        try {
+          logger.info('Running startup Windows shortcut retargeting...', 'updater');
+          this.tryRetargetWindowsShortcuts(app.getPath('exe'));
+        } catch (err) {
+          logger.error('Failed to run startup Windows shortcut retargeting', 'updater', {
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
+      }, 5000);
+    }
   }
 
   public static getInstance(): AppUpdater {

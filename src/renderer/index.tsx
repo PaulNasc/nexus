@@ -16,11 +16,122 @@ migrateLegacyStorageKeys();
 // Tratamento de erro global
 window.addEventListener('error', (event) => {
   console.error('Global error:', event.error);
+  try {
+    const err = event.error || new Error(event.message || 'Erro global desconhecido');
+    (window as any).electronAPI?.logging?.logError?.('anonymous', err, 'renderer-global');
+  } catch (e) {
+    console.error('Falha ao gravar log de erro global:', e);
+  }
 });
 
 window.addEventListener('unhandledrejection', (event) => {
   console.error('Unhandled promise rejection:', event.reason);
+  try {
+    const reason = event.reason instanceof Error ? event.reason : new Error(String(event.reason || 'Unhandled Promise Rejection'));
+    (window as any).electronAPI?.logging?.logError?.('anonymous', reason, 'renderer-unhandled-rejection');
+  } catch (e) {
+    console.error('Falha ao gravar log de rejeição de promessa:', e);
+  }
 });
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
+    console.error('ErrorBoundary capturou erro:', error, errorInfo);
+    try {
+      (window as any).electronAPI?.logging?.logError?.(
+        'anonymous', 
+        error, 
+        `ErrorBoundary ComponentStack: ${errorInfo.componentStack}`
+      );
+    } catch (e) {
+      console.error('Falha ao enviar log de erro do ErrorBoundary:', e);
+    }
+  }
+
+  handleReload = (): void => {
+    window.location.reload();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          background: '#0a0a0f',
+          color: '#ffffff',
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+          padding: '40px',
+          textAlign: 'center'
+        }}>
+          <h1 style={{ fontSize: '28px', color: '#ff4444', marginBottom: '16px', fontWeight: 600 }}>
+            Ocorreu um erro na interface
+          </h1>
+          <p style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '24px', maxWidth: '500px' }}>
+            Desculpe o inconveniente. O erro foi registrado e você pode tentar recarregar a tela do programa.
+          </p>
+          <pre style={{
+            backgroundColor: '#161622',
+            padding: '16px',
+            borderRadius: '8px',
+            color: '#fda4af',
+            maxWidth: '90%',
+            overflowX: 'auto',
+            fontSize: '12px',
+            fontFamily: 'monospace',
+            marginBottom: '24px',
+            textAlign: 'left',
+            border: '1px solid rgba(244, 63, 94, 0.2)'
+          }}>
+            {this.state.error?.toString() || 'Erro desconhecido'}
+          </pre>
+          <button
+            onClick={this.handleReload}
+            style={{
+              background: 'linear-gradient(135deg, #00D4AA 0%, #00876C 100%)',
+              color: '#fff',
+              border: 'none',
+              padding: '10px 24px',
+              borderRadius: '6px',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(0, 212, 170, 0.3)',
+              transition: 'transform 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+            onMouseLeave={(e) => e.currentTarget.style.transform = 'none'}
+          >
+            Recarregar Nexus
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 // Root component that handles auth routing
 const RootApp: React.FC = () => {
@@ -73,9 +184,11 @@ if (container) {
   try {
     const root = createRoot(container);
     root.render(
-      <AuthProvider>
-        <RootApp />
-      </AuthProvider>
+      <ErrorBoundary>
+        <AuthProvider>
+          <RootApp />
+        </AuthProvider>
+      </ErrorBoundary>
     );
   } catch (error) {
     console.error('Error rendering app:', error);

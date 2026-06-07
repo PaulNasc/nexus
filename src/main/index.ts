@@ -294,6 +294,33 @@ class MainApplication {
         this.mainWindow = null;
       });
 
+      this.mainWindow.webContents.on('render-process-gone', (event, details) => {
+        logError('Renderer process gone', 'system', {
+          reason: details.reason,
+          exitCode: details.exitCode
+        });
+
+        // If it's a crash or unexpected termination, reload/recreate the window
+        if (details.reason !== 'clean-exit' && details.reason !== 'killed') {
+          logInfo('Renderer process crashed. Re-launching/reloading window...', 'system');
+          try {
+            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+              this.mainWindow.reload();
+            } else {
+              this.createMainWindow();
+            }
+          } catch (err) {
+            logError('Failed to recover window after renderer crash', 'system', {
+              error: err instanceof Error ? err.message : String(err)
+            });
+          }
+        }
+      });
+
+      this.mainWindow.webContents.on('unresponsive', () => {
+        logError('Renderer process became unresponsive', 'system');
+      });
+
       logInfo('Main window created successfully', 'system');
 
       // Adicionar alguns logs de exemplo para demonstrar o sistema

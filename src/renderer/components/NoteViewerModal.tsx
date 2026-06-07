@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from './ui/Button';
-import { X, Image as ImageIcon, FileText, FileCode2, Pin, Video, Download, Copy, Play, ExternalLink, Loader2, ArrowUp } from 'lucide-react';
+import { X, Image as ImageIcon, FileText, FileCode2, Pin, Video, Download, Copy, Play, ExternalLink, Loader2, ArrowUp, Check } from 'lucide-react';
 import type { ElectronAPI } from '../../main/preload';
 import { Note, NoteAttachment } from '../../shared/types/note';
 import { parseVideoRef } from '../utils/videoAttachment';
@@ -122,6 +122,8 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
   const [videoPaths, setVideoPaths] = useState<Record<string, string>>({});
   const [videoMissing, setVideoMissing] = useState<Record<string, boolean>>({});
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
+  const [copiedMarkdown, setCopiedMarkdown] = useState(false);
+  const [copiedText, setCopiedText] = useState(false);
   const [pdfCandidateUrls, setPdfCandidateUrls] = useState<string[]>([]);
   const [pdfCandidateIndex, setPdfCandidateIndex] = useState(0);
   const [pdfLoadError, setPdfLoadError] = useState(false);
@@ -545,6 +547,8 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
   const handleCopyMarkdown = async () => {
     try {
       await navigator.clipboard.writeText(note.content || '');
+      setCopiedMarkdown(true);
+      setTimeout(() => setCopiedMarkdown(false), 2000);
     } catch (err) {
       console.error('Erro ao copiar markdown:', err);
     }
@@ -554,6 +558,8 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     try {
       const text = note.format === 'markdown' ? stripMarkdown(note.content || '') : (note.content || '');
       await navigator.clipboard.writeText(text);
+      setCopiedText(true);
+      setTimeout(() => setCopiedText(false), 2000);
     } catch (err) {
       console.error('Erro ao copiar texto:', err);
     }
@@ -655,12 +661,12 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
               </Button>
             )}
             <Button variant="secondary" size="sm" onClick={handleCopyMarkdown} title="Copiar como Markdown">
-              <FileCode2 size={16} />
-              Copiar MD
+              {copiedMarkdown ? <Check size={16} /> : <FileCode2 size={16} />}
+              {copiedMarkdown ? 'Copiado!' : 'Copiar MD'}
             </Button>
             <Button variant="secondary" size="sm" onClick={handleCopyText} title="Copiar como Texto">
-              <FileText size={16} />
-              Copiar Texto
+              {copiedText ? <Check size={16} /> : <FileText size={16} />}
+              {copiedText ? 'Copiado!' : 'Copiar Texto'}
             </Button>
             <Button variant="ghost" size="sm" onClick={onClose} aria-label="Fechar">
               <X size={16} />
@@ -1149,24 +1155,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
               )}
             </div>
           )}
-          
-          {showModalScrollTop && (
-            <button
-              onClick={handleModalScrollToTop}
-              className="scroll-to-top-btn"
-              style={{
-                position: 'absolute',
-                bottom: 20,
-                right: showAttachmentSidebar ? 340 : 20,
-                width: 36,
-                height: 36,
-                zIndex: 90
-              }}
-              title="Voltar ao topo"
-            >
-              <ArrowUp size={16} />
-            </button>
-          )}
+
         </div>
 
         {/* Image lightbox */}

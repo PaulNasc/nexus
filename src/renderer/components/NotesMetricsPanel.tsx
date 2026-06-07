@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { useNotes } from '../contexts/NotesContext';
 import { useSystemTags } from '../contexts/SystemTagsContext';
@@ -53,6 +53,9 @@ export const NotesMetricsPanel: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [animateChart, setAnimateChart] = useState(false);
 
+  const lastFetchTimeRef = useRef<number>(0);
+  const lastOrgIdRef = useRef<string | null>(activeOrg?.id || null);
+
   // Determine storage mode (identical to NotesContext)
   const storageMode = settings.storageMode || 'cloud';
   const isAuthenticated = !!user && !isOffline;
@@ -63,7 +66,19 @@ export const NotesMetricsPanel: React.FC = () => {
     const systemTagById = new Map(activeSystemTags.map(tag => [tag.id, tag]));
 
     const fetchMetrics = async () => {
-      setLoading(true);
+      const now = Date.now();
+      const orgChanged = lastOrgIdRef.current !== (activeOrg?.id || null);
+      
+      if (!orgChanged && now - lastFetchTimeRef.current < 10000 && metrics) {
+        return;
+      }
+      
+      lastOrgIdRef.current = activeOrg?.id || null;
+      lastFetchTimeRef.current = now;
+
+      if (!metrics || orgChanged) {
+        setLoading(true);
+      }
       
       if (!useCloud) {
         // Local calculation (offline or local storage mode)
@@ -95,6 +110,7 @@ export const NotesMetricsPanel: React.FC = () => {
             });
           }
         }
+        notesByTag.sort((a, b) => b.note_count - a.note_count);
 
         // Group local notes by day for the last 7 days
         const last7Days = Array.from({ length: 7 }).map((_, i) => {
@@ -138,18 +154,9 @@ export const NotesMetricsPanel: React.FC = () => {
       // Cloud calculation (online cloud or hybrid storage mode)
       try {
         // Construct queries
-        let totalQuery = supabase
+        let metaQuery = supabase
           .from('notes')
-          .select('id', { count: 'exact', head: true });
-        
-        let pinnedQuery = supabase
-          .from('notes')
-          .select('id', { count: 'exact', head: true })
-          .eq('is_pinned', true);
-
-        let attachmentQuery = supabase
-          .from('notes')
-          .select('attached_images, attached_videos');
+          .select('is_pinned, system_tag_id, attached_images, attached_videos, created_at');
 
         let recentQuery = supabase
           .from('notes')
@@ -157,35 +164,13 @@ export const NotesMetricsPanel: React.FC = () => {
           .order('updated_at', { ascending: false })
           .limit(5);
 
-        let tagCountQuery = supabase
-          .from('notes')
-          .select('system_tag_id')
-          .not('system_tag_id', 'is', null);
-
-        // Filter last 7 days for the chart to avoid fetching everything
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        sevenDaysAgo.setHours(0, 0, 0, 0);
-        let dateQuery = supabase
-          .from('notes')
-          .select('created_at')
-          .gte('created_at', sevenDaysAgo.toISOString());
-
         // Apply organization scopes
         if (activeOrg) {
-          totalQuery = totalQuery.eq('organization_id', activeOrg.id);
-          pinnedQuery = pinnedQuery.eq('organization_id', activeOrg.id);
-          attachmentQuery = attachmentQuery.eq('organization_id', activeOrg.id);
+          metaQuery = metaQuery.eq('organization_id', activeOrg.id);
           recentQuery = recentQuery.eq('organization_id', activeOrg.id);
-          tagCountQuery = tagCountQuery.eq('organization_id', activeOrg.id);
-          dateQuery = dateQuery.eq('organization_id', activeOrg.id);
         } else {
-          totalQuery = totalQuery.is('organization_id', null);
-          pinnedQuery = pinnedQuery.is('organization_id', null);
-          attachmentQuery = attachmentQuery.is('organization_id', null);
+          metaQuery = metaQuery.is('organization_id', null);
           recentQuery = recentQuery.is('organization_id', null);
-          tagCountQuery = tagCountQuery.is('organization_id', null);
-          dateQuery = dateQuery.is('organization_id', null);
         }
 
         // Online count query: only count profiles updated in the last 5 minutes
@@ -198,36 +183,25 @@ export const NotesMetricsPanel: React.FC = () => {
               .gte('updated_at', fiveMinsAgo)
           : Promise.resolve({ count: 1 });
 
-        // Run queries in parallel to eliminate waterfalls
+        // Run queries in parallel (only 2 DB tables queries)
         const [
-          totalRes,
-          pinnedRes,
-          attachmentRes,
+          metaRes,
           recentRes,
-          tagRes,
-          dateRes,
           onlineCountRes
         ] = await Promise.all([
-          totalQuery,
-          pinnedQuery,
-          attachmentQuery,
+          metaQuery,
           recentQuery,
-          tagCountQuery,
-          dateQuery,
           onlineCountQuery
         ]);
 
-        if (totalRes.error) throw totalRes.error;
-        if (pinnedRes.error) throw pinnedRes.error;
-        if (attachmentRes.error) throw attachmentRes.error;
+        if (metaRes.error) throw metaRes.error;
         if (recentRes.error) throw recentRes.error;
-        if (tagRes.error) throw tagRes.error;
-        if (dateRes.error) throw dateRes.error;
 
-        const totalCount = totalRes.count ?? 0;
-        const pinnedCount = pinnedRes.count ?? 0;
+        const metaData = metaRes.data || [];
+        const totalCount = metaData.length;
+        const pinnedCount = metaData.filter(n => n.is_pinned).length;
 
-        const attachmentCount = (attachmentRes.data || []).filter(n => 
+        const attachmentCount = metaData.filter(n => 
           (n.attached_images && n.attached_images.length > 0) || 
           (n.attached_videos && n.attached_videos.length > 0)
         ).length;
@@ -240,7 +214,7 @@ export const NotesMetricsPanel: React.FC = () => {
 
         const notesByTag: NotesBySystemTag[] = [];
         for (const tag of activeSystemTags) {
-          const count = (tagRes.data || []).filter(note => note.system_tag_id === tag.id).length;
+          const count = metaData.filter(note => note.system_tag_id === tag.id).length;
           if (count > 0) {
             notesByTag.push({
               tag_id: tag.id,
@@ -250,6 +224,9 @@ export const NotesMetricsPanel: React.FC = () => {
             });
           }
         }
+        
+        // Sort tags by count descending (most used first)
+        notesByTag.sort((a, b) => b.note_count - a.note_count);
 
         const last7Days = Array.from({ length: 7 }).map((_, i) => {
           const d = new Date();
@@ -262,16 +239,14 @@ export const NotesMetricsPanel: React.FC = () => {
           return acc;
         }, {} as Record<string, number>);
 
-        if (dateRes.data) {
-          dateRes.data.forEach(n => {
-            if (n.created_at) {
-              const day = n.created_at.split('T')[0];
-              if (day in countsByDay) {
-                countsByDay[day]++;
-              }
+        metaData.forEach(n => {
+          if (n.created_at) {
+            const day = n.created_at.split('T')[0];
+            if (day in countsByDay) {
+              countsByDay[day]++;
             }
-          });
-        }
+          }
+        });
 
         const cloudChartData = last7Days.map(day => ({
           date: day,
@@ -397,8 +372,7 @@ export const NotesMetricsPanel: React.FC = () => {
         
         {/* SVG/CSS Chart */}
         <div style={{
-          flex: 1,
-          minHeight: '220px',
+          height: '200px',
           display: 'flex',
           alignItems: 'flex-end',
           justifyContent: 'space-between',
@@ -408,6 +382,7 @@ export const NotesMetricsPanel: React.FC = () => {
           borderRadius: '8px',
           gap: '12px',
           position: 'relative',
+          boxSizing: 'border-box'
         }}>
           {chartData.map((d) => {
             const heightPercent = (d.count / maxCount) * 80;
@@ -580,7 +555,7 @@ export const NotesMetricsPanel: React.FC = () => {
       {/* Main Grid */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
         gap: '16px',
       }}>
         {/* Weekly activity Chart */}
@@ -602,7 +577,7 @@ export const NotesMetricsPanel: React.FC = () => {
             <Eye size={14} color="var(--color-primary-teal)" />
             Notas Recentes
           </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div className="subtle-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto', paddingRight: '4px' }}>
             {metrics.most_viewed.length === 0 ? (
               <div style={{ padding: '20px', textAlign: 'center', fontSize: '12px', color: isDark ? '#666' : '#9CA3AF' }}>
                 Nenhuma nota recente encontrada
@@ -618,7 +593,7 @@ export const NotesMetricsPanel: React.FC = () => {
                   background: isDark ? 'rgba(10, 10, 10, 0.4)' : '#F9FAFB',
                   border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1 }}>
                     <span style={{
                       fontSize: '10px',
                       fontWeight: 700,
@@ -627,8 +602,19 @@ export const NotesMetricsPanel: React.FC = () => {
                       padding: '2px 6px',
                       borderRadius: '4px',
                       border: '1px solid rgba(0, 212, 170, 0.2)',
+                      flexShrink: 0,
                     }}>
                       #{note.id}
+                    </span>
+                    <span style={{
+                      fontSize: '12px',
+                      color: isDark ? '#CCC' : '#374151',
+                      fontWeight: 600,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }} title={note.title}>
+                      {note.title}
                     </span>
                   </div>
                   <span style={{ fontSize: '11px', color: isDark ? '#666' : '#9CA3AF', flexShrink: 0, marginLeft: '8px' }}>
@@ -656,7 +642,7 @@ export const NotesMetricsPanel: React.FC = () => {
             <Tag size={14} color="var(--color-primary-teal)" />
             Distribuição por Tags
           </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div className="subtle-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto', paddingRight: '4px' }}>
             {metrics.notes_by_system_tag.length === 0 ? (
               <div style={{ padding: '20px', textAlign: 'center', fontSize: '12px', color: isDark ? '#666' : '#9CA3AF' }}>
                 Nenhuma tag de sistema em uso
