@@ -45,7 +45,8 @@ module.exports = {
   },
   
   output: {
-    filename: 'renderer.js',
+    filename: '[name].js',
+    chunkFilename: '[name].chunk.js',
     path: path.resolve(__dirname, 'dist/renderer'),
     publicPath: isDev ? '/' : './',
     clean: true,
@@ -95,6 +96,21 @@ module.exports = {
       'Access-Control-Allow-Origin': '*',
       'Content-Security-Policy': "default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: file: blob:; media-src 'self' file: blob:; frame-src 'self' file: blob: data:; font-src 'self'; connect-src 'self' ws: wss: http: https:;",
     }
+  },
+  
+  optimization: {
+    splitChunks: {
+      chunks: 'all',
+      maxInitialRequests: 25,
+      minSize: 20000,
+      cacheGroups: {
+        defaultVendors: {
+          test: /[\\/]node_modules[\\/]/,
+          name: 'vendors',
+          chunks: 'all',
+        },
+      },
+    },
   },
   
   devtool: process.env.NODE_ENV === 'production' ? 'source-map' : 'eval-source-map',

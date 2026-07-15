@@ -5,22 +5,24 @@
 :root {
   /* === COLORS === */
   /* Primary Palette */
-  --color-primary-teal: #00D4AA;
-  --color-primary-purple: #7B3FF2;
+  --color-primary-teal: #00c29d;
+  --color-primary-teal-rgb: 0, 194, 157;
+  --color-primary-purple: #008e9b;
+  --color-primary-purple-rgb: 0, 142, 155;
   --color-primary-gradient: linear-gradient(135deg, var(--color-primary-teal) 0%, var(--color-primary-purple) 100%);
   
   /* Background Colors - Dark Theme */
-  --color-bg-primary: #0A0A0A;
-  --color-bg-secondary: #141414;
-  --color-bg-tertiary: #1A1A1A;
-  --color-bg-card: #0F0F0F;
-  --color-bg-elevated: #1F1F1F;
-  --color-bg-hover: #1E1E1E;
+  --color-bg-primary: #09090b;
+  --color-bg-secondary: #121215;
+  --color-bg-tertiary: #18181b;
+  --color-bg-card: #121215;
+  --color-bg-elevated: #1e1e24;
+  --color-bg-hover: #1e1e24;
   
   /* Border Colors - Dark Theme */
-  --color-border-primary: #2A2A2A;
-  --color-border-secondary: #3A3A3A;
-  --color-border-hover: #4A4A4A;
+  --color-border-primary: #1f1f23;
+  --color-border-secondary: #2f2f35;
+  --color-border-hover: #3f3f46;
   --color-border-focus: var(--color-primary-teal);
   
   /* Text Colors - Dark Theme */
@@ -30,27 +32,27 @@
   --color-text-disabled: #4A4A4A;
   
   /* Status Colors */
-  --color-success: #00D4AA;
+  --color-success: #00c29d;
   --color-warning: #FF9800;
   --color-error: #FF4444;
   --color-info: #2196F3;
   
   /* Accent Colors - Sutis e Minimalistas */
-  --color-accent-teal: #00D4AA;
+  --color-accent-teal: #00c29d;
   --color-accent-blue: #3B82F6;
   --color-accent-amber: #F59E0B;
   --color-accent-emerald: #10B981;
-  --color-accent-purple: #7B3FF2;
+  --color-accent-purple: #008e9b;
   --color-accent-rose: #F43F5E;
   --color-accent-violet: #8B5CF6;
   --color-accent-orange: #F97316;
   
   /* Hover Colors - Versões mais sutis */
-  --color-hover-teal: rgba(0, 212, 170, 0.1);
+  --color-hover-teal: rgba(0, 194, 157, 0.1);
   --color-hover-blue: rgba(59, 130, 246, 0.1);
   --color-hover-amber: rgba(245, 158, 11, 0.1);
   --color-hover-emerald: rgba(16, 185, 129, 0.1);
-  --color-hover-purple: rgba(123, 63, 242, 0.1);
+  --color-hover-purple: rgba(0, 142, 155, 0.1);
   --color-hover-rose: rgba(244, 63, 94, 0.1);
   
   /* Priority Colors */
@@ -59,7 +61,7 @@
   --color-priority-high: #FF4444;
   
   /* Modal and Component Colors */
-  --modal-overlay-bg: rgba(0, 0, 0, 0.8);
+  --modal-overlay-bg: rgba(0, 0, 0, 0.85);
   --primary-600: #00b894;
   
   /* === TYPOGRAPHY === */
@@ -105,19 +107,19 @@
   
   /* === LAYOUT === */
   /* Border Radius */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-2xl: 20px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 12px;
   --radius-full: 9999px;
   
   /* Shadows - Minimalistas */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.15);
-  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.2);
-  --shadow-xl: 0 8px 16px rgba(0, 0, 0, 0.25);
-  --shadow-2xl: 0 16px 32px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
   
   /* Container Sizes */
   --container-sm: 640px;
@@ -146,7 +148,7 @@
   --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
   
   /* Transformações Padrão */
-  --transform-hover-lift: translateY(-2px);
+  --transform-hover-lift: translateY(-1px);
   --transform-hover-scale: scale(1.02);
   --transform-active: translateY(0) scale(0.98);
   
@@ -161,20 +163,20 @@
   --z-toast: 1080;
   
   /* === GLASSMORPHISM === */
-  --glass-bg: rgba(15, 15, 15, 0.8);
-  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-bg: rgba(18, 18, 21, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.08);
   --glass-backdrop: blur(12px);
   
   /* === GRADIENTES MINIMALISTAS === */
   --gradient-primary: linear-gradient(135deg, var(--color-primary-teal) 0%, var(--color-primary-purple) 100%);
-  --gradient-secondary: linear-gradient(135deg, rgba(0, 212, 170, 0.1) 0%, rgba(123, 63, 242, 0.1) 100%);
-  --gradient-card: linear-gradient(135deg, #0F0F0F 0%, #141414 100%);
-  --gradient-card-hover: linear-gradient(135deg, #1A1A1A 0%, #1F1F1F 100%);
+  --gradient-secondary: linear-gradient(135deg, rgba(var(--color-primary-teal-rgb), 0.04) 0%, rgba(var(--color-primary-purple-rgb), 0.04) 100%);
+  --gradient-card: linear-gradient(135deg, #121215 0%, #18181b 100%);
+  --gradient-card-hover: linear-gradient(135deg, #18181b 0%, #1e1e24 100%);
 
   /* Success colors */
-  --success-color: #10b981;
-  --success-bg: rgba(16, 185, 129, 0.1);
-  --success-border: rgba(16, 185, 129, 0.3);
+  --success-color: #00c29d;
+  --success-bg: rgba(0, 194, 157, 0.1);
+  --success-border: rgba(0, 194, 157, 0.3);
 
   /* Warning colors */
   --warning-color: #f59e0b;
@@ -211,19 +213,19 @@
   --color-bg-tertiary: #F3F4F6;
   --color-bg-card: #FFFFFF;
   --color-bg-elevated: #FFFFFF;
-  --color-bg-hover: #EEF2F7;
+  --color-bg-hover: #F3F4F6;
 
-  --color-border-primary: #E5E7EB;
-  --color-border-secondary: #D1D5DB;
-  --color-border-hover: #9CA3AF;
+  --color-border-primary: #E4E4E7;
+  --color-border-secondary: #D4D4D8;
+  --color-border-hover: #A1A1AA;
 
   --color-text-primary: #111827;
   --color-text-secondary: #374151;
   --color-text-muted: #6B7280;
   --color-text-disabled: #9CA3AF;
 
-  --gradient-card: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%);
-  --gradient-card-hover: linear-gradient(135deg, #FFFFFF 0%, #EEF2F7 100%);
+  --gradient-card: linear-gradient(135deg, #FFFFFF 0%, #F4F4F5 100%);
+  --gradient-card-hover: linear-gradient(135deg, #FFFFFF 0%, #F3F4F6 100%);
   --glass-bg: rgba(255, 255, 255, 0.85);
   --glass-border: rgba(17, 24, 39, 0.08);
 }

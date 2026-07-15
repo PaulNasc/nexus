@@ -29,6 +29,9 @@ class MainApplication {
     app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256');
     app.commandLine.appendSwitch('enable-gpu-rasterization');
     app.commandLine.appendSwitch('enable-zero-copy');
+    app.commandLine.appendSwitch('disable-background-networking');
+    app.commandLine.appendSwitch('disable-renderer-backgrounding');
+    app.commandLine.appendSwitch('disable-background-timer-throttling');
 
     this.database = DatabaseManager.getInstance();
     this.logger = SecureLogger.getInstance();

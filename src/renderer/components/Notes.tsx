@@ -873,32 +873,55 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
         {settings.showNotesMenu && (
           <div className="notes-actions">
             <div className="search-container">
-
               <Input type="text" placeholder="Buscar por #ID, nome, data, autor..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="search-input" />
               <Search size={16} className="search-icon" />
             </div>
             <div className="view-toggle">
-              <Button onClick={() => setViewMode('grid')} variant={viewMode === 'grid' ? 'primary' : 'ghost'} size="sm" className="view-button" style={viewMode === 'grid' ? { background: 'linear-gradient(135deg, #00D4AA, #7B3FF2)', border: 'none', color: '#fff' } : {}}>
-                <Grid3X3 size={16} />
-              </Button>
-              <Button onClick={() => setViewMode('list')} variant={viewMode === 'list' ? 'primary' : 'ghost'} size="sm" className="view-button" style={viewMode === 'list' ? { background: 'linear-gradient(135deg, #00D4AA, #7B3FF2)', border: 'none', color: '#fff' } : {}}>
-                <List size={16} />
-              </Button>
+              <button 
+                onClick={() => setViewMode('grid')} 
+                className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                title="Visualização em grade"
+              >
+                <Grid3X3 size={15} />
+              </button>
+              <button 
+                onClick={() => setViewMode('list')} 
+                className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
+                title="Visualização em lista"
+              >
+                <List size={15} />
+              </button>
             </div>
-            <button onClick={() => setShowUtilitiesPanel(!showUtilitiesPanel)} title={showUtilitiesPanel ? 'Fechar utilitários' : 'Abrir utilitários'} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: showUtilitiesPanel ? 'rgba(0, 212, 170, 0.15)' : 'none', border: '1px solid var(--color-border-primary)', borderRadius: '8px', width: '36px', height: '36px', cursor: 'pointer', color: showUtilitiesPanel ? 'var(--color-primary-teal)' : 'var(--color-text-secondary)' }}>
-              <FolderOpen size={16} />
+            <button 
+              onClick={() => setShowUtilitiesPanel(!showUtilitiesPanel)} 
+              className={`notes-toolbar-btn ${showUtilitiesPanel ? 'active' : ''}`}
+              title={showUtilitiesPanel ? 'Fechar utilitários' : 'Abrir utilitários'}
+            >
+              <FolderOpen size={15} />
             </button>
-            <button onClick={() => setShowFilters(!showFilters)} title="Filtros" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: showFilters ? 'rgba(0, 212, 170, 0.15)' : 'none', border: '1px solid var(--color-border-primary)', borderRadius: '8px', width: '36px', height: '36px', cursor: 'pointer', color: showFilters ? 'var(--color-primary-teal)' : 'var(--color-text-secondary)' }}>
-              <Filter size={16} />
+            <button 
+              onClick={() => setShowFilters(!showFilters)} 
+              className={`notes-toolbar-btn ${showFilters ? 'active' : ''}`}
+              title="Filtros"
+            >
+              <Filter size={15} />
             </button>
             <div style={{ position: 'relative' }}>
-              <button onClick={() => setShowSortMenu(!showSortMenu)} title="Ordenar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: showSortMenu ? 'rgba(0, 212, 170, 0.15)' : 'none', border: '1px solid var(--color-border-primary)', borderRadius: '8px', width: '36px', height: '36px', cursor: 'pointer', color: showSortMenu ? 'var(--color-primary-teal)' : 'var(--color-text-secondary)' }}>
-                <ArrowUpDown size={16} />
+              <button 
+                onClick={() => setShowSortMenu(!showSortMenu)} 
+                className={`notes-toolbar-btn ${showSortMenu ? 'active' : ''}`}
+                title="Ordenar"
+              >
+                <ArrowUpDown size={15} />
               </button>
               {showSortMenu && (
-                <div style={{ position: 'absolute', top: '40px', right: 0, background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-primary)', borderRadius: '8px', padding: '4px', zIndex: 50, minWidth: '170px', boxShadow: '0 8px 24px rgba(0,0,0,0.3)' }}>
+                <div className="notes-sort-dropdown">
                   {(Object.keys(sortLabels) as SortOption[]).map(key => (
-                    <button key={key} onClick={() => { setSortBy(key); setShowSortMenu(false); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 12px', background: sortBy === key ? 'rgba(0, 212, 170, 0.15)' : 'transparent', border: 'none', borderRadius: '6px', color: sortBy === key ? 'var(--color-primary-teal)' : 'var(--color-text-secondary)', cursor: 'pointer', fontSize: '12px', fontWeight: sortBy === key ? 600 : 400, textAlign: 'left' }}>
+                    <button 
+                      key={key} 
+                      onClick={() => { setSortBy(key); setShowSortMenu(false); }} 
+                      className={`notes-sort-item ${sortBy === key ? 'active' : ''}`}
+                    >
                       {sortLabels[key]}
                     </button>
                   ))}
@@ -907,42 +930,42 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
             </div>
             {selectionMode ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <button onClick={toggleSelectAll} title="Selecionar todas" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: '1px solid var(--color-border-primary)', borderRadius: '8px', width: '36px', height: '36px', cursor: 'pointer', color: 'var(--color-text-secondary)' }}>
-                  {selectedIds.size === filteredNotes.length ? <CheckSquare size={16} /> : <Square size={16} />}
+                <button 
+                  onClick={toggleSelectAll} 
+                  className="notes-toolbar-btn"
+                  title="Selecionar todas"
+                >
+                  {selectedIds.size === filteredNotes.length ? <CheckSquare size={15} /> : <Square size={15} />}
                 </button>
                 {selectedIds.size > 0 && (
-                  <button onClick={handleBatchDelete} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', background: 'var(--color-accent-rose)', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '12px', fontWeight: 500 }}>
-                    <Trash2 size={14} /> {selectedIds.size}
+                  <button onClick={handleBatchDelete} className="notes-batch-delete-btn">
+                    <Trash2 size={13} /> {selectedIds.size}
                   </button>
                 )}
-                <button onClick={() => { setSelectionMode(false); setSelectedIds(new Set()); }} title="Sair" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: '1px solid var(--color-border-primary)', borderRadius: '8px', width: '36px', height: '36px', cursor: 'pointer', color: 'var(--color-text-secondary)' }}>
-                  <X size={16} />
+                <button 
+                  onClick={() => { setSelectionMode(false); setSelectedIds(new Set()); }} 
+                  className="notes-toolbar-btn"
+                  title="Sair"
+                >
+                  <X size={15} />
                 </button>
               </div>
             ) : (
-              <button onClick={() => setSelectionMode(true)} title="Modo seleção" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: '1px solid var(--color-border-primary)', borderRadius: '8px', width: '36px', height: '36px', cursor: 'pointer', color: 'var(--color-text-secondary)' }}>
-                <CheckSquare size={16} />
+              <button 
+                onClick={() => setSelectionMode(true)} 
+                className="notes-toolbar-btn"
+                title="Modo seleção"
+              >
+                <CheckSquare size={15} />
               </button>
             )}
-            <Button
+            <button
               onClick={handleNewNote}
-              variant="primary"
-              size="sm"
+              className="notes-add-btn"
               title="Nova nota"
-              style={{
-                background: 'linear-gradient(135deg, #00D4AA, #7B3FF2)',
-                border: 'none',
-                width: '36px',
-                minWidth: '36px',
-                height: '36px',
-                padding: 0,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
             >
               <Plus size={16} />
-            </Button>
+            </button>
           </div>
         )}
       </div>
@@ -1459,7 +1482,8 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
             {viewMode === 'grid' ? (
               <div className="notes-grid">
                 {filteredNotes.map((note) => (
-                  <div key={note.id} className="note-card" style={{ borderLeft: `3px solid ${getNoteAccentColor(note)}` }} onClick={() => selectionMode ? toggleSelect(note.id) : handleNoteClick(note)}>
+                  <div key={note.id} className="note-card" onClick={() => selectionMode ? toggleSelect(note.id) : handleNoteClick(note)}>
+                    <div className="note-card-accent-bar" style={{ backgroundColor: getNoteAccentColor(note) }} />
                     {note.is_pinned && (
                       <div className="note-actions" style={{ position: 'absolute', top: 8, right: 8, display: 'flex', alignItems: 'center', gap: '2px', zIndex: 5 }}>
                         <Pin size={13} className="pin-icon-active" />
@@ -1509,7 +1533,8 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
             ) : (
               <div className="notes-list-view">
                 {filteredNotes.map((note) => (
-                  <div key={note.id} className="note-list-item" style={{ borderLeft: `3px solid ${getNoteAccentColor(note)}` }} onClick={() => selectionMode ? toggleSelect(note.id) : handleNoteClick(note)}>
+                  <div key={note.id} className="note-list-item" onClick={() => selectionMode ? toggleSelect(note.id) : handleNoteClick(note)}>
+                    <div className="note-card-accent-bar" style={{ backgroundColor: getNoteAccentColor(note) }} />
                     <div className="note-list-content">
                       <div className="note-main">
                         {selectionMode && (

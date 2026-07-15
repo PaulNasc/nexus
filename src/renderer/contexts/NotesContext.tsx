@@ -832,7 +832,9 @@ return created;
     }
 
     const promise = (async () => {
-      setIsLoading(true);
+      if (!initialLoadDone.current) {
+        setIsLoading(true);
+      }
       setHasMore(false);
       currentPageRef.current = 0; // reset pagination on every full fetch
       setError(null);

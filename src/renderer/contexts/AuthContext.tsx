@@ -191,8 +191,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
+    const targetEmail = email.trim() === 'admin@admin' ? 'admin@admin.com' : email;
     const { error } = await supabase.auth.signUp({
-      email,
+      email: targetEmail,
       password,
       options: {
         data: {
@@ -205,8 +206,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
+    const targetEmail = email.trim() === 'admin@admin' ? 'admin@admin.com' : email;
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: targetEmail,
       password,
     });
 
@@ -269,7 +271,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const resetPassword = useCallback(async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    const targetEmail = email.trim() === 'admin@admin' ? 'admin@admin.com' : email;
+    const { error } = await supabase.auth.resetPasswordForEmail(targetEmail);
     return { error };
   }, []);
 

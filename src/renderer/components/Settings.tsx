@@ -193,7 +193,7 @@ const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
             <div style={{ fontSize: '13px', color: isDark ? '#E5E7EB' : '#1F2937' }}>{log.message}</div>
             {Boolean(log.data) && (
               <details style={{ marginTop: '8px' }}>
-                <summary style={{ cursor: 'pointer', fontSize: '12px', color: isDark ? '#00D4AA' : '#059669' }}>Dados adicionais</summary>
+                <summary style={{ cursor: 'pointer', fontSize: '12px', color: 'var(--color-primary-teal)' }}>Dados adicionais</summary>
                 <pre style={{ marginTop: '6px', fontSize: '11px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: isDark ? '#A0A0A0' : '#4B5563' }}>{JSON.stringify(log.data, null, 2)}</pre>
               </details>
             )}
@@ -280,7 +280,7 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
 
         {status.releaseNotes && (
           <details style={{ marginBottom: '12px' }}>
-            <summary style={{ cursor: 'pointer', fontSize: '13px', color: isDark ? '#00D4AA' : '#059669' }}>Release notes</summary>
+            <summary style={{ cursor: 'pointer', fontSize: '13px', color: 'var(--color-primary-teal)' }}>Release notes</summary>
             <pre style={{ marginTop: '8px', whiteSpace: 'pre-wrap', fontSize: '12px', color: isDark ? '#A0A0A0' : '#4B5563' }}>{status.releaseNotes}</pre>
           </details>
         )}
@@ -288,7 +288,7 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
         {status.progress && status.state === 'downloading' && (
           <div style={{ marginBottom: '12px' }}>
             <div style={{ width: '100%', height: '6px', borderRadius: '999px', backgroundColor: isDark ? '#2A2A2A' : '#E5E7EB', overflow: 'hidden' }}>
-              <div style={{ width: `${status.progress.percent}%`, height: '100%', background: 'linear-gradient(90deg, #00D4AA, #7B3FF2)' }} />
+              <div style={{ width: `${status.progress.percent}%`, height: '100%', background: 'var(--color-primary-gradient)' }} />
             </div>
             <div style={{ fontSize: '11px', marginTop: '4px', color: isDark ? '#A0A0A0' : '#6B7280' }}>{status.progress.percent}%</div>
           </div>
@@ -1078,10 +1078,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                 fontSize: '20px',
                 fontWeight: 600,
                 color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)',
-                background: 'linear-gradient(135deg, #00D4AA 0%, #7B3FF2 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text'
               }}>
                 Configurações
               </h2>
@@ -1100,7 +1096,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     ? (theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-bg-tertiary)') 
                     : 'transparent',
                   border: 'none',
-                  borderLeft: activeTab === tab.id ? '3px solid #00D4AA' : '3px solid transparent',
+                  borderLeft: activeTab === tab.id ? '3px solid var(--color-primary-teal)' : '3px solid transparent',
                   color: activeTab === tab.id 
                     ? (theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)') 
                     : (theme.mode === 'dark' ? '#A0A0A0' : 'var(--color-text-secondary)'),
@@ -1277,7 +1273,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         type="checkbox"
                         checked={settings.showNotifications}
                         onChange={(e) => updateSettings({ showNotifications: e.target.checked })}
-                        style={{ width: '18px', height: '18px', accentColor: '#00D4AA' }}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                       />
                       <span style={{ fontSize: '14px', color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)' }}>
                         {t('settings.notifications.desktop')}
@@ -1298,7 +1294,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         type="checkbox"
                         checked={settings.playSound}
                         onChange={(e) => updateSettings({ playSound: e.target.checked })}
-                        style={{ width: '18px', height: '18px', accentColor: '#00D4AA' }}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                       />
                       <span style={{ fontSize: '14px', color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)' }}>
                         {t('settings.notifications.sound')}
@@ -1325,7 +1321,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           type="checkbox"
                           checked={settings[item.key]}
                           onChange={(e) => updateSettings({ [item.key]: e.target.checked })}
-                          style={{ width: '18px', height: '18px', accentColor: '#00D4AA' }}
+                          style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                         />
                         <span style={{ fontSize: '14px', color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)' }}>
                           {item.label}
@@ -1341,7 +1337,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           alignItems: 'center',
                           gap: '8px',
                           padding: '12px 20px',
-                          backgroundColor: '#00D4AA',
+                          backgroundColor: 'var(--color-primary-teal)',
                           color: '#FFFFFF',
                           border: 'none',
                           borderRadius: '8px',
@@ -1354,7 +1350,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           e.currentTarget.style.backgroundColor = '#00B894';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = '#00D4AA';
+                          e.currentTarget.style.backgroundColor = 'var(--primary-600)';
                         }}
                       >
                         <TestTube size={16} strokeWidth={1.7} />
@@ -1953,9 +1949,9 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     <svg width="48" height="48" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
                       <defs>
                         <linearGradient id="nexusAboutGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                          <stop offset="0%" style={{ stopColor: '#00D4AA', stopOpacity: 1 }} />
+                          <stop offset="0%" style={{ stopColor: 'var(--color-primary-teal)', stopOpacity: 1 }} />
                           <stop offset="50%" style={{ stopColor: '#00B4D8', stopOpacity: 1 }} />
-                          <stop offset="100%" style={{ stopColor: '#7B3FF2', stopOpacity: 1 }} />
+                          <stop offset="100%" style={{ stopColor: 'var(--color-primary-purple)', stopOpacity: 1 }} />
                         </linearGradient>
                         <linearGradient id="nexusAboutBg" x1="0%" y1="0%" x2="100%" y2="100%">
                           <stop offset="0%" style={{ stopColor: '#0D0D0D', stopOpacity: 1 }} />
@@ -2039,7 +2035,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         <code style={{
                           fontSize: '12px',
                           fontFamily: 'monospace',
-                          color: theme.mode === 'dark' ? '#00D4AA' : '#059669',
+                          color: 'var(--color-primary-teal)',
                           backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : '#ECFDF5',
                           padding: '4px 8px',
                           borderRadius: '4px',
@@ -2178,7 +2174,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                 alignItems: 'center',
                 gap: '8px',
                 padding: '12px 24px',
-                backgroundColor: '#00D4AA',
+                backgroundColor: 'var(--color-primary-teal)',
                 color: '#FFFFFF',
                 border: 'none',
                 borderRadius: '8px',
@@ -2191,7 +2187,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                 e.currentTarget.style.backgroundColor = '#00B894';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#00D4AA';
+                e.currentTarget.style.backgroundColor = 'var(--primary-600)';
               }}
             >
               <Save size={16} strokeWidth={1.7} />

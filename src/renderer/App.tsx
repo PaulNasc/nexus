@@ -8,15 +8,15 @@ import { useI18n } from './hooks/useI18n';
 import { useSettings } from './hooks/useSettings';
 import { useCategories } from './contexts/CategoriesContext';
 import { useProductivityInsights } from './hooks/useProductivityInsights';
-import { TaskModal } from './components/TaskModal';
-import { TaskList } from './components/TaskList';
-import { Timer } from './components/Timer';
-import { Reports } from './components/Reports';
-import { Dashboard } from './components/Dashboard';
-import { Settings } from './components/Settings';
-import { Notes } from './components/Notes';
-import { NoteModal } from './components/NoteModal';
-import { NotesMetricsPanel } from './components/NotesMetricsPanel';
+const TaskModal = React.lazy(() => import('./components/TaskModal').then(m => ({ default: m.TaskModal })));
+const TaskList = React.lazy(() => import('./components/TaskList').then(m => ({ default: m.TaskList })));
+const Timer = React.lazy(() => import('./components/Timer').then(m => ({ default: m.Timer })));
+const Reports = React.lazy(() => import('./components/Reports').then(m => ({ default: m.Reports })));
+const Dashboard = React.lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
+const Settings = React.lazy(() => import('./components/Settings').then(m => ({ default: m.Settings })));
+const Notes = React.lazy(() => import('./components/Notes').then(m => ({ default: m.Notes })));
+const NoteModal = React.lazy(() => import('./components/NoteModal').then(m => ({ default: m.NoteModal })));
+const NotesMetricsPanel = React.lazy(() => import('./components/NotesMetricsPanel').then(m => ({ default: m.NotesMetricsPanel })));
 import { useToast } from './components/Toast';
 import { useAppearance } from './hooks/useAppearance';
 import { Task, TaskStatus } from '../shared/types/task';
@@ -579,17 +579,98 @@ const App: React.FC<AppProps> = () => {
     }
 
     return (
+      <React.Suspense fallback={
+        <div className="loading-screen">
+          <div className="loading-content">
+            <Loader2 className="notes-loading-spinner" />
+            <h2 className="loading-title">Carregando...</h2>
+          </div>
+        </div>
+      }>
+        <div className="app-container" data-theme={theme.mode}>
+          {renderAppHeader()}
+          {renderHeaderVisibilityToggle()}
+          <main className="app-main">
+            <TaskList
+              title={getListTitle(navigation.selectedList)}
+              tasks={tasksList}
+              onEdit={handleEditTask}
+              onDelete={handleDeleteTask}
+              onToggleStatus={handleMoveTask}
+              onBack={goToDashboard}
+            />
+          </main>
+
+          {isTaskModalOpen && (
+            <TaskModal
+              editingTask={editingTask}
+              isOpen={isTaskModalOpen}
+              onClose={handleCloseTaskModal}
+              onSave={handleSaveTask}
+            />
+          )}
+
+          <Settings
+            isOpen={isSettingsOpen}
+            onClose={handleCloseSettings}
+          />
+
+          <ToastContainer />
+        </div>
+      </React.Suspense>
+    );
+  }
+
+  // Dashboard principal com abas para Timer e Reports
+  return (
+    <React.Suspense fallback={
+      <div className="loading-screen">
+        <div className="loading-content">
+          <Loader2 className="notes-loading-spinner" />
+          <h2 className="loading-title">Carregando...</h2>
+        </div>
+      </div>
+    }>
       <div className="app-container" data-theme={theme.mode}>
         {renderAppHeader()}
         {renderHeaderVisibilityToggle()}
         <main className="app-main">
-          <TaskList
-            title={getListTitle(navigation.selectedList)}
-            tasks={tasksList}
-            onEdit={handleEditTask}
-            onDelete={handleDeleteTask}
-            onToggleStatus={handleMoveTask}
-            onBack={goToDashboard}
+          {navigation.currentScreen === 'dashboard' && (
+            <div className="animate-screen">
+              <Dashboard
+                onViewTaskList={viewTaskList}
+                onOpenTimer={settings.showTimer ? openTimer : undefined}
+                onOpenReports={settings.showReports ? openReports : undefined}
+                showQuickActions={settings.showQuickActions}
+                showTaskCounters={settings.showTaskCounters}
+              />
+            </div>
+          )}
+          {navigation.currentScreen === 'timer' && settings.showTimer && (
+            <div className="animate-screen" style={{ padding: '24px' }}>
+              <Timer onBack={goToDashboard} />
+            </div>
+          )}
+          {navigation.currentScreen === 'reports' && settings.showReports && (
+            <div className="animate-screen" style={{ padding: '24px' }}>
+              <Reports onClose={goToDashboard} onBack={goToDashboard} />
+            </div>
+          )}
+          {navigation.currentScreen === 'notes' && (
+            <div className="animate-screen" style={{ height: '100%' }}>
+              <Notes initialNoteId={navigation.selectedNoteId} />
+            </div>
+          )}
+          {navigation.currentScreen === 'metrics' && (
+            <div className="animate-screen" style={{ padding: '24px' }}>
+              <NotesMetricsPanel />
+            </div>
+          )}
+
+          <NoteModal
+            isOpen={isNoteModalOpen}
+            onClose={() => setIsNoteModalOpen(false)}
+            modalTitle="Nota rápida"
           />
         </main>
 
@@ -607,88 +688,25 @@ const App: React.FC<AppProps> = () => {
           onClose={handleCloseSettings}
         />
 
+        {settings.aiProactiveMode && settings.showProactiveSuggestionsWidget && (
+          <ProactiveSuggestionsWidget 
+            suggestions={proactiveSuggestions}
+            settings={{
+              fontSizePx: settings.fontSizePx || 14,
+              cardOpacity: settings.cardOpacity || 95,
+              reduceAnimations: settings.reduceAnimations || false,
+              interfaceDensity: settings.interfaceDensity || 'normal',
+              widgetButtonOpacity: settings.widgetButtonOpacity || 100,
+              widgetButtonSize: settings.widgetButtonSize || 56
+            }}
+          />
+        )}
+
         <ToastContainer />
+
+        <UpdateNotification isDark={true} />
       </div>
-    );
-  }
-
-  // Dashboard principal com abas para Timer e Reports
-  return (
-    <div className="app-container" data-theme={theme.mode}>
-      {renderAppHeader()}
-      {renderHeaderVisibilityToggle()}
-      <main className="app-main">
-        {navigation.currentScreen === 'dashboard' && (
-          <div className="animate-screen">
-            <Dashboard
-              onViewTaskList={viewTaskList}
-              onOpenTimer={settings.showTimer ? openTimer : undefined}
-              onOpenReports={settings.showReports ? openReports : undefined}
-              showQuickActions={settings.showQuickActions}
-              showTaskCounters={settings.showTaskCounters}
-            />
-          </div>
-        )}
-        {navigation.currentScreen === 'timer' && settings.showTimer && (
-          <div className="animate-screen" style={{ padding: '24px' }}>
-            <Timer onBack={goToDashboard} />
-          </div>
-        )}
-        {navigation.currentScreen === 'reports' && settings.showReports && (
-          <div className="animate-screen" style={{ padding: '24px' }}>
-            <Reports onClose={goToDashboard} onBack={goToDashboard} />
-          </div>
-        )}
-        {navigation.currentScreen === 'notes' && (
-          <div className="animate-screen" style={{ height: '100%' }}>
-            <Notes initialNoteId={navigation.selectedNoteId} />
-          </div>
-        )}
-        {navigation.currentScreen === 'metrics' && (
-          <div className="animate-screen" style={{ padding: '24px' }}>
-            <NotesMetricsPanel />
-          </div>
-        )}
-
-        <NoteModal
-          isOpen={isNoteModalOpen}
-          onClose={() => setIsNoteModalOpen(false)}
-          modalTitle="Nota rápida"
-        />
-      </main>
-
-      {isTaskModalOpen && (
-        <TaskModal
-          editingTask={editingTask}
-          isOpen={isTaskModalOpen}
-          onClose={handleCloseTaskModal}
-          onSave={handleSaveTask}
-        />
-      )}
-
-      <Settings
-        isOpen={isSettingsOpen}
-        onClose={handleCloseSettings}
-      />
-
-      {settings.aiProactiveMode && settings.showProactiveSuggestionsWidget && (
-        <ProactiveSuggestionsWidget 
-          suggestions={proactiveSuggestions}
-          settings={{
-            fontSizePx: settings.fontSizePx || 14,
-            cardOpacity: settings.cardOpacity || 95,
-            reduceAnimations: settings.reduceAnimations || false,
-            interfaceDensity: settings.interfaceDensity || 'normal',
-            widgetButtonOpacity: settings.widgetButtonOpacity || 100,
-            widgetButtonSize: settings.widgetButtonSize || 56
-          }}
-        />
-      )}
-
-      <ToastContainer />
-
-      <UpdateNotification isDark={true} />
-    </div>
+    </React.Suspense>
   );
 };
 
