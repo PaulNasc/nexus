@@ -33,6 +33,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<{ error: AuthError | null }>;
+  signInWithDiscord: () => Promise<{ error: AuthError | null }>;
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
   setOfflineMode: (offline: boolean) => void;
 }
@@ -53,9 +54,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   useEffect(() => {
-    // Get initial session
     const initSession = async () => {
       try {
+        const remember = localStorage.getItem('nexus-remember-me') !== 'false';
+        const hasActiveSession = sessionStorage.getItem('nexus-session-active') === 'true';
+
+        if (!remember && !hasActiveSession) {
+          await supabase.auth.signOut();
+          clearPersistedAuthState();
+        }
+        sessionStorage.setItem('nexus-session-active', 'true');
+
         const { data, error } = await supabase.auth.getSession();
 
         if (error && isInvalidRefreshTokenError(error)) {
@@ -270,6 +279,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const signInWithDiscord = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'discord',
+        options: {
+          redirectTo: 'krigzis://auth/callback',
+          skipBrowserRedirect: true,
+        },
+      });
+
+      if (error) return { error };
+
+      if (data?.url) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const api = (window as any).electronAPI;
+        if (api?.auth?.openExternal) {
+          await api.auth.openExternal(data.url);
+        } else {
+          window.open(data.url, '_blank');
+        }
+      }
+
+      return { error: null };
+    } catch (err) {
+      return { error: { message: err instanceof Error ? err.message : 'Erro ao iniciar login com Discord' } as AuthError };
+    }
+  }, []);
+
   const resetPassword = useCallback(async (email: string) => {
     const targetEmail = email.trim() === 'admin@admin' ? 'admin@admin.com' : email;
     const { error } = await supabase.auth.resetPasswordForEmail(targetEmail);
@@ -292,6 +329,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signIn,
         signOut,
         signInWithGoogle,
+        signInWithDiscord,
         resetPassword,
         setOfflineMode,
       }}

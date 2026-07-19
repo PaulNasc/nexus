@@ -38,7 +38,7 @@ const mapAuthErrorMessage = (authError: AuthErrorLike | null | undefined): strin
 };
 
 const AuthScreen: React.FC = () => {
-  const { signIn, signUp, signInWithGoogle, resetPassword, setOfflineMode } = useAuth();
+  const { signIn, signUp, signInWithGoogle, signInWithDiscord, resetPassword, setOfflineMode } = useAuth();
 
   const [tab, setTab] = useState<AuthTab>('login');
   const [email, setEmail] = useState('');
@@ -48,6 +48,9 @@ const AuthScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [rememberMe, setRememberMe] = useState(() => {
+    return localStorage.getItem('nexus-remember-me') !== 'false';
+  });
 
   const clearMessages = () => {
     setError(null);
@@ -57,7 +60,19 @@ const AuthScreen: React.FC = () => {
   const handleGoogleLogin = async () => {
     clearMessages();
     setLoading(true);
+    localStorage.setItem('nexus-remember-me', rememberMe ? 'true' : 'false');
     const { error: authError } = await signInWithGoogle();
+    setLoading(false);
+    if (authError) {
+      setError(mapAuthErrorMessage(authError));
+    }
+  };
+
+  const handleDiscordLogin = async () => {
+    clearMessages();
+    setLoading(true);
+    localStorage.setItem('nexus-remember-me', rememberMe ? 'true' : 'false');
+    const { error: authError } = await signInWithDiscord();
     setLoading(false);
     if (authError) {
       setError(mapAuthErrorMessage(authError));
@@ -74,6 +89,7 @@ const AuthScreen: React.FC = () => {
     }
 
     setLoading(true);
+    localStorage.setItem('nexus-remember-me', rememberMe ? 'true' : 'false');
     const { error: authError } = await signIn(email.trim(), password);
     setLoading(false);
 
@@ -97,6 +113,7 @@ const AuthScreen: React.FC = () => {
     }
 
     setLoading(true);
+    localStorage.setItem('nexus-remember-me', rememberMe ? 'true' : 'false');
     const { error: authError } = await signUp(email.trim(), password, displayName.trim());
     setLoading(false);
 
@@ -329,22 +346,48 @@ const AuthScreen: React.FC = () => {
               }
             />
 
-            <button
-              type="button"
-              onClick={() => switchTab('forgot')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--color-primary-teal)',
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '20px',
+            }}>
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
                 fontSize: '12px',
+                color: 'var(--color-text-secondary)',
                 cursor: 'pointer',
-                padding: '0',
-                marginBottom: '20px',
-                display: 'block',
-              }}
-            >
-              Esqueci minha senha
-            </button>
+                userSelect: 'none',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  style={{
+                    accentColor: 'var(--color-primary-teal)',
+                    cursor: 'pointer',
+                  }}
+                />
+                Lembrar login
+              </label>
+
+              <button
+                type="button"
+                onClick={() => switchTab('forgot')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--color-primary-teal)',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  padding: '0',
+                }}
+              >
+                Esqueci minha senha
+              </button>
+            </div>
 
             <SubmitButton loading={loading} text="Entrar" />
           </form>
@@ -480,6 +523,43 @@ const AuthScreen: React.FC = () => {
             <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
           </svg>
           Entrar com Google
+        </button>
+
+        {/* Discord OAuth Button */}
+        <button
+          type="button"
+          onClick={handleDiscordLogin}
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '12px',
+            border: '1px solid var(--color-border-primary)',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--color-bg-tertiary)',
+            color: '#E0E0E0',
+            fontSize: '13px',
+            fontWeight: 500,
+            cursor: loading ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '10px',
+            transition: 'all 0.2s',
+            marginBottom: '10px',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--color-bg-hover)';
+            e.currentTarget.style.borderColor = 'var(--color-border-hover)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'var(--color-bg-tertiary)';
+            e.currentTarget.style.borderColor = 'var(--color-border-primary)';
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 127.14 96.36" fill="currentColor">
+            <path d="M107.7,8.07A105.15,105.15,0,0,0,77.26,0a77.19,77.19,0,0,0-3.3,6.83A96.67,96.67,0,0,0,52.88,6.83,77.19,77.19,0,0,0,49.58,0,105.15,105.15,0,0,0,19.14,8.07C3,33.79-1.5,58.87,1,83.47a105.65,105.65,0,0,0,32,16.29,80.4,80.4,0,0,0,6.79-11.11,68.6,68.6,0,0,1-10.7-5.12c.9-.66,1.8-1.34,2.66-2a75.58,75.58,0,0,0,94.94,0c.86.69,1.76,1.37,2.66,2a68.6,68.6,0,0,1-10.7,5.12,80.4,80.4,0,0,0,6.79,11.11,105.65,105.65,0,0,0,32-16.29C129.64,50.37,124.7,25.43,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53S36.18,40.36,42.45,40.36,53.83,46,53.83,53,48.72,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.24,60,73.24,53S78.41,40.36,84.69,40.36,96.07,46,96.07,53,91,65.69,84.69,65.69Z"/>
+          </svg>
+          Entrar com Discord
         </button>
 
         {/* Offline Mode Button */}
