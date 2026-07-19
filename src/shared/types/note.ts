@@ -45,6 +45,8 @@ export interface CreateNoteData {
 export interface UpdateNoteData extends Partial<CreateNoteData> {
   is_pinned?: boolean;
   is_archived?: boolean;
+  user_id?: string;
+  creator_display_name?: string;
 }
 
 export interface NoteStats {

@@ -399,7 +399,23 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'org_members', filter: `user_id=eq.${currentUserId}` },
-          () => {
+          async (payload) => {
+            if (payload.eventType === 'INSERT') {
+              const newMemberRow = payload.new as { org_id: string };
+              try {
+                const { data: orgData } = await supabase
+                  .from('organizations')
+                  .select('*')
+                  .eq('id', newMemberRow.org_id)
+                  .single();
+                if (orgData) {
+                  localStorage.setItem(ACTIVE_ORG_KEY, orgData.id);
+                  window.location.reload();
+                }
+              } catch (err) {
+                console.error('Error auto-activating organization on invite/approval:', err);
+              }
+            }
             scheduleOrganizationsRefresh();
           }
         )

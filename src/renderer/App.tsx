@@ -27,6 +27,7 @@ import { useAuth } from './contexts/AuthContext';
 import { useOrganization } from './contexts/OrganizationContext';
 import ProactiveSuggestionsWidget from './components/ProactiveSuggestionsWidget';
 import UpdateNotification from './components/UpdateNotification';
+import { NoOrganizationModal } from './components/NoOrganizationModal';
 
 // Import styles
 import './styles/reset.css';
@@ -209,8 +210,8 @@ const App: React.FC<AppProps> = () => {
   useAppearance();
 
   // Hooks centralizados via Context (instância única)
-  const { signOut } = useAuth();
-  const { myRole } = useOrganization();
+  const { signOut, isOffline } = useAuth();
+  const { myRole, organizations, loading: orgsLoading } = useOrganization();
   const { isLoading: notesLoading } = useNotes();
   const canViewMetrics = myRole === 'admin' || myRole === 'owner';
   const {
@@ -527,7 +528,7 @@ const App: React.FC<AppProps> = () => {
     </button>
   );
 
-  if (isLoading || tasksLoading || notesLoading) {
+  if (isLoading || tasksLoading || notesLoading || orgsLoading) {
     return (
       <div className="loading-screen">
         <div className="loading-content">
@@ -537,6 +538,11 @@ const App: React.FC<AppProps> = () => {
         </div>
       </div>
     );
+  }
+
+  // Se o usuário estiver online mas não possuir nenhuma organização
+  if (!isOffline && organizations.length === 0) {
+    return <NoOrganizationModal />;
   }
 
   // Obter título da lista baseado no status

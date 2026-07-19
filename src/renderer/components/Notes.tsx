@@ -1517,7 +1517,14 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                           </div>
                         )}
                         <div className="note-meta">
-                          {note.creator_display_name && (<span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>por {note.creator_display_name}</span>)}
+                          {note.creator_display_name && (
+                            <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+                              {note.created_at && note.updated_at && Math.abs(new Date(note.updated_at).getTime() - new Date(note.created_at).getTime()) > 1000
+                                ? 'editado por '
+                                : 'por '}
+                              {note.creator_display_name}
+                            </span>
+                          )}
                           <div className="note-date">{formatDate(note.updated_at)}</div>
                           {settings.showDashboard && note.linkedTaskIds && note.linkedTaskIds.length > 0 && (
                             <div onClick={(e) => { e.stopPropagation(); showLinkedTasks(note); }} className="task-link">
@@ -1556,7 +1563,14 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                               </div>
                             )}
                             <div className="note-meta note-meta--right">
-                              {note.creator_display_name && (<span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>por {note.creator_display_name}</span>)}
+                               {note.creator_display_name && (
+                                 <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+                                   {note.created_at && note.updated_at && Math.abs(new Date(note.updated_at).getTime() - new Date(note.created_at).getTime()) > 1000
+                                     ? 'editado por '
+                                     : 'por '}
+                                   {note.creator_display_name}
+                                 </span>
+                               )}
                               <div className="note-date">{formatDate(note.updated_at)}</div>
                               {settings.showDashboard && note.linkedTaskIds && note.linkedTaskIds.length > 0 && (
                                 <div onClick={(e) => { e.stopPropagation(); showLinkedTasks(note); }} className="task-link">

@@ -140,26 +140,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleOAuthCallback = async (_event: any, url: string) => {
       try {
-        // Extrair fragment da URL: krigzis://auth/callback#access_token=...&refresh_token=...
+        let paramsString = '';
         const hashIndex = url.indexOf('#');
-        if (hashIndex === -1) return;
+        const queryIndex = url.indexOf('?');
+        
+        if (hashIndex !== -1) {
+          paramsString = url.substring(hashIndex + 1);
+        } else if (queryIndex !== -1) {
+          paramsString = url.substring(queryIndex + 1);
+        } else {
+          console.warn('OAuth callback: No query/hash parameters found in deep link URL:', url);
+          return;
+        }
 
-        const fragment = url.substring(hashIndex + 1);
-        const params = new URLSearchParams(fragment);
+        const params = new URLSearchParams(paramsString);
         const accessToken = params.get('access_token');
         const refreshToken = params.get('refresh_token');
 
         if (accessToken && refreshToken) {
-          const { error } = await supabase.auth.setSession({
+          setLoading(true);
+          const { data, error } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
           });
+          
           if (error) {
             console.error('OAuth callback setSession error:', error);
+            setLoading(false);
+          } else if (data?.session) {
+            setSession(data.session);
+            setUser(data.session.user);
+            setLoading(false);
+          } else {
+            setLoading(false);
           }
+        } else {
+          console.warn('OAuth callback URL missing access_token or refresh_token:', url);
         }
       } catch (err) {
         console.error('OAuth callback error:', err);
+        setLoading(false);
       }
     };
 

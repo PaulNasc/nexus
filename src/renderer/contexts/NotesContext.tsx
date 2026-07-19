@@ -943,6 +943,23 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
         const { data: userData } = await supabase.auth.getUser();
         const userId = userData?.user?.id;
         const orgId = activeOrg?.id || null;
+
+        let editorDisplayName = '';
+        if (userId) {
+          try {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('display_name')
+              .eq('id', userId)
+              .single();
+            editorDisplayName = profile?.display_name || userData?.user?.email || 'Usuário';
+          } catch {
+            editorDisplayName = userData?.user?.email || 'Usuário';
+          }
+          updates.user_id = userId;
+          updates.creator_display_name = editorDisplayName;
+        }
+
         const previousNote = notes.find(note => note.id === id);
         const previousCloudPaths = extractCloudVideoPaths(previousNote?.attachedVideos);
         const previousPdfCloudPath = extractCloudPdfPathFromContent(previousNote?.content);
@@ -972,6 +989,7 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
         const updateData: Record<string, unknown> = {
           updated_at: new Date().toISOString(),
         };
+        if (userId) updateData.user_id = userId;
         if (updates.title !== undefined) updateData.title = updates.title;
         if (updates.content !== undefined) updateData.content = syncedContent;
         if (updates.format !== undefined) updateData.format = updates.format;
@@ -1038,6 +1056,9 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
         await removeCloudPdfs(removedPdfPaths);
 
         updated = dbRowToNote(data as SupabaseNoteRow, updates.linkedTaskIds);
+        if (editorDisplayName) {
+          updated.creator_display_name = editorDisplayName;
+        }
       }
 
       if (useLocal) {
