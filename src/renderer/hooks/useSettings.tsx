@@ -360,7 +360,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .from('user_settings')
         .select('settings')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
       if (data?.settings && typeof data.settings === 'object') {
         const remoteSettings = data.settings as Partial<UserSettings>;
         // Merge: remote wins for non-empty values
