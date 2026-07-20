@@ -165,6 +165,18 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
 
   const organizationColorOptions = useMemo(() => {
     const byColor = new Map<string, { value: string; label: string }>();
+
+    // 1. Include all system tag colors so all system-defined colors are available as filter options
+    for (const tag of activeSystemTags) {
+      const color = (tag.color || '').trim();
+      if (!color) continue;
+      const key = color.toLowerCase();
+      if (!byColor.has(key)) {
+        byColor.set(key, { value: color, label: tag.name });
+      }
+    }
+
+    // 2. Include colors present in currently loaded notes
     for (const note of notes) {
       const color = (resolveEffectiveNoteColor(note) || '').trim();
       if (!color) continue;
@@ -176,8 +188,17 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
       byColor.set(key, { value: color, label: sourceTag?.name || color });
     }
 
+    // 3. Ensure currently selected filterColor is always present
+    if (filterColor) {
+      const key = filterColor.trim().toLowerCase();
+      if (!byColor.has(key)) {
+        const sourceTag = activeSystemTags.find((tag) => (tag.color || '').trim().toLowerCase() === key);
+        byColor.set(key, { value: filterColor, label: sourceTag?.name || filterColor });
+      }
+    }
+
     return Array.from(byColor.values());
-  }, [notes, resolveEffectiveNoteColor, activeSystemTags]);
+  }, [notes, resolveEffectiveNoteColor, activeSystemTags, filterColor]);
 
   useEffect(() => {
     if (initialNoteId && notes.length > 0) {

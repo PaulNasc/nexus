@@ -560,16 +560,38 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const from = page * NOTES_PAGE_SIZE;
     const to = from + NOTES_PAGE_SIZE - 1;
-    const { data, error: fetchError, count } = await query.range(from, to);
+    let data: SupabaseNoteRow[] | null = null;
+    let fetchError: unknown = null;
+    let count: number | null = null;
 
-    if (fetchError) throw fetchError;
+    try {
+      const res = await query.range(from, to);
+      data = res.data as SupabaseNoteRow[] | null;
+      fetchError = res.error;
+      count = res.count;
+    } catch (err) {
+      fetchError = err;
+    }
 
-    // Expose whether there are more notes beyond this page
-    const totalCount = count ?? 0;
-    setHasMore(from + NOTES_PAGE_SIZE < totalCount);
-    setTotalNotesCount(totalCount);
+    if (fetchError) {
+      const errObj = fetchError as Record<string, unknown>;
+      const is416 = errObj?.status === 416
+        || errObj?.code === 'PGRST103'
+        || String(errObj?.message || '').includes('416')
+        || String(errObj?.message || '').includes('range');
+      
+      if (is416) {
+        setHasMore(false);
+        return [];
+      }
+      throw fetchError;
+    }
 
     const rows = (data || []) as SupabaseNoteRow[];
+    const totalCount = count ?? 0;
+    setHasMore(rows.length === NOTES_PAGE_SIZE && (from + rows.length < totalCount));
+    setTotalNotesCount(totalCount);
+
     if (rows.length === 0) return [];
 
     // Lazy load profiles and task links in parallel to reduce total wait time
@@ -891,14 +913,19 @@ return created;
     try {
       const nextPage = currentPageRef.current + 1;
       const moreNotes = await fetchNotesCloud(nextPage);
-      currentPageRef.current = nextPage;
-      setNotes(prev => {
-        // Deduplicate by id in case of realtime inserts during pagination
-        const existingIds = new Set(prev.map(n => n.id));
-        return [...prev, ...moreNotes.filter(n => !existingIds.has(n.id))];
-      });
+      if (moreNotes.length === 0) {
+        setHasMore(false);
+      } else {
+        currentPageRef.current = nextPage;
+        setNotes(prev => {
+          // Deduplicate by id in case of realtime inserts during pagination
+          const existingIds = new Set(prev.map(n => n.id));
+          return [...prev, ...moreNotes.filter(n => !existingIds.has(n.id))];
+        });
+      }
     } catch (err) {
       console.error('[NotesContext] loadMoreNotes error:', err);
+      setHasMore(false);
     } finally {
       setIsFetchingMore(false);
     }
