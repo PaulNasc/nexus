@@ -44,6 +44,8 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     setSearchTerm,
     filterColor,
     setFilterColor,
+    filterColors,
+    setFilterColors,
     filterPinned,
     setFilterPinned,
     filterTags,
@@ -163,42 +165,54 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     return undefined;
   }, [systemTagById, activeSystemTags]);
 
-  const organizationColorOptions = useMemo(() => {
-    const byColor = new Map<string, { value: string; label: string }>();
+  const [knownColorsMap, setKnownColorsMap] = useState<Map<string, { value: string; label: string }>>(new Map());
 
-    // 1. Include all system tag colors so all system-defined colors are available as filter options
-    for (const tag of activeSystemTags) {
-      const color = (tag.color || '').trim();
-      if (!color) continue;
-      const key = color.toLowerCase();
-      if (!byColor.has(key)) {
-        byColor.set(key, { value: color, label: tag.name });
+  useEffect(() => {
+    setKnownColorsMap((prev) => {
+      let updated = false;
+      const next = new Map(prev);
+
+      // 1. Include all system tag colors so all system-defined colors are available as filter options
+      for (const tag of activeSystemTags) {
+        const color = (tag.color || '').trim();
+        if (!color) continue;
+        const key = color.toLowerCase();
+        if (!next.has(key)) {
+          next.set(key, { value: color, label: tag.name });
+          updated = true;
+        }
       }
-    }
 
-    // 2. Include colors present in currently loaded notes
-    for (const note of notes) {
-      const color = (resolveEffectiveNoteColor(note) || '').trim();
-      if (!color) continue;
+      // 2. Include colors present in currently loaded notes
+      for (const note of notes) {
+        const color = (resolveEffectiveNoteColor(note) || '').trim();
+        if (!color) continue;
 
-      const key = color.toLowerCase();
-      if (byColor.has(key)) continue;
+        const key = color.toLowerCase();
+        if (next.has(key)) continue;
 
-      const sourceTag = activeSystemTags.find((tag) => (tag.color || '').trim().toLowerCase() === key);
-      byColor.set(key, { value: color, label: sourceTag?.name || color });
-    }
-
-    // 3. Ensure currently selected filterColor is always present
-    if (filterColor) {
-      const key = filterColor.trim().toLowerCase();
-      if (!byColor.has(key)) {
         const sourceTag = activeSystemTags.find((tag) => (tag.color || '').trim().toLowerCase() === key);
-        byColor.set(key, { value: filterColor, label: sourceTag?.name || filterColor });
+        next.set(key, { value: color, label: sourceTag?.name || color });
+        updated = true;
       }
-    }
 
-    return Array.from(byColor.values());
-  }, [notes, resolveEffectiveNoteColor, activeSystemTags, filterColor]);
+      // 3. Ensure currently selected filterColors are always present
+      for (const fColor of filterColors) {
+        const key = fColor.trim().toLowerCase();
+        if (!next.has(key)) {
+          const sourceTag = activeSystemTags.find((tag) => (tag.color || '').trim().toLowerCase() === key);
+          next.set(key, { value: fColor, label: sourceTag?.name || fColor });
+          updated = true;
+        }
+      }
+
+      return updated ? next : prev;
+    });
+  }, [notes, resolveEffectiveNoteColor, activeSystemTags, filterColors]);
+
+  const organizationColorOptions = useMemo(() => {
+    return Array.from(knownColorsMap.values());
+  }, [knownColorsMap]);
 
   useEffect(() => {
     if (initialNoteId && notes.length > 0) {
@@ -368,11 +382,11 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
       return false;
     });
 
-    if (filterColor) {
-      const selectedColor = filterColor.toLowerCase();
+    if (filterColors.length > 0) {
+      const selectedColors = new Set(filterColors.map((c) => c.toLowerCase()));
       result = result.filter((note) => {
         const effectiveColor = resolveEffectiveNoteColor(note);
-        return (effectiveColor || '').toLowerCase() === selectedColor;
+        return effectiveColor ? selectedColors.has(effectiveColor.toLowerCase()) : false;
       });
     }
 
@@ -411,17 +425,17 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     });
 
     return result;
-  }, [notes, searchTerm, filterColor, filterPinned, filterTags, filterSystemTagIds, sortBy, systemTagById, resolveEffectiveNoteColor]);
+  }, [notes, searchTerm, filterColors, filterPinned, filterTags, filterSystemTagIds, sortBy, systemTagById, resolveEffectiveNoteColor]);
 
   const isFilteringActive = useMemo(() => {
     return Boolean(
       searchTerm.trim() ||
-      filterColor ||
+      filterColors.length > 0 ||
       filterPinned ||
       filterTags.length > 0 ||
       filterSystemTagIds.length > 0
     );
-  }, [searchTerm, filterColor, filterPinned, filterTags, filterSystemTagIds]);
+  }, [searchTerm, filterColors, filterPinned, filterTags, filterSystemTagIds]);
 
   const availableTags = useMemo(() => {
     const set = new Set<string>();
@@ -997,19 +1011,28 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
           <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', maxWidth: '460px', padding: '2px 0', scrollbarWidth: 'thin', cursor: 'grab', flexShrink: 0 }}>
             {organizationColorOptions.map((opt) => {
               const normalizedColor = opt.value.toLowerCase();
+              const isSelected = filterColors.some((c) => c.toLowerCase() === normalizedColor);
               return (
                 <button
                   key={opt.value}
-                  onClick={() => setFilterColor(filterColor === normalizedColor ? null : normalizedColor)}
+                  onClick={() => {
+                    setFilterColors((prev) =>
+                      isSelected
+                        ? prev.filter((c) => c.toLowerCase() !== normalizedColor)
+                        : [...prev, opt.value]
+                    );
+                  }}
                   title={opt.label}
                   style={{
                     width: '20px',
                     height: '20px',
                     borderRadius: '50%',
-                    border: filterColor === normalizedColor ? '2px solid #fff' : '2px solid transparent',
+                    border: isSelected ? '2px solid #fff' : '2px solid transparent',
                     background: (opt.value.startsWith('#') || opt.value.startsWith('rgb') || opt.value.startsWith('hsl') || opt.value.startsWith('var(')) ? opt.value : getColorClass(opt.value),
                     cursor: 'pointer',
-                    boxShadow: filterColor === normalizedColor ? '0 0 0 2px var(--color-primary-teal)' : 'none',
+                    boxShadow: isSelected ? '0 0 0 2px var(--color-primary-teal)' : 'none',
+                    transform: isSelected ? 'scale(1.15)' : 'scale(1)',
+                    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
                     flexShrink: 0,
                   }}
                 />
@@ -1078,8 +1101,8 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
           )}
 
           <div style={{ width: '1px', height: '20px', background: 'var(--color-border-primary)', margin: '0 4px' }} />
-          {(filterColor || filterPinned || filterTags.length > 0 || filterSystemTagIds.length > 0) && (
-            <button onClick={() => { setFilterColor(null); setFilterPinned(false); setFilterTags([]); setFilterSystemTagIds([]); }} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', background: 'transparent', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '11px' }}>
+          {(filterColors.length > 0 || filterPinned || filterTags.length > 0 || filterSystemTagIds.length > 0) && (
+            <button onClick={() => { setFilterColors([]); setFilterPinned(false); setFilterTags([]); setFilterSystemTagIds([]); }} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', background: 'transparent', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '11px' }}>
               <X size={12} /> Limpar
             </button>
           )}

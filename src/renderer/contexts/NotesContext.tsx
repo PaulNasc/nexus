@@ -126,6 +126,8 @@ interface NotesContextType {
   setSearchTerm: React.Dispatch<React.SetStateAction<string>>;
   filterColor: string | null;
   setFilterColor: React.Dispatch<React.SetStateAction<string | null>>;
+  filterColors: string[];
+  setFilterColors: React.Dispatch<React.SetStateAction<string[]>>;
   filterPinned: boolean;
   setFilterPinned: React.Dispatch<React.SetStateAction<boolean>>;
   filterTags: string[];
@@ -162,7 +164,14 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Search/Filters states
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [filterColor, setFilterColor] = useState<string | null>(null);
+  const [filterColors, setFilterColors] = useState<string[]>([]);
+  const filterColor = filterColors[0] || null;
+  const setFilterColor = useCallback((action: React.SetStateAction<string | null>) => {
+    setFilterColors(prev => {
+      const val = typeof action === 'function' ? action(prev[0] || null) : action;
+      return val ? [val] : [];
+    });
+  }, []);
   const [filterPinned, setFilterPinned] = useState(false);
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [filterSystemTagIds, setFilterSystemTagIds] = useState<number[]>([]);
@@ -468,7 +477,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const fetchNotesCloud = useCallback(async (
     page = 0,
     searchVal = debouncedSearch,
-    colorVal = filterColor,
+    colorsVal = filterColors,
     pinnedVal = filterPinned,
     tagsVal = filterTags,
     sysTagsVal = filterSystemTagIds,
@@ -497,16 +506,18 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
 
-    // Apply color filter (notes' own color or system tag color)
-    if (colorVal) {
+    // Apply multi-color filter (notes' own color or system tag color)
+    if (colorsVal.length > 0) {
+      const lowerColors = colorsVal.map(c => c.toLowerCase());
       const matchingSystemTagIds = activeSystemTags
-        .filter(tag => (tag.color || '').toLowerCase() === colorVal.toLowerCase())
+        .filter(tag => lowerColors.includes((tag.color || '').toLowerCase()))
         .map(tag => tag.id);
       
+      const colorFormattedList = lowerColors.map(c => `"${c}"`).join(',');
       if (matchingSystemTagIds.length > 0) {
-        query = query.or(`color.eq.${colorVal},system_tag_id.in.(${matchingSystemTagIds.join(',')})`);
+        query = query.or(`color.in.(${colorFormattedList}),system_tag_id.in.(${matchingSystemTagIds.join(',')})`);
       } else {
-        query = query.eq('color', colorVal);
+        query = query.in('color', lowerColors);
       }
     }
 
@@ -641,7 +652,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     activeOrg,
     settings.showDashboard,
     debouncedSearch,
-    filterColor,
+    filterColors,
     filterPinned,
     filterTags,
     filterSystemTagIds,
@@ -1373,6 +1384,8 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
     setSearchTerm,
     filterColor,
     setFilterColor,
+    filterColors,
+    setFilterColors,
     filterPinned,
     setFilterPinned,
     filterTags,
@@ -1404,6 +1417,7 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
     // Search/Filters deps
     searchTerm,
     filterColor,
+    filterColors,
     filterPinned,
     filterTags,
     filterSystemTagIds,
