@@ -2963,4 +2963,33 @@
 
 .scroll-to-top-btn:active {
   transform: translateY(0);
+}
+
+/* === VIEW TRANSITIONS & SETTINGS ANIMATIONS === */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.3s;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+::view-transition-old(settings-tab-content),
+::view-transition-new(settings-tab-content) {
+  animation-duration: 0.35s;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.settings-tab-content {
+  view-transition-name: settings-tab-content;
+  animation: settingsTabFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes settingsTabFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 } 

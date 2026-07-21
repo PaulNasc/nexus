@@ -363,6 +363,18 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   const { useCloud } = useStorageMode();
 
   const [activeTab, setActiveTab] = useState<TabType>('geral');
+
+  const startTabTransition = useCallback((nextTab: TabType) => {
+    if (activeTab === nextTab) return;
+    if (typeof document !== 'undefined' && 'startViewTransition' in document) {
+      (document as unknown as { startViewTransition: (cb: () => void) => void }).startViewTransition(() => {
+        setActiveTab(nextTab);
+      });
+    } else {
+      setActiveTab(nextTab);
+    }
+  }, [activeTab]);
+
   const [isResetting, setIsResetting] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isLegacySyncing, setIsLegacySyncing] = useState(false);
@@ -1084,48 +1096,47 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
             </div>
           </div>
           
-          <nav>
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as TabType)}
-                style={{
-                  width: '100%',
-                  padding: '12px 24px',
-                  backgroundColor: activeTab === tab.id 
-                    ? (theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-bg-tertiary)') 
-                    : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === tab.id ? '3px solid var(--color-primary-teal)' : '3px solid transparent',
-                  color: activeTab === tab.id 
-                    ? (theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)') 
-                    : (theme.mode === 'dark' ? '#A0A0A0' : 'var(--color-text-secondary)'),
-                  fontSize: '14px',
-                  fontWeight: activeTab === tab.id ? 600 : 400,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.2s ease',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}
-                onMouseEnter={(e) => {
-                  if (activeTab !== tab.id) {
-                    e.currentTarget.style.backgroundColor = theme.mode === 'dark' ? '#1A1A1A' : 'var(--color-bg-tertiary)';
-                    e.currentTarget.style.color = theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeTab !== tab.id) {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.color = theme.mode === 'dark' ? '#A0A0A0' : 'var(--color-text-secondary)';
-                  }
-                }}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
+          <nav style={{ padding: '8px 0' }}>
+            {tabs.map((tab) => {
+              const isSelected = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => startTabTransition(tab.id as TabType)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 24px',
+                    backgroundColor: isSelected ? 'var(--color-bg-tertiary)' : 'transparent',
+                    border: 'none',
+                    borderLeft: isSelected ? '3px solid var(--color-primary-teal)' : '3px solid transparent',
+                    color: isSelected ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                    fontSize: '14px',
+                    fontWeight: isSelected ? 600 : 400,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'all 0.15s cubic-bezier(0.16, 1, 0.3, 1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)';
+                      e.currentTarget.style.color = 'var(--color-text-primary)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--color-text-secondary)';
+                    }
+                  }}
+                >
+                  {tab.icon}
+                  {tab.label}
+                </button>
+              );
+            })}
           </nav>
         </div>
 
@@ -1134,7 +1145,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
           flex: 1,
           padding: '32px',
           overflowY: 'auto',
-          backgroundColor: theme.mode === 'dark' ? '#141414' : 'var(--color-bg-card)',
+          backgroundColor: 'var(--color-bg-primary)',
         }}>
           {/* Header com botão fechar */}
           <div style={{
@@ -1145,12 +1156,13 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
           }}>
             <h3 style={{
               margin: 0,
-              fontSize: '24px',
+              fontSize: '22px',
               fontWeight: 600,
-              color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)',
+              color: 'var(--color-text-primary)',
               display: 'flex',
               alignItems: 'center',
               gap: '12px',
+              letterSpacing: '-0.01em',
             }}>
               {tabs.find(t => t.id === activeTab)?.icon}
               {tabs.find(t => t.id === activeTab)?.label}
@@ -1159,9 +1171,9 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
               onClick={onClose}
               style={{
                 background: 'none',
-                border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
+                border: '1px solid var(--color-border-primary)',
                 borderRadius: '8px',
-                color: theme.mode === 'dark' ? '#A0A0A0' : 'var(--color-text-secondary)',
+                color: 'var(--color-text-secondary)',
                 padding: '8px',
                 cursor: 'pointer',
                 fontSize: '16px',
@@ -1175,16 +1187,16 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                 e.currentTarget.style.color = '#FF4444';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)';
-                e.currentTarget.style.color = theme.mode === 'dark' ? '#A0A0A0' : 'var(--color-text-secondary)';
+                e.currentTarget.style.borderColor = 'var(--color-border-primary)';
+                e.currentTarget.style.color = 'var(--color-text-secondary)';
               }}
             >
               <X size={16} strokeWidth={1.7} />
             </button>
           </div>
 
-          {/* Conteúdo das abas */}
-          <div style={{ minHeight: '400px' }}>
+          {/* Conteúdo das abas com View Transition */}
+          <div key={activeTab} className="settings-tab-content" style={{ minHeight: '400px' }}>
             {activeTab === 'geral' && (
               <div style={{ display: 'grid', gap: '24px' }}>
                 <div>
