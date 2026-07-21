@@ -880,7 +880,7 @@ html.high-contrast {
   --color-border-secondary: #777777;
 }
 
-/* Redução de Animações */
+/* Redução de animações */
 html.reduce-motion,
 html.reduce-motion * {
   animation-duration: 0.01ms !important;
@@ -888,41 +888,64 @@ html.reduce-motion * {
   transition-duration: 0.01ms !important;
 }
 
+/* Navegação por teclado desativada — remove outline de foco */
+html:not([data-keyboard-nav]) *:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Indicadores de foco desativados */
+html:not([data-focus-indicators]) *:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 /* Densidade da Interface */
 html[data-density="compact"] {
-  --spacing-sm: 4px;
-  --spacing-md: 8px;
-  --spacing-lg: 12px;
-  --spacing-xl: 16px;
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-8: 20px;
+  --space-10: 24px;
+  --space-12: 32px;
+  --space-16: 40px;
   --card-padding: 12px;
-  --font-size-md: 13px;
 }
 
 html[data-density="normal"] {
-  --spacing-sm: 8px;
-  --spacing-md: 12px;
-  --spacing-lg: 16px;
-  --spacing-xl: 24px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
   --card-padding: 16px;
-  --font-size-md: 14px;
 }
 
 html[data-density="comfortable"] {
-  --spacing-sm: 12px;
-  --spacing-md: 16px;
-  --spacing-lg: 24px;
-  --spacing-xl: 32px;
+  --space-1: 6px;
+  --space-2: 12px;
+  --space-3: 16px;
+  --space-4: 20px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 40px;
+  --space-10: 48px;
+  --space-12: 64px;
+  --space-16: 80px;
   --card-padding: 24px;
-  --font-size-md: 15px;
 }
 
-/* Transparência dos Cards */
+/* Transparência dos cards — controla o alpha via --card-opacity nas variáveis */
 :root {
   --card-opacity: 0.95;
-}
-
-.card, .card-standard, .unified-card, .task-card, .note-card {
-  opacity: var(--card-opacity);
 }
 
 /* =================================

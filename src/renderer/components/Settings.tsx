@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { flushSync } from 'react-dom';
 
 import { useSettings } from '../hooks/useSettings';
 import { useI18n } from '../hooks/useI18n';
@@ -364,24 +363,23 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   const { useCloud } = useStorageMode();
 
   const [activeTab, setActiveTab] = useState<TabType>('geral');
+  const [animatingTab, setAnimatingTab] = useState<TabType>('geral');
+  const [isAnimating, setIsAnimating] = useState(false);
 
   const startTabTransition = useCallback((nextTab: TabType) => {
     if (activeTab === nextTab) return;
-    const isReduceMotionActive = settings.reduceAnimations ?? false;
-    if (!isReduceMotionActive && typeof document !== 'undefined' && 'startViewTransition' in document) {
-      try {
-        (document as unknown as { startViewTransition: (cb: () => void) => void }).startViewTransition(() => {
-          flushSync(() => {
-            setActiveTab(nextTab);
-          });
-        });
-        return;
-      } catch {
-        setActiveTab(nextTab);
-      }
-    } else {
+    const reduceMotion = settings.reduceAnimations ?? false;
+    if (reduceMotion) {
       setActiveTab(nextTab);
+      setAnimatingTab(nextTab);
+      return;
     }
+    setIsAnimating(true);
+    setTimeout(() => {
+      setActiveTab(nextTab);
+      setAnimatingTab(nextTab);
+      setIsAnimating(false);
+    }, 150);
   }, [activeTab, settings.reduceAnimations]);
 
   const [isResetting, setIsResetting] = useState(false);
@@ -606,12 +604,10 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    // Implementation for toast notifications
     console.log(`Toast: ${message} (${type})`);
   };
 
   const handleSave = () => {
-    // Settings are auto-saved via useSettings hook
     showToast(t('settings.saved'), 'success');
     onClose();
   };
@@ -1212,16 +1208,14 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
             </button>
           </div>
 
-          {/* Conteúdo das abas com View Transition de borda fixa */}
+          {/* Conteúdo das abas com animação CSS controlada */}
           <div
-            key={activeTab}
-            className="settings-tab-content"
+            key={animatingTab}
+            className={`settings-tab-content${isAnimating ? ' settings-tab-exit' : ' settings-tab-enter'}`}
             style={{
-              minHeight: '400px',
               width: '100%',
               maxWidth: '100%',
               boxSizing: 'border-box',
-              overflow: 'hidden'
             }}
           >
             {activeTab === 'geral' && (
@@ -1404,7 +1398,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
             {activeTab === 'aparencia' && (
               <div style={{ display: 'grid', gap: '24px' }}>
-                {/* Tema e Visual Geral */}
                 <div>
                   <h3 style={{
                     margin: '0 0 16px 0',
@@ -1444,7 +1437,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-                {/* Fonte e Tamanho */}
                 <div>
                   <h4 style={{
                     margin: '0 0 12px 0',
@@ -1492,7 +1484,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </p>
                 </div>
 
-                {/* Densidade da Interface */}
                 <div>
                   <h4 style={{
                     margin: '0 0 12px 0',
@@ -1551,7 +1542,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-                {/* Transparência dos Cards */}
                 <div>
                   <h4 style={{
                     margin: '0 0 8px 0',
@@ -1564,7 +1554,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                     <input
                       type="range"
-                      min="80"
+                      min="40"
                       max="100"
                       step="5"
                       value={cardOpacity}
@@ -1596,7 +1586,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </p>
                 </div>
 
-                {/* Acessibilidade */}
                 <div>
                   <h3 style={{
                     margin: '20px 0 16px 0',
@@ -1611,7 +1600,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     Acessibilidade
                   </h3>
                   <div style={{ display: 'grid', gap: '12px' }}>
-                    {/* Alto Contraste */}
                     <label style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -1647,7 +1635,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       </div>
                     </label>
 
-                    {/* Reduzir Animações */}
                     <label style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -1661,8 +1648,8 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     }}>
                       <input
                         type="checkbox"
-                        checked={reduceAnimations}
-                        onChange={(e) => updateSettings({ reduceAnimations: e.target.checked })}
+                        checked={!(settings.reduceAnimations ?? false)}
+                        onChange={(e) => updateSettings({ reduceAnimations: !e.target.checked })}
                         style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                       />
                       <div style={{ flex: 1 }}>
@@ -1678,7 +1665,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           fontSize: '12px',
                           color: 'var(--color-text-secondary)'
                         }}>
-                          Desabilite para melhorar performance em computadores mais lentos
+                          Ativa efeitos visuais, hover e transições de tela
                         </div>
                       </div>
                     </label>
@@ -1725,7 +1712,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                           Navegação por Teclado
                         </div>
                         <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-                          Permite navegar com Tab, Enter e setas.
+                          Permite navegar com Tab, Enter e setas do teclado
                         </div>
                       </div>
                     </label>
@@ -1764,7 +1751,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-                {/* Componentes Visíveis */}
                 <div>
                   <h3 style={{
                     margin: '20px 0 16px 0',
@@ -1855,7 +1841,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </p>
                 </div>
 
-                {/* Modo de Armazenamento */}
                 <div style={{
                   padding: '20px',
                   backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
@@ -1914,7 +1899,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-                {/* Importar / Exportar */}
                 <div style={{
                   padding: '20px',
                   backgroundColor: isDark ? '#0A0A0A' : '#F9FAFB',
@@ -1945,7 +1929,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-                {/* Info box */}
                 <div style={{
                   padding: '14px 16px',
                   borderRadius: '10px',

@@ -72,14 +72,14 @@
     'Courier New', monospace;
   
   /* Font Sizes */
-  --font-size-xs: 12px;
-  --font-size-sm: 14px;
-  --font-size-md: 16px;
-  --font-size-lg: 18px;
-  --font-size-xl: 20px;
-  --font-size-2xl: 24px;
-  --font-size-3xl: 32px;
-  --font-size-4xl: 48px;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 2rem;
+  --font-size-4xl: 3rem;
   
   /* Font Weights */
   --font-weight-normal: 400;
@@ -170,8 +170,14 @@
   /* === GRADIENTES MINIMALISTAS === */
   --gradient-primary: linear-gradient(135deg, var(--color-primary-teal) 0%, var(--color-primary-purple) 100%);
   --gradient-secondary: linear-gradient(135deg, rgba(var(--color-primary-teal-rgb), 0.04) 0%, rgba(var(--color-primary-purple-rgb), 0.04) 100%);
-  --gradient-card: linear-gradient(135deg, #121215 0%, #18181b 100%);
-  --gradient-card-hover: linear-gradient(135deg, #18181b 0%, #1e1e24 100%);
+  --card-r1: 18;
+  --card-g1: 18;
+  --card-b1: 21;
+  --card-r2: 24;
+  --card-g2: 24;
+  --card-b2: 27;
+  --gradient-card: linear-gradient(135deg, rgba(var(--card-r1), var(--card-g1), var(--card-b1), var(--card-opacity, 0.95)) 0%, rgba(var(--card-r2), var(--card-g2), var(--card-b2), var(--card-opacity, 0.95)) 100%);
+  --gradient-card-hover: linear-gradient(135deg, rgba(var(--card-r2), var(--card-g2), var(--card-b2), var(--card-opacity, 0.95)) 0%, rgba(30, 30, 36, var(--card-opacity, 0.95)) 100%);
 
   /* Success colors */
   --success-color: #00c29d;
@@ -224,8 +230,8 @@
   --color-text-muted: #475569;
   --color-text-disabled: #94A3B8;
 
-  --gradient-card: none;
-  --gradient-card-hover: none;
+  --gradient-card: rgba(255, 255, 255, var(--card-opacity, 0.95));
+  --gradient-card-hover: rgba(248, 250, 252, var(--card-opacity, 0.95));
   --glass-bg: rgba(255, 255, 255, 0.75);
   --glass-border: rgba(0, 0, 0, 0.06);
 }

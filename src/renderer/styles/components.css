@@ -1751,6 +1751,8 @@
   overflow: hidden;
   position: relative;
   isolation: isolate;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .note-card-accent-bar {
@@ -2965,7 +2967,7 @@
   transform: translateY(0);
 }
 
-/* === VIEW TRANSITIONS & SETTINGS ANIMATIONS === */
+/* === SETTINGS TAB ANIMATIONS === */
 .invisible-scrollbar {
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
@@ -2977,44 +2979,21 @@
   height: 0 !important;
 }
 
-::view-transition-group(settings-tab-content) {
-  animation-duration: 0.25s;
-  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-  overflow: hidden;
+/* Enter animation: new tab fades in + slides up */
+.settings-tab-content.settings-tab-enter {
+  animation: settingsTabEnter 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-::view-transition-old(settings-tab-content) {
-  animation: settingsTabFadeOut 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+/* Exit animation: old tab fades out + slides up */
+.settings-tab-content.settings-tab-exit {
+  animation: settingsTabExit 0.15s cubic-bezier(0.4, 0, 1, 1) forwards;
+  pointer-events: none;
 }
 
-::view-transition-new(settings-tab-content) {
-  animation: settingsTabFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.settings-tab-content {
-  view-transition-name: settings-tab-content;
-  animation: settingsTabFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-@keyframes settingsTabFadeOut {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-}
-
-@keyframes settingsTabFadeIn {
+@keyframes settingsTabEnter {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -3022,8 +3001,20 @@
   }
 }
 
-.reduce-motion .settings-tab-content,
-.reduce-motion ::view-transition-old(settings-tab-content),
-.reduce-motion ::view-transition-new(settings-tab-content) {
+@keyframes settingsTabExit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.reduce-motion .settings-tab-content.settings-tab-enter,
+.reduce-motion .settings-tab-content.settings-tab-exit {
   animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
 } 

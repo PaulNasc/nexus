@@ -325,32 +325,32 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync settings to Supabase (debounced)
-  const syncSettingsToSupabase = (settingsToSync: UserSettings) => {
+  const syncSettingsToSupabase = (settingsToSync: UserSettings, forcedTimestamp?: string) => {
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    const timestamp = forcedTimestamp || new Date().toISOString();
+    
     syncTimeoutRef.current = setTimeout(async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return; // not logged in, skip sync
+        if (!user) return;
         const enforcedSettings = enforceModuleSettings(settingsToSync);
         await supabase.from('user_settings').upsert({
           user_id: user.id,
           settings: enforcedSettings,
-          updated_at: new Date().toISOString(),
+          updated_at: timestamp,
         });
+        localStorage.setItem('nexus-settings-updated-at', timestamp);
       } catch (err) {
         console.warn('Failed to sync settings to Supabase:', err);
       }
     }, 1500);
   };
 
-  // Load settings from Supabase on mount (merge with local)
   const loadSettingsFromSupabase = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Always sync display_name from Supabase auth profile into userName
       const profileName = user.user_metadata?.display_name
         || user.user_metadata?.full_name
         || user.user_metadata?.name
@@ -358,29 +358,43 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const { data } = await supabase
         .from('user_settings')
-        .select('settings')
+        .select('settings, updated_at')
         .eq('user_id', user.id)
         .maybeSingle();
+
+      const localUpdatedAtStr = localStorage.getItem('nexus-settings-updated-at');
+      const localUpdatedAt = localUpdatedAtStr ? new Date(localUpdatedAtStr).getTime() : 0;
+      const remoteUpdatedAt = data?.updated_at ? new Date(data.updated_at).getTime() : 0;
+
       if (data?.settings && typeof data.settings === 'object') {
         const remoteSettings = data.settings as Partial<UserSettings>;
-        // Merge: remote wins for non-empty values
-        setSettings(prev => {
-          const merged = enforceModuleSettings({ ...prev, ...remoteSettings });
-          merged.quickActions = migrateQuickActions(merged.quickActions || []);
-          // If userName is empty, use the display_name from auth profile
-          if (!merged.userName && profileName) {
-            merged.userName = profileName;
-          }
+        
+        if (remoteUpdatedAt > localUpdatedAt) {
+          setSettings(prev => {
+            const merged = enforceModuleSettings({ ...prev, ...remoteSettings });
+            merged.quickActions = migrateQuickActions(merged.quickActions || []);
+            if (!merged.userName && profileName) {
+              merged.userName = profileName;
+            }
 
-          if (areSettingsEqual(prev, merged)) {
-            return prev;
-          }
+            if (areSettingsEqual(prev, merged)) {
+              return prev;
+            }
 
-          localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged));
-          return merged;
-        });
+            localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged));
+            if (data.updated_at) {
+              localStorage.setItem('nexus-settings-updated-at', data.updated_at);
+            }
+            return merged;
+          });
+        } else if (localUpdatedAt > remoteUpdatedAt) {
+          const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
+          if (stored) {
+            const currentLocal = JSON.parse(stored) as UserSettings;
+            syncSettingsToSupabase(currentLocal, localUpdatedAtStr || undefined);
+          }
+        }
       } else if (profileName) {
-        // No remote settings yet — at least set userName from auth profile
         setSettings(prev => {
           if (!prev.userName) {
             const updated = enforceModuleSettings({ ...prev, userName: profileName });
@@ -586,15 +600,15 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setSettings(updatedSettings);
     setSettingsVersion(v => v + 1);
+    const nowIso = new Date().toISOString();
     try {
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updatedSettings));
+      localStorage.setItem('nexus-settings-updated-at', nowIso);
     } catch (error) {
       console.error('Error saving settings:', error);
     }
-    // Sync to Supabase in background
-    syncSettingsToSupabase(updatedSettings);
+    syncSettingsToSupabase(updatedSettings, nowIso);
 
-    // If userName changed, also update profiles.display_name so notes/tasks/logs reflect it
     if (newSettings.userName !== undefined && newSettings.userName !== settings.userName) {
       (async () => {
         try {
@@ -615,11 +629,14 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const resetSettings = () => {
     const reset = enforceModuleSettings(DEFAULT_SETTINGS);
     setSettings(reset);
+    const nowIso = new Date().toISOString();
     try {
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(reset));
+      localStorage.setItem('nexus-settings-updated-at', nowIso);
     } catch (error) {
       console.error('Error resetting settings:', error);
     }
+    syncSettingsToSupabase(reset, nowIso);
   };
 
   const clearAllData = async (): Promise<boolean> => {
