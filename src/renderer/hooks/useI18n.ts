@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useSettings } from './useSettings';
 
 export type Language = 'pt-BR' | 'en-US' | 'es-ES';
 
@@ -483,32 +483,11 @@ const STORAGE_KEY = 'nexus-language';
 const DEFAULT_LANGUAGE: Language = 'pt-BR';
 
 export const useI18n = () => {
-  const [currentLanguage, setCurrentLanguage] = useState<Language>(DEFAULT_LANGUAGE);
-
-  // Load language from localStorage on mount
-  useEffect(() => {
-    try {
-      const storedLanguage = localStorage.getItem(STORAGE_KEY) as Language | null;
-      if (storedLanguage && translations[storedLanguage]) {
-        setCurrentLanguage(storedLanguage);
-        localStorage.setItem(STORAGE_KEY, storedLanguage);
-      }
-    } catch (error) {
-      console.error('Error loading language preference:', error);
-    }
-  }, []);
-
-  // Save language to localStorage when it changes
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, currentLanguage);
-    } catch (error) {
-      console.error('Error saving language preference:', error);
-    }
-  }, [currentLanguage]);
+  const { settings, updateSettings } = useSettings();
+  const currentLanguage = settings?.language || 'pt-BR';
 
   const t = (key: string, replacements?: Record<string, string>): string => {
-    let translation = translations[currentLanguage][key] || translations[DEFAULT_LANGUAGE][key] || key;
+    let translation = translations[currentLanguage]?.[key] || translations['pt-BR']?.[key] || key;
     
     if (replacements) {
       Object.entries(replacements).forEach(([placeholder, value]) => {
@@ -520,9 +499,7 @@ export const useI18n = () => {
   };
 
   const changeLanguage = (language: Language) => {
-    if (translations[language]) {
-      setCurrentLanguage(language);
-    }
+    updateSettings({ language });
   };
 
   const getAvailableLanguages = (): { code: Language; name: string }[] => {

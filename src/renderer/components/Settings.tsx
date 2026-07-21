@@ -404,19 +404,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   const cardOpacity = settings.cardOpacity ?? 95;
   const reduceAnimations = settings.reduceAnimations ?? false;
 
-  type VisibilitySettingKey = keyof Pick<
-    UserSettings,
-    'showDashboard' | 'showTimer' | 'showReports' | 'showNotes' | 'showQuickActions' | 'showTaskCounters'
-  >;
 
-  const visibilityComponents: Array<{ key: VisibilitySettingKey; label: string; desc: string }> = [
-    { key: 'showDashboard', label: 'Dashboard', desc: 'Exibir aba do dashboard e funcionalidades de tarefas' },
-    { key: 'showTimer', label: 'Timer Pomodoro', desc: 'Exibir funcionalidade de timer' },
-    { key: 'showReports', label: 'Relatórios', desc: 'Exibir aba de relatórios e estatísticas' },
-    { key: 'showNotes', label: 'Notas', desc: 'Exibir sistema de notas e anotações' },
-    { key: 'showQuickActions', label: 'Ações Rápidas', desc: 'Exibir botões de acesso rápido' },
-    { key: 'showTaskCounters', label: 'Contadores de Tarefas', desc: 'Exibir números e estatísticas nas tarefas' },
-  ];
 
   const getElectron = () => (window as unknown as { electronAPI: import('../../main/preload').ElectronAPI }).electronAPI;
 
@@ -1335,9 +1323,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     </label>
 
                     {[
-                      { key: 'notifyTaskReminders' as const, label: 'Lembretes de tarefas' },
-                      { key: 'notifyTodayTasks' as const, label: 'Resumo de tarefas de hoje' },
-                      { key: 'notifyOverdueTasks' as const, label: 'Avisos de tarefas atrasadas' },
                       { key: 'notifyProductivityInsights' as const, label: 'Insights de produtividade' },
                     ].map((item) => (
                       <label key={item.key} style={{
@@ -1751,72 +1736,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-                <div>
-                  <h3 style={{
-                    margin: '20px 0 16px 0',
-                    fontSize: '16px',
-                    fontWeight: 600,
-                    color: 'var(--color-text-primary)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}>
-                    <Layout size={18} />
-                    Componentes da Interface
-                  </h3>
-                  <div style={{ display: 'grid', gap: '12px' }}>
-                    {visibilityComponents.map((component) => (
-                      (() => {
-                        const isLocked = isModuleLocked(component.key as 'showDashboard' | 'showTimer' | 'showReports');
-                        const isEnabled = settings[component.key];
-                        return (
-                          <label key={component.key} style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px',
-                            padding: '12px',
-                            backgroundColor: isDark ? '#0A0A0A' : 'var(--color-bg-secondary)',
-                            border: `1px solid ${isDark ? '#2A2A2A' : 'var(--color-border-primary)'}`,
-                            borderRadius: '8px',
-                            cursor: isLocked ? 'not-allowed' : 'pointer',
-                            transition: 'all 0.2s ease',
-                            opacity: isLocked ? 0.6 : 1,
-                          }}>
-                            <input
-                              type="checkbox"
-                              checked={isEnabled}
-                              disabled={isLocked}
-                              onChange={(e) => {
-                                const next: Partial<UserSettings> = { [component.key]: e.target.checked } as Partial<UserSettings>;
-                                updateSettings(next);
-                              }}
-                              style={{
-                                accentColor: 'var(--color-primary-teal)',
-                                transform: 'scale(1.1)',
-                              }}
-                            />
-                            <div style={{ flex: 1 }}>
-                              <div style={{
-                                fontSize: '14px',
-                                color: 'var(--color-text-primary)',
-                                fontWeight: 500,
-                                marginBottom: '2px'
-                              }}>
-                                {component.label}
-                              </div>
-                              <div style={{
-                                fontSize: '12px',
-                                color: 'var(--color-text-secondary)'
-                              }}>
-                                {component.desc}{isLocked ? ' (bloqueado no modo notes-only)' : ''}
-                              </div>
-                            </div>
-                          </label>
-                        );
-                      })()
-                    ))}
-                  </div>
-                </div>
+
 
               </div>
             )}
