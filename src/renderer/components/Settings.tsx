@@ -366,14 +366,19 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
   const startTabTransition = useCallback((nextTab: TabType) => {
     if (activeTab === nextTab) return;
-    if (typeof document !== 'undefined' && 'startViewTransition' in document) {
-      (document as unknown as { startViewTransition: (cb: () => void) => void }).startViewTransition(() => {
+    const isReduceMotionActive = settings.reduceAnimations ?? false;
+    if (!isReduceMotionActive && typeof document !== 'undefined' && 'startViewTransition' in document) {
+      try {
+        (document as unknown as { startViewTransition: (cb: () => void) => void }).startViewTransition(() => {
+          setActiveTab(nextTab);
+        });
+      } catch {
         setActiveTab(nextTab);
-      });
+      }
     } else {
       setActiveTab(nextTab);
     }
-  }, [activeTab]);
+  }, [activeTab, settings.reduceAnimations]);
 
   const [isResetting, setIsResetting] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -1145,6 +1150,8 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
           flex: 1,
           padding: '32px',
           overflowY: 'auto',
+          overflowX: 'hidden',
+          position: 'relative',
           backgroundColor: 'var(--color-bg-primary)',
         }}>
           {/* Header com botão fechar */}
@@ -1195,8 +1202,18 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
             </button>
           </div>
 
-          {/* Conteúdo das abas com View Transition */}
-          <div key={activeTab} className="settings-tab-content" style={{ minHeight: '400px' }}>
+          {/* Conteúdo das abas com View Transition de borda fixa */}
+          <div
+            key={activeTab}
+            className="settings-tab-content"
+            style={{
+              minHeight: '400px',
+              width: '100%',
+              maxWidth: '100%',
+              boxSizing: 'border-box',
+              overflow: 'hidden'
+            }}
+          >
             {activeTab === 'geral' && (
               <div style={{ display: 'grid', gap: '24px' }}>
                 <div>
