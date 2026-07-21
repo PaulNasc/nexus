@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 
 import { useSettings } from '../hooks/useSettings';
 import { useI18n } from '../hooks/useI18n';
@@ -370,8 +371,11 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     if (!isReduceMotionActive && typeof document !== 'undefined' && 'startViewTransition' in document) {
       try {
         (document as unknown as { startViewTransition: (cb: () => void) => void }).startViewTransition(() => {
-          setActiveTab(nextTab);
+          flushSync(() => {
+            setActiveTab(nextTab);
+          });
         });
+        return;
       } catch {
         setActiveTab(nextTab);
       }
@@ -1065,9 +1069,10 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
         backgroundColor: theme.mode === 'dark' ? '#141414' : 'var(--color-bg-card)',
         border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
         borderRadius: '16px',
-        width: '90%',
-        maxWidth: '900px',
-        maxHeight: '85vh',
+        width: '940px',
+        maxWidth: '92vw',
+        height: '680px',
+        maxHeight: '88vh',
         display: 'flex',
         overflow: 'hidden',
         boxShadow: theme.mode === 'dark' ? '0 20px 40px rgba(0, 0, 0, 0.6)' : 'var(--shadow-2xl)',
@@ -1079,6 +1084,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
           backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : 'var(--color-bg-secondary)',
           borderRight: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
           padding: '24px 0',
+          flexShrink: 0,
         }}>
           <div style={{
             padding: '0 24px',
@@ -1146,14 +1152,18 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
         </div>
 
         {/* Conteúdo principal */}
-        <div style={{
-          flex: 1,
-          padding: '32px',
-          overflowY: 'auto',
-          overflowX: 'hidden',
-          position: 'relative',
-          backgroundColor: 'var(--color-bg-primary)',
-        }}>
+        <div
+          className="invisible-scrollbar"
+          style={{
+            flex: 1,
+            padding: '32px',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            position: 'relative',
+            backgroundColor: 'var(--color-bg-primary)',
+            scrollbarWidth: 'none',
+          }}
+        >
           {/* Header com botão fechar */}
           <div style={{
             display: 'flex',
