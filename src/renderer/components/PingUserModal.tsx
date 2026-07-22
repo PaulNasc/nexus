@@ -48,11 +48,11 @@ export const PingUserModal: React.FC<PingUserModalProps> = ({
         if (members && members.length > 0) {
           for (const m of members) {
             if (m.user_id && m.user_id !== currentUser?.id) {
-              const displayName = m.profile?.display_name || m.user_email || 'Membro da Organização';
+              const displayName = m.display_name || m.email || 'Membro da Organização';
               loadedMap.set(m.user_id, {
                 id: m.user_id,
                 name: displayName,
-                email: m.user_email,
+                email: m.email,
               });
             }
           }
