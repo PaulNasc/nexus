@@ -17,7 +17,14 @@ interface ToastContextType {
 const ToastContext = createContext<ToastContextType | null>(null);
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { settings } = useSettings();
+  let showToastNotifications = true;
+  try {
+    const { settings } = useSettings();
+    showToastNotifications = settings?.showToastNotifications !== false;
+  } catch (_e) {
+    showToastNotifications = true;
+  }
+
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const showToast = useCallback((
@@ -27,7 +34,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     onClick?: () => void
   ) => {
     // Check if toast notifications parameter is enabled
-    if (settings.showToastNotifications === false) {
+    if (!showToastNotifications) {
       return;
     }
 

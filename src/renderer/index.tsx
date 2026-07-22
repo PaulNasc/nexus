@@ -159,8 +159,8 @@ const RootApp: React.FC = () => {
   // If offline mode is active OR user is authenticated, show the app
   if (isOffline || user) {
     return (
-      <ToastProvider>
-        <SettingsProvider>
+      <SettingsProvider>
+        <ToastProvider>
           <OrganizationProvider>
             <SystemTagsProvider>
               <TasksProvider>
@@ -172,8 +172,8 @@ const RootApp: React.FC = () => {
               </TasksProvider>
             </SystemTagsProvider>
           </OrganizationProvider>
-        </SettingsProvider>
-      </ToastProvider>
+        </ToastProvider>
+      </SettingsProvider>
     );
   }
 
