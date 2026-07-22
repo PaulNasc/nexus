@@ -17,7 +17,7 @@ const Settings = React.lazy(() => import('./components/Settings').then(m => ({ d
 const Notes = React.lazy(() => import('./components/Notes').then(m => ({ default: m.Notes })));
 const NoteModal = React.lazy(() => import('./components/NoteModal').then(m => ({ default: m.NoteModal })));
 const NotesMetricsPanel = React.lazy(() => import('./components/NotesMetricsPanel').then(m => ({ default: m.NotesMetricsPanel })));
-import { useToast } from './components/Toast';
+import { useToast } from './contexts/ToastContext';
 import { useAppearance } from './hooks/useAppearance';
 import { Task, TaskStatus } from '../shared/types/task';
 import { Screen } from '../shared/types/navigation';

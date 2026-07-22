@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useSettings } from '../hooks/useSettings';
 import { useI18n } from '../hooks/useI18n';
 import { useTheme } from '../hooks/useTheme';
+import { useToast } from '../contexts/ToastContext';
 import { useNotifications } from '../hooks/useNotifications';
 import { useTasks } from '../contexts/TasksContext';
 import { useNotes } from '../contexts/NotesContext';
@@ -360,6 +361,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     systemInfo,
   } = useSettings();
   const { t, getAvailableLanguages } = useI18n();
+  const { theme: rawTheme } = useTheme();
   const { showToast } = useToast();
   const { showNotification, playNotificationSound } = useNotifications();
   const { createTask } = useTasks();
