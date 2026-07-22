@@ -236,7 +236,7 @@ const App: React.FC<AppProps> = () => {
   });
 
   // Hook para notificações
-  const { showToast, ToastContainer } = useToast();
+  const { showToast } = useToast();
   const { showTaskComplete, showDailyGoal, requestPermission } = useNotifications();
 
   // Use daily goal from settings
@@ -708,7 +708,7 @@ const App: React.FC<AppProps> = () => {
           />
         )}
 
-        <ToastContainer />
+
 
         <UpdateNotification isDark={true} />
       </div>
