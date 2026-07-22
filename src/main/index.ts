@@ -45,7 +45,7 @@ class MainApplication {
     // Garantir que o app use o nome correto
     if (process.platform === 'win32' || process.platform === 'linux') {
       // No Windows e Linux, definir o app user model ID
-      app.setAppUserModelId('com.krigzis.taskmanager');
+      app.setAppUserModelId('Nexus');
     }
 
     // Inicializar crash reporter

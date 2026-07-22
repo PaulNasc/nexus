@@ -1505,34 +1505,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       Testar notificação
                     </button>
 
-                    <div>
-                      <button
-                        onClick={handleTestNotification}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          padding: '12px 20px',
-                          backgroundColor: 'var(--color-primary-teal)',
-                          color: '#FFFFFF',
-                          border: 'none',
-                          borderRadius: '8px',
-                          fontSize: '14px',
-                          fontWeight: 500,
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#00B894';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'var(--primary-600)';
-                        }}
-                      >
-                        <TestTube size={16} strokeWidth={1.7} />
-                        {t('settings.notifications.test')}
-                      </button>
-                    </div>
+
                   </div>
                 </div>
 

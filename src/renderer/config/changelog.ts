@@ -17,6 +17,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.3.4',
+    date: '2026-07-22',
+    highlights: [
+      { category: 'feature', text: 'Sistema de Ping direcionado com seletor sutil de usuários e controle de frequência (cooldown de 4min por nota e 1min global)' },
+      { category: 'improvement', text: 'Integração de Notificações Toast globais reativas e personalizadas com auto-dismiss' },
+      { category: 'fix', text: 'Sincronização de perfis e correção da trava de 72 horas para alteração do nome de usuário' },
+      { category: 'fix', text: 'Padronização do cabeçalho de notificações de área de trabalho para "Nexus"' },
+    ],
+  },
+  {
     version: '1.3.3',
     date: '2026-06-03',
     highlights: [

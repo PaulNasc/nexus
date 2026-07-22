@@ -24,6 +24,7 @@ import { LinkedTasksModal } from './LinkedTasksModal';
 import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, Pencil, CheckSquare, Square, Filter, X, ArrowUpDown, Users, FolderOpen, FileText, Upload, Download, FolderPlus, Folder, ArrowLeft, ChevronRight, Check, Loader2, ArrowUp, BellRing } from 'lucide-react';
 
 import { NoteViewerModal } from './NoteViewerModal';
+import { PingUserModal, PingUser } from './PingUserModal';
 
 export interface NotesProps {
   initialNoteId?: number;
@@ -89,18 +90,56 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     }
   }, [hasMore, isFetchingMore, loadMoreNotes]);
 
-  const handlePingNote = (e: React.MouseEvent, note: Note) => {
+  const [pingModal, setPingModal] = useState<{ isOpen: boolean; note: Note | null }>({
+    isOpen: false,
+    note: null,
+  });
+
+  const lastPingPerNoteRef = useRef<Map<number, number>>(new Map());
+  const lastGlobalPingRef = useRef<number>(0);
+
+  const handleOpenPingModal = (e: React.MouseEvent, note: Note) => {
     e.stopPropagation();
+    setPingModal({ isOpen: true, note });
+  };
+
+  const handleSendPing = (targetUser: PingUser) => {
+    if (!pingModal.note) return;
+    const note = pingModal.note;
+    const now = Date.now();
+    const COOLDOWN_SAME_NOTE_MS = 4 * 60 * 1000; // 4 minutos
+    const COOLDOWN_GLOBAL_MS = 1 * 60 * 1000; // 1 minuto
+
+    const lastGlobal = lastGlobalPingRef.current;
+    if (lastGlobal > 0 && now - lastGlobal < COOLDOWN_GLOBAL_MS) {
+      const remainingSec = Math.ceil((COOLDOWN_GLOBAL_MS - (now - lastGlobal)) / 1000);
+      showToast(`⏳ Por favor, aguarde ${remainingSec}s para enviar outro ping.`, 'error');
+      return;
+    }
+
+    const lastNotePing = lastPingPerNoteRef.current.get(note.id) || 0;
+    if (lastNotePing > 0 && now - lastNotePing < COOLDOWN_SAME_NOTE_MS) {
+      const remainingMs = COOLDOWN_SAME_NOTE_MS - (now - lastNotePing);
+      const min = Math.floor(remainingMs / 60000);
+      const sec = Math.ceil((remainingMs % 60000) / 1000);
+      showToast(`⏳ Um ping para esta nota já foi enviado. Aguarde ${min}m ${sec}s para reenviar.`, 'error');
+      return;
+    }
+
+    // Atualizar timestamps de cooldown
+    lastGlobalPingRef.current = now;
+    lastPingPerNoteRef.current.set(note.id, now);
+
     const currentUserName = settings.userName || 'Usuário';
     const seqTag = note.sequential_id ? `#${note.sequential_id} ` : '';
     const noteTitle = note.title || 'Sem título';
 
-    showToast(`🔔 Ping enviado para a nota ${seqTag}"${noteTitle}"`, 'info');
+    showToast(`🚀 Ping enviado para ${targetUser.name} na nota ${seqTag}"${noteTitle}"!`, 'success');
 
     if (settings.notifyPing !== false) {
       showNotification({
-        title: `🔔 Ping: ${seqTag}${noteTitle}`,
-        body: `${currentUserName} chamou a atenção para esta nota.`,
+        title: `🔔 Ping: Nota ${seqTag}${noteTitle}`,
+        body: `${currentUserName} enviou um ping direcionado para você visualizar esta nota.`,
         force: true,
       });
     }
@@ -1570,8 +1609,8 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                         </h3>
                         <button
                           className="note-edit-button"
-                          title="Enviar Ping / Notificar"
-                          onClick={(e) => handlePingNote(e, note)}
+                          title="Enviar Ping / Notificar Usuário"
+                          onClick={(e) => handleOpenPingModal(e, note)}
                           style={{ marginRight: '4px' }}
                         >
                           <BellRing size={14} />
@@ -1656,8 +1695,8 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                               <div className="note-list-actions">
                                 <button
                                   className="note-edit-button"
-                                  title="Enviar Ping / Notificar"
-                                  onClick={(e) => handlePingNote(e, note)}
+                                  title="Enviar Ping / Notificar Usuário"
+                                  onClick={(e) => handleOpenPingModal(e, note)}
                                   style={{ marginRight: '4px' }}
                                 >
                                   <BellRing size={14} />
@@ -1709,6 +1748,13 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
           <ArrowUp size={18} />
         </button>
       )}
+
+      <PingUserModal
+        isOpen={pingModal.isOpen}
+        onClose={() => setPingModal({ isOpen: false, note: null })}
+        note={pingModal.note}
+        onSendPing={handleSendPing}
+      />
     </div>
   );
 };

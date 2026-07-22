@@ -375,7 +375,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('display_name, name_updated_at, updated_at')
+        .select('display_name, updated_at')
         .eq('id', user.id)
         .maybeSingle();
 
@@ -394,9 +394,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               merged.userName = profile.display_name;
             } else if (!merged.userName && profileName) {
               merged.userName = profileName;
-            }
-            if (profile?.name_updated_at) {
-              merged.nameLastChangedAt = profile.name_updated_at;
             }
 
             if (areSettingsEqual(prev, merged)) {
@@ -684,7 +681,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         await supabase.from('profiles').upsert({
           id: user.id,
           display_name: trimmed,
-          name_updated_at: nowIso,
           updated_at: nowIso,
         });
 
