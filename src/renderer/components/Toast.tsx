@@ -7,6 +7,7 @@ interface ToastProps {
   message: string;
   type: ToastType;
   onClose: () => void;
+  onClick?: () => void;
   duration?: number;
 }
 
@@ -14,6 +15,7 @@ export const Toast: React.FC<ToastProps> = ({
   message, 
   type, 
   onClose, 
+  onClick,
   duration = 3500 
 }) => {
   useEffect(() => {
@@ -76,13 +78,24 @@ export const Toast: React.FC<ToastProps> = ({
   };
 
   return (
-    <div style={getToastStyles()}>
+    <div
+      style={{ ...getToastStyles(), cursor: onClick ? 'pointer' : 'default' }}
+      onClick={() => {
+        if (onClick) {
+          onClick();
+          onClose();
+        }
+      }}
+    >
       {getIcon()}
       <span style={{ flex: 1, lineHeight: '1.4' }}>
         {message}
       </span>
       <button
-        onClick={onClose}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
         style={{
           background: 'none',
           border: 'none',

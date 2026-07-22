@@ -10,20 +10,20 @@ interface NotificationOptions {
   tag?: string;
   requireInteraction?: boolean;
   silent?: boolean;
+  onClick?: () => void;
+  noteId?: number;
   actions?: Array<{
     action: string;
     title: string;
     icon?: string;
   }>;
-  // If provided, notification respects this user preference key
   preferenceKey?: 'notifyTaskReminders' | 'notifyTodayTasks' | 'notifyOverdueTasks' | 'notifyProductivityInsights';
-  // Bypass user notification toggles (used for organization-critical events)
   force?: boolean;
 }
 
 interface ElectronNotificationsApi {
   notifications?: {
-    showNative?: (options: { title: string; body?: string; icon?: string }) => Promise<unknown>;
+    showNative?: (options: { title: string; body?: string; icon?: string; noteId?: number }) => Promise<unknown>;
   };
 }
 
@@ -37,7 +37,6 @@ export const useNotifications = () => {
   const [isSupported, setIsSupported] = useState(false);
 
   useEffect(() => {
-    // Check if notifications are supported
     if ('Notification' in window) {
       setIsSupported(true);
       setPermission(Notification.permission as NotificationPermission);
@@ -61,7 +60,6 @@ export const useNotifications = () => {
 
   const playNotificationSound = useCallback(() => {
     try {
-      // Simple beep sound using Web Audio API
       const fallbackAudio = (window as unknown as { webkitAudioContext?: WindowAudioConstructor }).webkitAudioContext;
       const AudioCtor = window.AudioContext || fallbackAudio;
       if (!AudioCtor) return;
@@ -89,9 +87,9 @@ export const useNotifications = () => {
   const showNotification = useCallback((options: NotificationOptions): Notification | null => {
     const shouldRespectSettings = !options.force;
     const perPreferenceEnabled = options.preferenceKey ? settings[options.preferenceKey] !== false : true;
-    const notificationsEnabled = settings.showNotifications !== false;
+    const globalDesktopEnabled = settings.showDesktopNotifications !== false && settings.showNotifications !== false;
 
-    if (shouldRespectSettings && (!notificationsEnabled || !perPreferenceEnabled)) {
+    if (shouldRespectSettings && (!globalDesktopEnabled || !perPreferenceEnabled)) {
       return null;
     }
 
@@ -102,12 +100,11 @@ export const useNotifications = () => {
       electronAPI.notifications.showNative({
         title: options.title,
         body: options.body,
-        icon: options.icon
+        icon: options.icon,
+        noteId: options.noteId,
       }).catch((error: unknown) => {
         console.error('Error showing native notification:', error);
       });
-      
-      // Play sound if enabled (check settings in caller)
       return null;
     }
     
@@ -118,7 +115,7 @@ export const useNotifications = () => {
     }
 
     try {
-      const notification = new Notification(`Nexus - ${options.title}`, {
+      const notification = new Notification(options.title, {
         body: options.body,
         icon: options.icon || '/icon.png',
         tag: options.tag,
@@ -126,7 +123,13 @@ export const useNotifications = () => {
         silent: options.silent || false,
       });
 
-      // Auto close after 5 seconds if not require interaction
+      if (options.onClick) {
+        notification.onclick = () => {
+          window.focus();
+          options.onClick?.();
+        };
+      }
+
       if (!options.requireInteraction) {
         setTimeout(() => {
           notification.close();

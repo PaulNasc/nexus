@@ -95,56 +95,72 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     note: null,
   });
 
-  const lastPingPerNoteRef = useRef<Map<number, number>>(new Map());
-  const lastGlobalPingRef = useRef<number>(0);
+  const lastPingMapRef = useRef<Map<string, number>>(new Map());
 
   const handleOpenPingModal = (e: React.MouseEvent, note: Note) => {
     e.stopPropagation();
     setPingModal({ isOpen: true, note });
   };
 
-  const handleSendPing = (targetUser: PingUser) => {
-    if (!pingModal.note) return;
+  const handleSendPings = (targetUsers: PingUser[]) => {
+    if (!pingModal.note || targetUsers.length === 0) return;
     const note = pingModal.note;
     const now = Date.now();
-    const COOLDOWN_SAME_NOTE_MS = 4 * 60 * 1000; // 4 minutos
-    const COOLDOWN_GLOBAL_MS = 1 * 60 * 1000; // 1 minuto
+    const COOLDOWN_SAME_USER_NOTE_MS = 2 * 60 * 1000; // 2 minutos para o mesmo usuário na mesma nota
 
-    const lastGlobal = lastGlobalPingRef.current;
-    if (lastGlobal > 0 && now - lastGlobal < COOLDOWN_GLOBAL_MS) {
-      const remainingSec = Math.ceil((COOLDOWN_GLOBAL_MS - (now - lastGlobal)) / 1000);
-      showToast(`⏳ Por favor, aguarde ${remainingSec}s para enviar outro ping.`, 'error');
-      return;
+    const sentUserNames: string[] = [];
+    const skippedUserNames: string[] = [];
+
+    for (const user of targetUsers) {
+      const key = `${user.id}:${note.id}`;
+      const lastSent = lastPingMapRef.current.get(key) || 0;
+
+      if (lastSent > 0 && now - lastSent < COOLDOWN_SAME_USER_NOTE_MS) {
+        skippedUserNames.push(user.name);
+      } else {
+        lastPingMapRef.current.set(key, now);
+        sentUserNames.push(user.name);
+      }
     }
-
-    const lastNotePing = lastPingPerNoteRef.current.get(note.id) || 0;
-    if (lastNotePing > 0 && now - lastNotePing < COOLDOWN_SAME_NOTE_MS) {
-      const remainingMs = COOLDOWN_SAME_NOTE_MS - (now - lastNotePing);
-      const min = Math.floor(remainingMs / 60000);
-      const sec = Math.ceil((remainingMs % 60000) / 1000);
-      showToast(`⏳ Um ping para esta nota já foi enviado. Aguarde ${min}m ${sec}s para reenviar.`, 'error');
-      return;
-    }
-
-    // Atualizar timestamps de cooldown
-    lastGlobalPingRef.current = now;
-    lastPingPerNoteRef.current.set(note.id, now);
 
     const currentUserName = settings.userName || 'Usuário';
     const seqTag = note.sequential_id ? `#${note.sequential_id} ` : '';
     const noteTitle = note.title || 'Sem título';
 
-    showToast(`🚀 Ping enviado para ${targetUser.name} na nota ${seqTag}"${noteTitle}"!`, 'success');
+    const navigateToThisNote = () => {
+      window.dispatchEvent(new CustomEvent('navigateToNote', { detail: { noteId: note.id } }));
+    };
 
-    if (settings.notifyPing !== false) {
-      showNotification({
-        title: `🔔 Ping: Nota ${seqTag}${noteTitle}`,
-        body: `${currentUserName} enviou um ping direcionado para você visualizar esta nota.`,
-        force: true,
-      });
+    if (sentUserNames.length > 0) {
+      const namesStr = sentUserNames.length === 1 ? sentUserNames[0] : `${sentUserNames.length} usuários`;
+      showToast(
+        `🚀 Ping enviado para ${namesStr} na nota ${seqTag}"${noteTitle}"! (Clique para abrir)`,
+        'success',
+        4000,
+        navigateToThisNote
+      );
+
+      if (settings.notifyPing !== false) {
+        showNotification({
+          title: `🔔 Ping: Nota ${seqTag}${noteTitle}`,
+          body: `${currentUserName} enviou um ping direcionado para você visualizar esta nota.`,
+          force: true,
+          noteId: note.id,
+          onClick: navigateToThisNote,
+        });
+      }
+      if (settings.playSound) {
+        playNotificationSound();
+      }
     }
-    if (settings.playSound) {
-      playNotificationSound();
+
+    if (skippedUserNames.length > 0) {
+      const skippedStr = skippedUserNames.join(', ');
+      showToast(
+        `⏳ Cooldown ativo para: ${skippedStr}. Aguarde 2min entre envios para o mesmo usuário.`,
+        'info',
+        4000
+      );
     }
   };
 
@@ -1753,7 +1769,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
         isOpen={pingModal.isOpen}
         onClose={() => setPingModal({ isOpen: false, note: null })}
         note={pingModal.note}
-        onSendPing={handleSendPing}
+        onSendPings={handleSendPings}
       />
     </div>
   );

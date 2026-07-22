@@ -1412,12 +1412,33 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     }}>
                       <input
                         type="checkbox"
-                        checked={settings.showNotifications}
-                        onChange={(e) => updateSettings({ showNotifications: e.target.checked })}
+                        checked={settings.showDesktopNotifications !== false && settings.showNotifications !== false}
+                        onChange={(e) => updateSettings({ showNotifications: e.target.checked, showDesktopNotifications: e.target.checked })}
                         style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                       />
                       <span style={{ fontSize: '14px', color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)' }}>
                         {t('settings.notifications.desktop')}
+                      </span>
+                    </label>
+
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      cursor: 'pointer',
+                      padding: '12px',
+                      backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : 'var(--color-bg-secondary)',
+                      border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
+                      borderRadius: '8px',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={settings.showToastNotifications !== false}
+                        onChange={(e) => updateSettings({ showToastNotifications: e.target.checked })}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
+                      />
+                      <span style={{ fontSize: '14px', color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)' }}>
+                        Exibir avisos pop-up (Toasts no sistema)
                       </span>
                     </label>
 

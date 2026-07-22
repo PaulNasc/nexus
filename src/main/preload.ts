@@ -87,7 +87,7 @@ export interface ElectronAPI {
 
   // Notifications operations
   notifications: {
-    showNative: (options: { title: string; body?: string; icon?: string }) => Promise<{ success: boolean; error?: string }>;
+    showNative: (options: { title: string; body?: string; icon?: string; noteId?: number }) => Promise<{ success: boolean; error?: string }>;
   };
 
   // Logging operations
@@ -260,7 +260,7 @@ const electronAPI: ElectronAPI = {
   },
 
   notifications: {
-    showNative: (options: { title: string; body?: string; icon?: string }) => ipcRenderer.invoke('notifications:showNative', options),
+    showNative: (options: { title: string; body?: string; icon?: string; noteId?: number }) => ipcRenderer.invoke('notifications:showNative', options),
   },
 
   logging: {

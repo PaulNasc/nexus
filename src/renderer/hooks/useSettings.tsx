@@ -35,6 +35,8 @@ export interface UserSettings {
 
   // Notifications
   showNotifications: boolean;
+  showDesktopNotifications: boolean;
+  showToastNotifications: boolean;
   playSound: boolean;
   notifyTaskReminders: boolean;
   notifyTodayTasks: boolean;
@@ -187,6 +189,8 @@ const DEFAULT_SETTINGS: UserSettings = {
   startWithOS: false,
   minimizeToTray: true,
   showNotifications: true,
+  showDesktopNotifications: true,
+  showToastNotifications: true,
   playSound: true,
   notifyTaskReminders: true,
   notifyTodayTasks: true,

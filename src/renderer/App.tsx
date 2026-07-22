@@ -264,6 +264,33 @@ const App: React.FC<AppProps> = () => {
     };
   }, []);
 
+  // Listen for navigateToNote custom event and IPC from notification or toast click
+  useEffect(() => {
+    const handleNavigateToNote = (e: Event) => {
+      const customEvt = e as CustomEvent<{ noteId: number }>;
+      if (customEvt.detail?.noteId) {
+        setNavigation({ currentScreen: 'notes', selectedNoteId: customEvt.detail.noteId });
+      }
+    };
+
+    window.addEventListener('navigateToNote', handleNavigateToNote);
+
+    const electronAPI = (window as unknown as { electronAPI?: { on?: (channel: string, listener: (data: { noteId: number }) => void) => () => void } }).electronAPI;
+    let cleanupIpc: (() => void) | undefined;
+    if (electronAPI?.on) {
+      cleanupIpc = electronAPI.on('notification:navigateToNote', (data) => {
+        if (data?.noteId) {
+          setNavigation({ currentScreen: 'notes', selectedNoteId: data.noteId });
+        }
+      });
+    }
+
+    return () => {
+      window.removeEventListener('navigateToNote', handleNavigateToNote);
+      if (cleanupIpc) cleanupIpc();
+    };
+  }, []);
+
   // Listen for openNewNote event from quick actions
   useEffect(() => {
     const handleOpenNewNote = () => {

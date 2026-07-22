@@ -1178,10 +1178,32 @@ class MainApplication {
       }
     });
 
-    ipcMain.handle('notifications:showNative', async (event, options: { title: string; body?: string; icon?: string }) => {
+    ipcMain.handle('notifications:showNative', async (event, options: { title: string; body?: string; icon?: string; noteId?: number }) => {
       try {
-        const icon = options.icon ? nativeImage.createFromPath(options.icon) : undefined;
-        const notification = new Notification({ title: options.title, body: options.body, icon });
+        let iconPath = options.icon;
+        if (!iconPath) {
+          const defaultPng = path.join(__dirname, '../../assets/icon-256.png');
+          const fallbackPng = path.join(__dirname, '../../assets/icon.png');
+          iconPath = fs.existsSync(defaultPng) ? defaultPng : (fs.existsSync(fallbackPng) ? fallbackPng : undefined);
+        }
+
+        const icon = iconPath ? nativeImage.createFromPath(iconPath) : undefined;
+        const notification = new Notification({
+          title: options.title || 'Nexus',
+          body: options.body,
+          icon,
+        });
+
+        if (options.noteId && this.mainWindow) {
+          notification.on('click', () => {
+            if (this.mainWindow) {
+              if (this.mainWindow.isMinimized()) this.mainWindow.restore();
+              this.mainWindow.focus();
+              this.mainWindow.webContents.send('notification:navigateToNote', { noteId: options.noteId });
+            }
+          });
+        }
+
         notification.show();
         return { success: true };
       } catch (error) {

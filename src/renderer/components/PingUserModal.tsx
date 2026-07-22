@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, X, ArrowRight, User as UserIcon, Send } from 'lucide-react';
+import { Search, X, ArrowRight, Check, CheckSquare, Square } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,27 +15,27 @@ interface PingUserModalProps {
   isOpen: boolean;
   onClose: () => void;
   note: Note | null;
-  onSendPing: (targetUser: PingUser) => void;
+  onSendPings: (targetUsers: PingUser[]) => void;
 }
 
 export const PingUserModal: React.FC<PingUserModalProps> = ({
   isOpen,
   onClose,
   note,
-  onSendPing,
+  onSendPings,
 }) => {
   const { members } = useOrganization();
   const { user: currentUser } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [usersList, setUsersList] = useState<PingUser[]>([]);
-  const [selectedUser, setSelectedUser] = useState<PingUser | null>(null);
+  const [selectedUsers, setSelectedUsers] = useState<Map<string, PingUser>>(new Map());
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!isOpen) {
       setSearchQuery('');
-      setSelectedUser(null);
+      setSelectedUsers(new Map());
       return;
     }
 
@@ -44,7 +44,7 @@ export const PingUserModal: React.FC<PingUserModalProps> = ({
       try {
         const loadedMap = new Map<string, PingUser>();
 
-        // 1. Load active org members if available
+        // 1. Load active org members
         if (members && members.length > 0) {
           for (const m of members) {
             if (m.user_id && m.user_id !== currentUser?.id) {
@@ -58,7 +58,7 @@ export const PingUserModal: React.FC<PingUserModalProps> = ({
           }
         }
 
-        // 2. Query profiles table from Supabase for other active users
+        // 2. Query profiles from Supabase for other active users
         const { data: profiles } = await supabase
           .from('profiles')
           .select('id, display_name')
@@ -93,13 +93,37 @@ export const PingUserModal: React.FC<PingUserModalProps> = ({
     (u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase().trim()))
   );
 
+  const toggleUser = (u: PingUser) => {
+    setSelectedUsers(prev => {
+      const next = new Map(prev);
+      if (next.has(u.id)) {
+        next.delete(u.id);
+      } else {
+        next.set(u.id, u);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedUsers.size === filteredUsers.length && filteredUsers.length > 0) {
+      setSelectedUsers(new Map());
+    } else {
+      const next = new Map<string, PingUser>();
+      filteredUsers.forEach(u => next.set(u.id, u));
+      setSelectedUsers(next);
+    }
+  };
+
   const handleSend = () => {
-    if (!selectedUser) return;
-    onSendPing(selectedUser);
+    const targets = Array.from(selectedUsers.values());
+    if (targets.length === 0) return;
+    onSendPings(targets);
     onClose();
   };
 
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const isAllSelected = filteredUsers.length > 0 && selectedUsers.size === filteredUsers.length;
 
   return (
     <div
@@ -123,7 +147,7 @@ export const PingUserModal: React.FC<PingUserModalProps> = ({
       <div
         style={{
           width: '100%',
-          maxWidth: '420px',
+          maxWidth: '440px',
           backgroundColor: isDark ? '#121212' : '#FFFFFF',
           border: `1px solid ${isDark ? '#2A2A2A' : 'var(--color-border-primary)'}`,
           borderRadius: '12px',
@@ -180,8 +204,8 @@ export const PingUserModal: React.FC<PingUserModalProps> = ({
           </button>
         </div>
 
-        {/* Search Bar */}
-        <div style={{ padding: '12px 16px 8px 16px' }}>
+        {/* Search Bar & Select All */}
+        <div style={{ padding: '12px 16px 8px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div
             style={{
               display: 'flex',
@@ -218,12 +242,32 @@ export const PingUserModal: React.FC<PingUserModalProps> = ({
               </button>
             )}
           </div>
+
+          {filteredUsers.length > 0 && (
+            <div
+              onClick={toggleSelectAll}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '6px 4px',
+                cursor: 'pointer',
+                fontSize: '12px',
+                color: 'var(--color-primary-teal)',
+                fontWeight: 500,
+                userSelect: 'none',
+              }}
+            >
+              <span>{isAllSelected ? 'Desmarcar todos' : 'Selecionar todos'}</span>
+              <span>{selectedUsers.size} de {filteredUsers.length} selecionados</span>
+            </div>
+          )}
         </div>
 
         {/* User List */}
         <div
           style={{
-            maxHeight: '220px',
+            maxHeight: '230px',
             overflowY: 'auto',
             padding: '0 16px 8px 16px',
             display: 'flex',
@@ -241,11 +285,11 @@ export const PingUserModal: React.FC<PingUserModalProps> = ({
             </div>
           ) : (
             filteredUsers.map((u) => {
-              const isSelected = selectedUser?.id === u.id;
+              const isSelected = selectedUsers.has(u.id);
               return (
                 <div
                   key={u.id}
-                  onClick={() => setSelectedUser(u)}
+                  onClick={() => toggleUser(u)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -288,6 +332,22 @@ export const PingUserModal: React.FC<PingUserModalProps> = ({
                       )}
                     </div>
                   </div>
+
+                  <div
+                    style={{
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: '4px',
+                      border: `1.5px solid ${isSelected ? 'var(--color-primary-teal)' : 'var(--color-text-muted)'}`,
+                      backgroundColor: isSelected ? 'var(--color-primary-teal)' : 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#FFFFFF',
+                    }}
+                  >
+                    {isSelected && <Check size={14} strokeWidth={3} />}
+                  </div>
                 </div>
               );
             })
@@ -320,7 +380,7 @@ export const PingUserModal: React.FC<PingUserModalProps> = ({
           </button>
           <button
             onClick={handleSend}
-            disabled={!selectedUser}
+            disabled={selectedUsers.size === 0}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -332,12 +392,12 @@ export const PingUserModal: React.FC<PingUserModalProps> = ({
               borderRadius: '6px',
               fontSize: '13px',
               fontWeight: 500,
-              cursor: !selectedUser ? 'not-allowed' : 'pointer',
-              opacity: !selectedUser ? 0.5 : 1,
+              cursor: selectedUsers.size === 0 ? 'not-allowed' : 'pointer',
+              opacity: selectedUsers.size === 0 ? 0.5 : 1,
               transition: 'all 0.2s ease',
             }}
           >
-            <span>Enviar</span>
+            <span>Enviar Ping {selectedUsers.size > 0 ? `(${selectedUsers.size})` : ''}</span>
             <ArrowRight size={15} />
           </button>
         </div>
