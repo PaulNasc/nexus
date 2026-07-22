@@ -23,6 +23,7 @@ export interface QuickAction {
 export interface UserSettings {
   // Personal
   userName: string;
+  nameLastChangedAt?: string;
   language: Language;
 
   // Appearance
@@ -176,6 +177,7 @@ const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
 
 const DEFAULT_SETTINGS: UserSettings = {
   userName: '',
+  nameLastChangedAt: undefined,
   language: 'pt-BR',
   theme: 'dark',
   startWithOS: false,
@@ -267,6 +269,7 @@ interface SettingsContextType {
   sessionInfo: SessionInfo;
   isLoading: boolean;
   updateSettings: (newSettings: Partial<UserSettings>) => void;
+  updateUserName: (newName: string) => Promise<{ success: boolean; message?: string }>;
   resetSettings: () => void;
   clearAllData: () => Promise<boolean>;
   prepareForDistribution: () => boolean;
@@ -362,6 +365,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .eq('user_id', user.id)
         .maybeSingle();
 
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('display_name, name_updated_at, updated_at')
+        .eq('id', user.id)
+        .maybeSingle();
+
       const localUpdatedAtStr = localStorage.getItem('nexus-settings-updated-at');
       const localUpdatedAt = localUpdatedAtStr ? new Date(localUpdatedAtStr).getTime() : 0;
       const remoteUpdatedAt = data?.updated_at ? new Date(data.updated_at).getTime() : 0;
@@ -373,8 +382,13 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setSettings(prev => {
             const merged = enforceModuleSettings({ ...prev, ...remoteSettings });
             merged.quickActions = migrateQuickActions(merged.quickActions || []);
-            if (!merged.userName && profileName) {
+            if (profile?.display_name) {
+              merged.userName = profile.display_name;
+            } else if (!merged.userName && profileName) {
               merged.userName = profileName;
+            }
+            if (profile?.name_updated_at) {
+              merged.nameLastChangedAt = profile.name_updated_at;
             }
 
             if (areSettingsEqual(prev, merged)) {
@@ -626,17 +640,55 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const resetSettings = () => {
-    const reset = enforceModuleSettings(DEFAULT_SETTINGS);
-    setSettings(reset);
-    const nowIso = new Date().toISOString();
-    try {
-      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(reset));
-      localStorage.setItem('nexus-settings-updated-at', nowIso);
-    } catch (error) {
-      console.error('Error resetting settings:', error);
+  const updateUserName = async (newName: string): Promise<{ success: boolean; message?: string }> => {
+    const trimmed = newName.trim();
+    if (!trimmed) {
+      return { success: false, message: 'O nome de usuário não pode estar vazio.' };
     }
-    syncSettingsToSupabase(reset, nowIso);
+    if (trimmed === settings.userName) {
+      return { success: true };
+    }
+
+    const COOLDOWN_MS = 72 * 60 * 60 * 1000;
+    const lastChanged = settings.nameLastChangedAt ? new Date(settings.nameLastChangedAt).getTime() : 0;
+    const timePassed = Date.now() - lastChanged;
+
+    if (lastChanged > 0 && timePassed < COOLDOWN_MS) {
+      const remainingMs = COOLDOWN_MS - timePassed;
+      const hours = Math.floor(remainingMs / (1000 * 60 * 60));
+      const minutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+      return {
+        success: false,
+        message: `O nome de usuário só pode ser alterado a cada 72 horas. Aguarde mais ${hours}h ${minutes}m.`,
+      };
+    }
+
+    const nowIso = new Date().toISOString();
+
+    updateSettings({
+      userName: trimmed,
+      nameLastChangedAt: nowIso,
+    });
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('profiles').upsert({
+          id: user.id,
+          display_name: trimmed,
+          name_updated_at: nowIso,
+          updated_at: nowIso,
+        });
+
+        await supabase.auth.updateUser({
+          data: { display_name: trimmed }
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to sync profile display_name to Supabase:', err);
+    }
+
+    return { success: true };
   };
 
   const clearAllData = async (): Promise<boolean> => {
@@ -844,6 +896,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     sessionInfo,
     isLoading,
     updateSettings,
+    updateUserName,
     resetSettings,
     clearAllData,
     prepareForDistribution,

@@ -36,6 +36,7 @@ import {
   Upload,
   Download,
   TestTube,
+  Clock,
 } from 'lucide-react';
 import type { ImportResult, RestorePreview } from '../../shared/types/backup';
 import type { UserSettings } from '../hooks/useSettings';
@@ -351,10 +352,14 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   const {
     settings,
     updateSettings,
+    updateUserName,
     resetSettings,
-    systemInfo,
+    clearAllData,
+    prepareForDistribution,
+    getGreeting,
+    getAvailableLanguages
   } = useSettings();
-  const { t, getAvailableLanguages } = useI18n();
+  const { t } = useI18n();
   const { theme: rawTheme } = useTheme();
   const { showNotification } = useNotifications();
   const { createTask } = useTasks();
@@ -1218,21 +1223,102 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   }}>
                     {t('settings.userName')}
                   </label>
-                  <input
-                    type="text"
-                    value={settings.userName}
-                    onChange={(e) => updateSettings({ userName: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : 'var(--color-bg-card)',
-                      border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
-                      borderRadius: '8px',
-                      color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)',
-                      fontSize: '14px',
-                    }}
-                    placeholder="Digite seu nome..."
-                  />
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      value={userNameInput}
+                      disabled={isCooldownActive}
+                      onChange={(e) => setUserNameInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !isCooldownActive) {
+                          e.preventDefault();
+                          void handleSaveUserName();
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '12px',
+                        backgroundColor: isCooldownActive
+                          ? (theme.mode === 'dark' ? '#18181B' : '#F3F4F6')
+                          : (theme.mode === 'dark' ? '#0A0A0A' : 'var(--color-bg-card)'),
+                        border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
+                        borderRadius: '8px',
+                        color: isCooldownActive
+                          ? 'var(--color-text-muted)'
+                          : (theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)'),
+                        fontSize: '14px',
+                        cursor: isCooldownActive ? 'not-allowed' : 'text',
+                      }}
+                      placeholder="Digite seu nome..."
+                    />
+                    {!isCooldownActive && (
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveUserName()}
+                        disabled={!userNameInput.trim() || userNameInput.trim() === settings.userName}
+                        style={{
+                          padding: '12px 16px',
+                          backgroundColor: 'var(--color-primary-teal)',
+                          color: '#FFFFFF',
+                          border: 'none',
+                          borderRadius: '8px',
+                          fontSize: '14px',
+                          fontWeight: 500,
+                          cursor: (!userNameInput.trim() || userNameInput.trim() === settings.userName) ? 'not-allowed' : 'pointer',
+                          opacity: (!userNameInput.trim() || userNameInput.trim() === settings.userName) ? 0.6 : 1,
+                          whiteSpace: 'nowrap',
+                          transition: 'all 0.2s ease',
+                        }}
+                      >
+                        Salvar Nome
+                      </button>
+                    )}
+                  </div>
+
+                  {isCooldownActive ? (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginTop: '8px',
+                      fontSize: '12px',
+                      color: '#F59E0B',
+                      backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid rgba(245, 158, 11, 0.25)',
+                    }}>
+                      <Clock size={14} style={{ flexShrink: 0 }} />
+                      <span>
+                        O nome de usuário só pode ser alterado a cada 72 horas. Próxima alteração disponível em:{' '}
+                        <strong>{nextDateFormatted}</strong> (restam ~{remainingHours}h {remainingMinutes}m).
+                      </span>
+                    </div>
+                  ) : (
+                    <div style={{
+                      marginTop: '6px',
+                      fontSize: '12px',
+                      color: 'var(--color-text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}>
+                      <Info size={13} style={{ flexShrink: 0 }} />
+                      <span>O nome de usuário pode ser alterado a cada 72 horas e é vinculado ao seu ID de usuário.</span>
+                    </div>
+                  )}
+
+                  {userNameError && (
+                    <div style={{ fontSize: '12px', color: 'var(--color-error, #ef4444)', marginTop: '6px' }}>
+                      {userNameError}
+                    </div>
+                  )}
+
+                  {userNameSuccess && (
+                    <div style={{ fontSize: '12px', color: 'var(--color-primary-teal)', marginTop: '6px' }}>
+                      ✓ Nome de usuário atualizado com sucesso!
+                    </div>
+                  )}
                 </div>
 
                 <div>

@@ -605,16 +605,15 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (rows.length === 0) return [];
 
-    // Lazy load profiles and task links in parallel to reduce total wait time
+    // Load profiles for all note authors and task links in parallel
     const profileMap = new Map<string, string>();
     const linkMap = new Map<number, number[]>();
-    const shouldLoadProfiles = !!activeOrg;
     const shouldLoadLinks = !NOTES_ONLY_RELEASE && settings.showDashboard;
-    const userIds = shouldLoadProfiles ? [...new Set(rows.map(r => r.user_id))] : [];
+    const userIds = [...new Set(rows.map(r => r.user_id).filter(Boolean))];
     const noteIds = shouldLoadLinks ? rows.map(r => r.id) : [];
 
     const [profilesResult, linksResult] = await Promise.all([
-      shouldLoadProfiles && userIds.length > 0
+      userIds.length > 0
         ? supabase.from('profiles').select('id, display_name').in('id', userIds)
         : Promise.resolve({ data: null as unknown as Array<{ id: string; display_name: string | null }> | null }),
       shouldLoadLinks && noteIds.length > 0
@@ -624,7 +623,9 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const profiles = profilesResult?.data || [];
     for (const p of profiles) {
-      profileMap.set(p.id, p.display_name || '');
+      if (p.id && p.display_name) {
+        profileMap.set(p.id, p.display_name);
+      }
     }
 
     const links = linksResult?.data || [];
@@ -634,11 +635,16 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       linkMap.set(link.note_id, existing);
     }
 
+    const { data: currentAuth } = await supabase.auth.getUser();
+    const currentUserId = currentAuth?.user?.id;
+
     const mappedNotes = rows.map(row => {
       const note = dbRowToNote(row, linkMap.get(row.id));
-      if (activeOrg) {
-        note.creator_display_name = profileMap.get(row.user_id) || undefined;
+      let resolvedName = profileMap.get(row.user_id);
+      if (!resolvedName && row.user_id === currentUserId && settings.userName) {
+        resolvedName = settings.userName;
       }
+      note.creator_display_name = resolvedName || undefined;
       return note;
     });
 
