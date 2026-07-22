@@ -357,15 +357,49 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     clearAllData,
     prepareForDistribution,
     getGreeting,
-    getAvailableLanguages
+    systemInfo,
   } = useSettings();
-  const { t } = useI18n();
-  const { theme: rawTheme } = useTheme();
-  const { showNotification } = useNotifications();
+  const { t, getAvailableLanguages } = useI18n();
+  const { showToast } = useToast();
+  const { showNotification, playNotificationSound } = useNotifications();
   const { createTask } = useTasks();
   const { createNote, fetchNotes, syncLegacyPdfNotesToCloud } = useNotes();
   const { tags: systemTags } = useSystemTags();
   const { useCloud } = useStorageMode();
+
+  const [userNameInput, setUserNameInput] = useState(settings.userName || '');
+  const [userNameError, setUserNameError] = useState<string | null>(null);
+  const [userNameSuccess, setUserNameSuccess] = useState<boolean>(false);
+
+  useEffect(() => {
+    setUserNameInput(settings.userName || '');
+  }, [settings.userName]);
+
+  const COOLDOWN_MS = 72 * 60 * 60 * 1000;
+  const lastChanged = settings.nameLastChangedAt ? new Date(settings.nameLastChangedAt).getTime() : 0;
+  const timePassed = Date.now() - lastChanged;
+  const isCooldownActive = lastChanged > 0 && timePassed < COOLDOWN_MS;
+
+  const remainingMs = isCooldownActive ? COOLDOWN_MS - timePassed : 0;
+  const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
+  const remainingMinutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+  const nextDateFormatted = isCooldownActive && lastChanged > 0
+    ? new Date(lastChanged + COOLDOWN_MS).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+    : '';
+
+  const handleSaveUserName = async () => {
+    setUserNameError(null);
+    setUserNameSuccess(false);
+    const res = await updateUserName(userNameInput);
+    if (!res.success) {
+      setUserNameError(res.message || 'Erro ao alterar o nome de usuário.');
+      showToast(res.message || 'Erro ao alterar o nome de usuário.', 'error');
+    } else {
+      setUserNameSuccess(true);
+      showToast('Nome de usuário salvo com sucesso!', 'success');
+      setTimeout(() => setUserNameSuccess(false), 3000);
+    }
+  };
 
   const [activeTab, setActiveTab] = useState<TabType>('geral');
   const [animatingTab, setAnimatingTab] = useState<TabType>('geral');
@@ -596,9 +630,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    console.log(`Toast: ${message} (${type})`);
-  };
+
 
   const handleSave = () => {
     showToast(t('settings.saved'), 'success');
@@ -1410,6 +1442,10 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
                     {[
                       { key: 'notifyProductivityInsights' as const, label: 'Insights de produtividade' },
+                      { key: 'notifyPing' as const, label: 'Notificações de Ping' },
+                      { key: 'notifyNoteCreated' as const, label: 'Avisar quando notas forem criadas por outros usuários' },
+                      { key: 'notifyNoteUpdated' as const, label: 'Avisar quando notas forem alteradas' },
+                      { key: 'notifyNoteImported' as const, label: 'Avisar quando notas forem importadas' },
                     ].map((item) => (
                       <label key={item.key} style={{
                         display: 'flex',
@@ -1423,7 +1459,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       }}>
                         <input
                           type="checkbox"
-                          checked={settings[item.key]}
+                          checked={settings[item.key] !== false}
                           onChange={(e) => updateSettings({ [item.key]: e.target.checked })}
                           style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
                         />
@@ -1432,6 +1468,40 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         </span>
                       </label>
                     ))}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        showToast('Teste de notificação enviado com sucesso!', 'info');
+                        showNotification({
+                          title: 'Teste de Notificação',
+                          body: 'As notificações do Nexus estão funcionando perfeitamente!',
+                          force: true,
+                        });
+                        if (settings.playSound) {
+                          playNotificationSound();
+                        }
+                      }}
+                      style={{
+                        marginTop: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        padding: '12px',
+                        backgroundColor: 'var(--color-primary-teal)',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <TestTube size={16} />
+                      Testar notificação
+                    </button>
 
                     <div>
                       <button

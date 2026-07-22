@@ -40,6 +40,10 @@ export interface UserSettings {
   notifyTodayTasks: boolean;
   notifyOverdueTasks: boolean;
   notifyProductivityInsights: boolean;
+  notifyPing?: boolean;
+  notifyNoteCreated?: boolean;
+  notifyNoteUpdated?: boolean;
+  notifyNoteImported?: boolean;
 
   // Productivity
   dailyGoal: number;
@@ -188,6 +192,10 @@ const DEFAULT_SETTINGS: UserSettings = {
   notifyTodayTasks: true,
   notifyOverdueTasks: true,
   notifyProductivityInsights: true,
+  notifyPing: true,
+  notifyNoteCreated: true,
+  notifyNoteUpdated: true,
+  notifyNoteImported: true,
   dailyGoal: 5,
   autoSave: true,
   autoBackup: true,
@@ -689,6 +697,19 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     return { success: true };
+  };
+
+  const resetSettings = () => {
+    const reset = enforceModuleSettings(DEFAULT_SETTINGS);
+    setSettings(reset);
+    const nowIso = new Date().toISOString();
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(reset));
+      localStorage.setItem('nexus-settings-updated-at', nowIso);
+    } catch (error) {
+      console.error('Error resetting settings:', error);
+    }
+    syncSettingsToSupabase(reset, nowIso);
   };
 
   const clearAllData = async (): Promise<boolean> => {

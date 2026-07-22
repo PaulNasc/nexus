@@ -14,7 +14,7 @@ export const Toast: React.FC<ToastProps> = ({
   message, 
   type, 
   onClose, 
-  duration = 3000 
+  duration = 3500 
 }) => {
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -25,128 +25,82 @@ export const Toast: React.FC<ToastProps> = ({
   }, [duration, onClose]);
 
   const getToastStyles = () => {
-    const baseStyles = {
-      position: 'fixed' as const,
-      top: '72px',
-      right: '24px',
-      padding: '16px 20px',
-      borderRadius: '8px',
+    const baseStyles: React.CSSProperties = {
+      position: 'relative',
+      padding: '14px 18px',
+      borderRadius: '10px',
       color: '#FFFFFF',
       fontSize: '14px',
       fontWeight: 500,
-      boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
-      zIndex: 9999,
-      maxWidth: '400px',
-      minWidth: '200px',
+      boxShadow: '0 10px 30px rgba(0, 0, 0, 0.45)',
+      zIndex: 99999,
+      maxWidth: '420px',
+      minWidth: '260px',
       border: '1px solid',
-      backdropFilter: 'blur(10px)',
-      animation: 'toast-slide-in 0.3s ease-out',
+      backdropFilter: 'blur(12px)',
+      animation: 'toast-slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '10px',
     };
 
     switch (type) {
       case 'success':
         return {
           ...baseStyles,
-          background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.9) 0%, rgba(56, 142, 60, 0.9) 100%)',
-          borderColor: '#4CAF50',
+          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.95) 0%, rgba(5, 150, 105, 0.95) 100%)',
+          borderColor: '#10B981',
         };
       case 'error':
         return {
           ...baseStyles,
-          background: 'linear-gradient(135deg, rgba(244, 67, 54, 0.9) 0%, rgba(211, 47, 47, 0.9) 100%)',
-          borderColor: '#F44336',
+          background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.95) 0%, rgba(220, 38, 38, 0.95) 100%)',
+          borderColor: '#EF4444',
         };
       case 'info':
+      default:
         return {
           ...baseStyles,
-          background: 'linear-gradient(135deg, rgba(0, 212, 170, 0.9) 0%, rgba(0, 163, 131, 0.9) 100%)',
-          borderColor: '#00D4AA',
+          background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.95) 0%, rgba(2, 132, 199, 0.95) 100%)',
+          borderColor: '#0EA5E9',
         };
-      default:
-        return baseStyles;
     }
   };
 
   const getIcon = () => {
     switch (type) {
-      case 'success': return <CheckCircle size={16} strokeWidth={1.7} />;
-      case 'error': return <XCircle size={16} strokeWidth={1.7} />;
-      case 'info': return <Info size={16} strokeWidth={1.7} />;
-      default: return null;
+      case 'success': return <CheckCircle size={18} strokeWidth={2} style={{ flexShrink: 0 }} />;
+      case 'error': return <XCircle size={18} strokeWidth={2} style={{ flexShrink: 0 }} />;
+      case 'info': default: return <Info size={18} strokeWidth={2} style={{ flexShrink: 0 }} />;
     }
   };
 
   return (
     <div style={getToastStyles()}>
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-      }}>
-        <span style={{ fontSize: '16px', display: 'flex', alignItems: 'center' }}>
-          {getIcon()}
-        </span>
-        <span>
-          {message}
-        </span>
-        <button
-          onClick={onClose}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#FFFFFF',
-            cursor: 'pointer',
-            padding: '0',
-            marginLeft: 'auto',
-            fontSize: '16px',
-            opacity: 0.7,
-            transition: 'opacity 0.2s ease',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-          onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-        >
-          <X size={16} strokeWidth={1.7} />
-        </button>
-      </div>
+      {getIcon()}
+      <span style={{ flex: 1, lineHeight: '1.4' }}>
+        {message}
+      </span>
+      <button
+        onClick={onClose}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: '#FFFFFF',
+          cursor: 'pointer',
+          padding: '2px',
+          marginLeft: '8px',
+          opacity: 0.8,
+          transition: 'opacity 0.2s ease',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.8'}
+      >
+        <X size={16} strokeWidth={2} />
+      </button>
     </div>
   );
 };
-
-// Hook para gerenciar toasts
-export const useToast = () => {
-  const [toasts, setToasts] = React.useState<Array<{
-    id: string;
-    message: string;
-    type: ToastType;
-  }>>([]);
-
-  const showToast = (message: string, type: ToastType = 'info') => {
-    const id = `toast-${Date.now()}-${Math.random()}`;
-    setToasts(prev => [...prev, { id, message, type }]);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
-  };
-
-  const ToastContainer = () => (
-    <>
-      {toasts.map(toast => (
-        <Toast
-          key={toast.id}
-          message={toast.message}
-          type={toast.type}
-          onClose={() => removeToast(toast.id)}
-        />
-      ))}
-    </>
-  );
-
-  return {
-    showToast,
-    ToastContainer,
-  };
-}; 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { ToastProvider } from './contexts/ToastContext';
 import { SettingsProvider } from './hooks/useSettings';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { TasksProvider } from './contexts/TasksContext';
@@ -158,19 +159,21 @@ const RootApp: React.FC = () => {
   // If offline mode is active OR user is authenticated, show the app
   if (isOffline || user) {
     return (
-      <SettingsProvider>
-        <OrganizationProvider>
-          <SystemTagsProvider>
-            <TasksProvider>
-              <NotesProvider>
-                <CategoriesProvider>
-                  <App />
-                </CategoriesProvider>
-              </NotesProvider>
-            </TasksProvider>
-          </SystemTagsProvider>
-        </OrganizationProvider>
-      </SettingsProvider>
+      <ToastProvider>
+        <SettingsProvider>
+          <OrganizationProvider>
+            <SystemTagsProvider>
+              <TasksProvider>
+                <NotesProvider>
+                  <CategoriesProvider>
+                    <App />
+                  </CategoriesProvider>
+                </NotesProvider>
+              </TasksProvider>
+            </SystemTagsProvider>
+          </OrganizationProvider>
+        </SettingsProvider>
+      </ToastProvider>
     );
   }
 

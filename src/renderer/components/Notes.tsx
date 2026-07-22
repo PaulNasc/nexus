@@ -19,7 +19,7 @@ import { Badge } from './ui/Badge';
 import { Input } from './ui/Input';
 import { NoteEditor } from './NoteEditor';
 import { LinkedTasksModal } from './LinkedTasksModal';
-import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, Pencil, CheckSquare, Square, Filter, X, ArrowUpDown, Users, FolderOpen, FileText, Upload, Download, FolderPlus, Folder, ArrowLeft, ChevronRight, Check, Loader2, ArrowUp } from 'lucide-react';
+import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, Pencil, CheckSquare, Square, Filter, X, ArrowUpDown, Users, FolderOpen, FileText, Upload, Download, FolderPlus, Folder, ArrowLeft, ChevronRight, Check, Loader2, ArrowUp, BellRing } from 'lucide-react';
 
 import { NoteViewerModal } from './NoteViewerModal';
 
@@ -61,6 +61,8 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
   const { activeOrg } = useOrganization();
   const { user } = useAuth();
   const { t } = useI18n();
+  const { showToast } = useToast();
+  const { showNotification, playNotificationSound } = useNotifications();
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -84,6 +86,26 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
       }
     }
   }, [hasMore, isFetchingMore, loadMoreNotes]);
+
+  const handlePingNote = (e: React.MouseEvent, note: Note) => {
+    e.stopPropagation();
+    const currentUserName = settings.userName || 'Usuário';
+    const seqTag = note.sequential_id ? `#${note.sequential_id} ` : '';
+    const noteTitle = note.title || 'Sem título';
+
+    showToast(`🔔 Ping enviado para a nota ${seqTag}"${noteTitle}"`, 'info');
+
+    if (settings.notifyPing !== false) {
+      showNotification({
+        title: `🔔 Ping: ${seqTag}${noteTitle}`,
+        body: `${currentUserName} chamou a atenção para esta nota.`,
+        force: true,
+      });
+    }
+    if (settings.playSound) {
+      playNotificationSound();
+    }
+  };
 
   const handleScrollToTop = () => {
     if (notesContainerRef.current) {
@@ -1546,6 +1568,14 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                         </h3>
                         <button
                           className="note-edit-button"
+                          title="Enviar Ping / Notificar"
+                          onClick={(e) => handlePingNote(e, note)}
+                          style={{ marginRight: '4px' }}
+                        >
+                          <BellRing size={14} />
+                        </button>
+                        <button
+                          className="note-edit-button"
                           title="Editar"
                           onClick={(e) => { e.stopPropagation(); setSelectedNote(note); setIsEditing(true); }}
                         >
@@ -1622,6 +1652,14 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
                                 </div>
                               )}
                               <div className="note-list-actions">
+                                <button
+                                  className="note-edit-button"
+                                  title="Enviar Ping / Notificar"
+                                  onClick={(e) => handlePingNote(e, note)}
+                                  style={{ marginRight: '4px' }}
+                                >
+                                  <BellRing size={14} />
+                                </button>
                                 <button
                                   className="note-edit-button"
                                   title="Editar"
