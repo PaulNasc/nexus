@@ -40,7 +40,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     setToasts(prev => [...prev, { id, message, type, duration, onClick }]);
-  }, [settings.showToastNotifications]);
+  }, [showToastNotifications]);
 
   const removeToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
