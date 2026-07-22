@@ -621,7 +621,7 @@ const App: React.FC<AppProps> = () => {
             onClose={handleCloseSettings}
           />
 
-          <ToastContainer />
+
         </div>
       </React.Suspense>
     );
