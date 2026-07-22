@@ -1,5 +1,13 @@
 ## Changelog
 
+### v1.3.4
+- Ping: Sistema de Ping direcionado de notas com seletor sutil de múltiplos usuários e busca rápida.
+- Cooldowns: Controle de frequência com 2min de espera para o mesmo usuário/nota e liberação instantânea para outros destinatários.
+- Notifications: Notificações nativas do Windows com ícone oficial do Nexus e redirecionamento de clique (Desktop e Toast) direto para a nota.
+- Parameters: Parâmetros `showDesktopNotifications` e `showToastNotifications` ativados por padrão nas configurações (`DEFAULT_SETTINGS`).
+- Supabase: Resolução de erro HTTP 400 em `profiles` removendo referência à coluna inexistente `name_updated_at`.
+- Performance: Otimização do Webpack dev server (`transpileOnly` e `filesystem cache`) e solução do loop de reabertura involuntária da nota pingada.
+
 ### v1.3.1
 - Search: Busca por número puro (`1`, `#1`, `42`) agora retorna apenas a nota com o `sequential_id` exato, eliminando falsos positivos em notas cujo conteúdo contém o dígito.
 - Loading: Indicador de carregamento agora é exibido corretamente ao abrir o programa e ao trocar de organização, enquanto as notas ainda estão sendo carregadas do Supabase.
