@@ -293,12 +293,19 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     return Array.from(knownColorsMap.values());
   }, [knownColorsMap]);
 
+  const handledNoteIdRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (initialNoteId && notes.length > 0) {
-      const note = notes.find((n) => n.id === initialNoteId);
-      if (note) {
-        setViewer({ isOpen: true, note });
+      if (handledNoteIdRef.current !== initialNoteId) {
+        const note = notes.find((n) => n.id === initialNoteId);
+        if (note) {
+          handledNoteIdRef.current = initialNoteId;
+          setViewer({ isOpen: true, note });
+        }
       }
+    } else if (!initialNoteId) {
+      handledNoteIdRef.current = null;
     }
   }, [initialNoteId, notes]);
 

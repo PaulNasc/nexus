@@ -10,6 +10,7 @@ module.exports = {
   entry: './src/renderer/index.tsx',
   target: 'web',
   mode: process.env.NODE_ENV || 'development',
+  cache: isDev ? { type: 'filesystem' } : false,
   
   module: {
     rules: [
@@ -19,6 +20,7 @@ module.exports = {
           loader: 'ts-loader',
           options: {
             configFile: 'tsconfig.renderer.json',
+            transpileOnly: isDev,
           },
         },
         exclude: /node_modules/,
