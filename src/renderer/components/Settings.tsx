@@ -1054,19 +1054,26 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: isFileDragActive ? 'rgba(3, 8, 12, 0.86)' : 'rgba(0, 0, 0, 0.8)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000,
-      backdropFilter: isFileDragActive ? 'blur(6px)' : 'blur(4px)',
-    }}>
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: isFileDragActive ? 'rgba(3, 8, 12, 0.86)' : 'rgba(0, 0, 0, 0.8)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        backdropFilter: isFileDragActive ? 'blur(6px)' : 'blur(4px)',
+      }}
+    >
       {isFileDragActive && (
         <div
           style={{
@@ -1088,19 +1095,22 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
           Solte o arquivo para importar
         </div>
       )}
-      <div style={{
-        backgroundColor: theme.mode === 'dark' ? '#141414' : 'var(--color-bg-card)',
-        border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
-        borderRadius: '16px',
-        width: '940px',
-        maxWidth: '92vw',
-        height: '680px',
-        maxHeight: '88vh',
-        display: 'flex',
-        overflow: 'hidden',
-        boxShadow: theme.mode === 'dark' ? '0 20px 40px rgba(0, 0, 0, 0.6)' : 'var(--shadow-2xl)',
-        transition: 'all var(--transition-theme)',
-      }}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          backgroundColor: theme.mode === 'dark' ? '#141414' : 'var(--color-bg-card)',
+          border: `1px solid ${theme.mode === 'dark' ? '#2A2A2A' : 'var(--color-border-primary)'}`,
+          borderRadius: '16px',
+          width: '940px',
+          maxWidth: '92vw',
+          height: '680px',
+          maxHeight: '88vh',
+          display: 'flex',
+          overflow: 'hidden',
+          boxShadow: theme.mode === 'dark' ? '0 20px 40px rgba(0, 0, 0, 0.6)' : 'var(--shadow-2xl)',
+          transition: 'all var(--transition-theme)',
+        }}
+      >
         {/* Sidebar com abas */}
         <div style={{
           width: '220px',

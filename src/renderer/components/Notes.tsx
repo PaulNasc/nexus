@@ -1769,7 +1769,7 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
           style={{ zIndex: 95, cursor: isFetchingMore ? 'wait' : 'pointer' }}
         >
           {isFetchingMore ? (
-            <Loader2 size={18} className="spin-icon" />
+            <Loader2 size={18} className="spin-icon" style={{ animation: 'nexus-spin 0.8s linear infinite', transformOrigin: 'center' }} />
           ) : (
             <ArrowUp size={18} />
           )}
