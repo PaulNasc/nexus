@@ -15,7 +15,7 @@
     "build:main": "webpack --config webpack.main.config.js --mode production",
     "build:preload": "webpack --config webpack.preload.config.js --mode production",
     "build:renderer": "webpack --config webpack.renderer.config.js --mode production",
-    "build:renderer:watch": "webpack --config webpack.renderer.simple.config.js --mode development --watch",
+    "build:renderer:watch": "webpack --config webpack.renderer.config.js --mode development --watch",
     "start": "electron .",
     "start:electron": "wait-on dist/main/index.js dist/main/preload.js && wait-on http://localhost:3000 && electron .",
     "start:electron:wait": "wait-on dist/main/index.js dist/main/preload.js && wait-on dist/renderer/index.html && electron .",
