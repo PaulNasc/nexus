@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.3.5',
+    date: '2026-07-29',
+    highlights: [
+      { category: 'feature', text: 'Indicador visual animado de carregamento no scroll infinito de notas com giro de 360°' },
+      { category: 'improvement', text: 'Fechamento intuitivo do painel de Configurações ao clicar fora (backdrop overlay)' },
+      { category: 'improvement', text: 'Sincronização em tempo real do nome de usuário atualizado na lista de membros da organização' },
+      { category: 'improvement', text: 'Layout minimalista e unificado da aba Organizações com acoplamento correto de roles' },
+      { category: 'performance', text: 'Reestruturação de documentação para /docs e remoção de arquivos/configs legados na raiz' },
+    ],
+  },
+  {
     version: '1.3.4',
     date: '2026-07-22',
     highlights: [

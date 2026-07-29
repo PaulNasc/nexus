@@ -1,5 +1,12 @@
 ## Changelog
 
+### v1.3.5
+- Infinite Scroll: Indicador visual animado (`spin-icon`) no botão flutuante para sinalizar carregamento de mais notas durante o scroll.
+- Settings: Possibilidade de clicar fora do modal de Configurações (backdrop overlay) para fechar o menu sem salvar.
+- Profile Sync: Sincronização em tempo real do nome do usuário atualizado na lista de membros das organizações.
+- UI/UX: Layout minimalista e despoluído da aba Organizações, com acordeões recolhidos por padrão e eliminação de cards duplicados.
+- Architecture: Reestruturação da documentação em `/docs`, remoção de arquivos legados de log/rascunhos na raiz e otimização do Webpack dev server.
+
 ### v1.3.4
 - Ping: Sistema de Ping direcionado de notas com seletor sutil de múltiplos usuários e busca rápida.
 - Cooldowns: Controle de frequência com 2min de espera para o mesmo usuário/nota e liberação instantânea para outros destinatários.
