@@ -1761,14 +1761,18 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
         }}
       />
 
-      {showScrollTop && (
+      {(showScrollTop || isFetchingMore) && (
         <button
-          onClick={handleScrollToTop}
-          className="scroll-to-top-btn"
-          title="Voltar ao topo"
-          style={{ zIndex: 95 }}
+          onClick={isFetchingMore ? undefined : handleScrollToTop}
+          className={`scroll-to-top-btn ${isFetchingMore ? 'is-loading' : ''}`}
+          title={isFetchingMore ? 'Carregando mais notas...' : 'Voltar ao topo'}
+          style={{ zIndex: 95, cursor: isFetchingMore ? 'wait' : 'pointer' }}
         >
-          <ArrowUp size={18} />
+          {isFetchingMore ? (
+            <Loader2 size={18} className="spin-icon" />
+          ) : (
+            <ArrowUp size={18} />
+          )}
         </button>
       )}
 

@@ -71,8 +71,8 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
   const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
-  const [membersCollapsed, setMembersCollapsed] = useState(false);
-  const [systemTagsCollapsed, setSystemTagsCollapsed] = useState(false);
+  const [membersCollapsed, setMembersCollapsed] = useState(true);
+  const [systemTagsCollapsed, setSystemTagsCollapsed] = useState(true);
   const [editingSystemTagId, setEditingSystemTagId] = useState<number | null>(null);
   const [systemTagName, setSystemTagName] = useState('');
   const [systemTagColor, setSystemTagColor] = useState('#00D4AA');
