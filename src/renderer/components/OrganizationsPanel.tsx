@@ -408,28 +408,35 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
       {/* === LIST VIEW === */}
       {view === 'list' && (
         <>
-          {/* Active org indicator */}
-          {activeOrg && (
-            <div style={{
-              ...cardStyle,
-              borderColor: '#00D4AA40',
-              backgroundColor: isDark ? '#0A1F1A' : '#F0FDF9',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontSize: '11px', color: '#00D4AA', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
-                    Organização Ativa
-                  </div>
-                  <div style={{ fontSize: '16px', fontWeight: 600, color: isDark ? '#FFF' : '#111' }}>
-                    {activeOrg.name}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
+          {/* Active Org Banner Card */}
+          <div style={{
+            ...cardStyle,
+            borderColor: activeOrg ? '#00D4AA40' : (isDark ? '#333' : '#E5E7EB'),
+            backgroundColor: activeOrg ? (isDark ? '#0A1F1A' : '#F0FDF9') : cardStyle.backgroundColor,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <div style={{ fontSize: '11px', color: activeOrg ? '#00D4AA' : (isDark ? '#888' : '#6B7280'), fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                  {activeOrg ? 'Organização Ativa' : 'Modo Pessoal (Local)'}
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: 700, color: isDark ? '#FFF' : '#111', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {activeOrg ? activeOrg.name : 'Armazenamento Local'}
+                  {activeOrg && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: isDark ? '#111' : '#E5E7EB', padding: '2px 8px', borderRadius: '12px' }}>
+                      {roleIcon(myRole || 'member')}
+                      <span style={{ fontSize: '11px', color: isDark ? '#CCC' : '#374151', fontWeight: 500 }}>{roleLabel(myRole || 'member')}</span>
+                    </div>
+                  )}
+                </div>
+                {activeOrg ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                    <span style={{ fontSize: '12px', color: isDark ? '#888' : '#6B7280' }}>ID da Organização:</span>
                     <code style={{
                       fontSize: '12px',
                       fontFamily: 'monospace',
                       color: '#00D4AA',
                       backgroundColor: isDark ? '#0A0A0A' : '#ECFDF5',
-                      padding: '4px 8px',
+                      padding: '3px 8px',
                       borderRadius: '4px',
                       userSelect: 'all' as const,
                     }}>
@@ -443,26 +450,33 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                       <Copy size={14} />
                     </button>
                   </div>
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {(myRole === 'owner' || myRole === 'admin') && (
-                    <button
-                      style={btnSecondary}
-                      onClick={() => setView('invite')}
-                    >
-                      <Mail size={14} /> Convidar
-                    </button>
-                  )}
-                  <button
-                    style={btnSecondary}
-                    onClick={() => setActiveOrg(null)}
-                  >
-                    Pessoal
+                ) : (
+                  <div style={{ fontSize: '12px', color: isDark ? '#888' : '#6B7280', marginTop: '4px' }}>
+                    Suas notas e tarefas estão salvas exclusivamente no computador neste modo.
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button style={{ ...btnPrimary, padding: '7px 14px', fontSize: '12px' }} onClick={() => setView('create')}>
+                  <Plus size={14} /> Criar
+                </button>
+                <button style={{ ...btnSecondary, padding: '7px 14px', fontSize: '12px' }} onClick={() => setView('join')}>
+                  <UserPlus size={14} /> Entrar
+                </button>
+                {activeOrg && (myRole === 'owner' || myRole === 'admin') && (
+                  <button style={{ ...btnSecondary, padding: '7px 14px', fontSize: '12px' }} onClick={() => setView('invite')}>
+                    <Mail size={14} /> Convidar
                   </button>
-                </div>
+                )}
+                {activeOrg && (
+                  <button style={{ ...btnSecondary, padding: '7px 14px', fontSize: '12px' }} onClick={() => setActiveOrg(null)}>
+                    Modo Pessoal
+                  </button>
+                )}
               </div>
             </div>
-          )}
+          </div>
 
           {/* My pending invites */}
           {myInvites.length > 0 && (
@@ -505,62 +519,54 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
             </div>
           )}
 
-          {/* Org list */}
+          {/* Org Selector Card */}
           <div style={cardStyle}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFF' : '#111' }}>
-                Minhas Organizações ({organizations.length})
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button style={{ ...btnPrimary, padding: '8px 14px', fontSize: '13px' }} onClick={() => setView('create')}>
-                  <Plus size={14} /> Criar
-                </button>
-                <button style={{ ...btnSecondary, padding: '8px 14px', fontSize: '13px' }} onClick={() => setView('join')}>
-                  <UserPlus size={14} /> Entrar
-                </button>
-              </div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFF' : '#111', marginBottom: '12px' }}>
+              Minhas Organizações ({organizations.length})
             </div>
 
             {organizations.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '30px', color: isDark ? '#666' : '#9CA3AF' }}>
-                <Building2 size={40} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
-                <div style={{ fontSize: '14px', marginBottom: '4px' }}>Nenhuma organização</div>
-                <div style={{ fontSize: '12px' }}>Crie uma organização ou peça para entrar em uma existente.</div>
+              <div style={{ textAlign: 'center', padding: '20px', color: isDark ? '#666' : '#9CA3AF' }}>
+                <Building2 size={32} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
+                <div style={{ fontSize: '13px' }}>Você ainda não faz parte de nenhuma organização na nuvem.</div>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {organizations.map(org => (
-                  <button
-                    key={org.id}
-                    onClick={() => { if (activeOrg?.id !== org.id) setActiveOrg(org); }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '12px',
-                      borderRadius: '8px',
-                      backgroundColor: activeOrg?.id === org.id
-                        ? (isDark ? '#0A1F1A' : '#F0FDF9')
-                        : (isDark ? '#111' : '#FFF'),
-                      border: activeOrg?.id === org.id
-                        ? '1px solid #00D4AA40'
-                        : `1px solid ${isDark ? '#222' : '#E5E7EB'}`,
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      width: '100%',
-                      color: isDark ? '#FFF' : '#111',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <Building2 size={18} color={activeOrg?.id === org.id ? '#00D4AA' : (isDark ? '#666' : '#9CA3AF')} />
-                      <div>
-                        <div style={{ fontWeight: 500, fontSize: '14px' }}>{org.name}</div>
-                        <div style={{ fontSize: '11px', color: isDark ? '#666' : '#9CA3AF' }}>{org.slug}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
+                {organizations.map(org => {
+                  const isActive = activeOrg?.id === org.id;
+                  return (
+                    <button
+                      key={org.id}
+                      onClick={() => { if (!isActive) setActiveOrg(org); }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        backgroundColor: isActive
+                          ? (isDark ? '#0A1F1A' : '#F0FDF9')
+                          : (isDark ? '#111' : '#FFF'),
+                        border: isActive
+                          ? '1px solid #00D4AA'
+                          : `1px solid ${isDark ? '#222' : '#E5E7EB'}`,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        color: isDark ? '#FFF' : '#111',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+                        <Building2 size={18} color={isActive ? '#00D4AA' : (isDark ? '#666' : '#9CA3AF')} />
+                        <div style={{ overflow: 'hidden' }}>
+                          <div style={{ fontWeight: 600, fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{org.name}</div>
+                          <div style={{ fontSize: '11px', color: isDark ? '#666' : '#9CA3AF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{org.slug}</div>
+                        </div>
                       </div>
-                    </div>
-                    <ChevronRight size={16} color={isDark ? '#444' : '#D1D5DB'} />
-                  </button>
-                ))}
+                      {isActive && <Check size={16} color="#00D4AA" />}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -678,37 +684,9 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
         </div>
       )}
 
-      {/* === ACTIVE ORG DETAILS (expanded by default) === */}
+      {/* === ACTIVE ORG DETAILS & MEMBERS === */}
       {view === 'list' && activeOrg && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Org info */}
-          <div style={cardStyle}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <div style={{ fontSize: '11px', color: isDark ? '#888' : '#6B7280', marginBottom: '4px' }}>ID da Organização</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <code style={{ fontSize: '13px', color: '#00D4AA', backgroundColor: isDark ? '#111' : '#F3F4F6', padding: '4px 8px', borderRadius: '4px' }}>
-                    {activeOrg.slug}
-                  </code>
-                  <button
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
-                    onClick={() => copyToClipboard(activeOrg.slug)}
-                  >
-                    <Copy size={14} color={isDark ? '#888' : '#6B7280'} />
-                  </button>
-                </div>
-                {activeOrg.description && (
-                  <div style={{ fontSize: '13px', color: isDark ? '#AAA' : '#4B5563', marginTop: '8px' }}>
-                    {activeOrg.description}
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                {roleIcon(myRole || 'member')}
-                <span style={{ fontSize: '12px', color: isDark ? '#AAA' : '#6B7280' }}>{roleLabel(myRole || 'member')}</span>
-              </div>
-            </div>
-          </div>
 
           {/* Members */}
           <div style={cardStyle}>

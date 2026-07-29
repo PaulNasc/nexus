@@ -696,6 +696,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       console.warn('Failed to sync profile display_name to Supabase:', err);
     }
 
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nexus-username-updated', { detail: { username: trimmed } }));
+    }
+
     return { success: true };
   };
 

@@ -250,6 +250,19 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
   }, [loadOrganizations, loadMyInvites]);
 
+  // Sync display_name in real-time when user updates their username in settings
+  useEffect(() => {
+    const handleUsernameUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<{ username: string }>;
+      const newUsername = customEvent.detail?.username;
+      if (newUsername && currentUserId) {
+        setMembers(prev => prev.map(m => m.user_id === currentUserId ? { ...m, display_name: newUsername } : m));
+      }
+    };
+    window.addEventListener('nexus-username-updated', handleUsernameUpdate);
+    return () => window.removeEventListener('nexus-username-updated', handleUsernameUpdate);
+  }, [currentUserId]);
+
   // When active org changes, load its details
   useEffect(() => {
     if (activeOrg) {
