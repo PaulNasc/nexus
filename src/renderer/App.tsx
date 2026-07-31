@@ -25,7 +25,6 @@ import { UserSettings } from './hooks/useSettings';
 import { Settings as SettingsIcon, LogOut, StickyNote, Sun, Moon, ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { useOrganization } from './contexts/OrganizationContext';
-import ProactiveSuggestionsWidget from './components/ProactiveSuggestionsWidget';
 import UpdateNotification from './components/UpdateNotification';
 import { NoOrganizationModal } from './components/NoOrganizationModal';
 
@@ -223,17 +222,6 @@ const App: React.FC<AppProps> = () => {
   } = useTasks();
 
   const { categories } = useCategories();
-  const { proactiveSuggestions } = useProductivityInsights({ 
-    tasks, 
-    stats, 
-    settings: {
-      dailyGoal: settings.dailyGoal,
-      aiResponseMode: settings.aiResponseMode,
-      aiProactiveMode: settings.aiProactiveMode,
-      showProductivityTips: settings.showProductivityTips,
-      showProgressInsights: settings.showProgressInsights
-    }
-  });
 
   // Hook para notificações
   const { showToast } = useToast();
@@ -720,20 +708,6 @@ const App: React.FC<AppProps> = () => {
           isOpen={isSettingsOpen}
           onClose={handleCloseSettings}
         />
-
-        {settings.aiProactiveMode && settings.showProactiveSuggestionsWidget && (
-          <ProactiveSuggestionsWidget 
-            suggestions={proactiveSuggestions}
-            settings={{
-              fontSizePx: settings.fontSizePx || 14,
-              cardOpacity: settings.cardOpacity || 95,
-              reduceAnimations: settings.reduceAnimations || false,
-              interfaceDensity: settings.interfaceDensity || 'normal',
-              widgetButtonOpacity: settings.widgetButtonOpacity || 100,
-              widgetButtonSize: settings.widgetButtonSize || 56
-            }}
-          />
-        )}
 
 
 
