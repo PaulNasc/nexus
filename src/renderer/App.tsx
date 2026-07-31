@@ -24,6 +24,7 @@ import { Screen } from '../shared/types/navigation';
 import { UserSettings } from './hooks/useSettings';
 import { Settings as SettingsIcon, LogOut, StickyNote, Sun, Moon, ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
+import { useOrganization } from './contexts/OrganizationContext';
 import UpdateNotification from './components/UpdateNotification';
 import { NoOrganizationModal } from './components/NoOrganizationModal';
 
