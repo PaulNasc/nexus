@@ -135,47 +135,38 @@ export class AppUpdater {
   private detectPortableMode(): boolean {
     if (!app.isPackaged) return false;
 
-    const portableExecutableFromEnv = process.env.PORTABLE_EXECUTABLE_FILE;
-    if (portableExecutableFromEnv) {
+    if (process.env.PORTABLE_EXECUTABLE_FILE || process.env.PORTABLE_EXECUTABLE_DIR) {
       logger.info('Portable mode detected via env', 'updater', {
-        portableExecutableFromEnv,
+        file: process.env.PORTABLE_EXECUTABLE_FILE,
+        dir: process.env.PORTABLE_EXECUTABLE_DIR,
       });
       return true;
     }
 
     const exePath = app.getPath('exe');
     const exeDir = path.dirname(exePath);
-    const exeName = path.basename(exePath).toLowerCase();
+    const lowerExePath = exePath.toLowerCase();
 
-    // Check 1: NSIS uninstaller exists → definitely NSIS
+    // Check 1: NSIS uninstaller exists → definitely NSIS installed mode
     const uninstaller = path.join(exeDir, 'Uninstall Nexus.exe');
-    const hasUninstaller = fs.existsSync(uninstaller);
+    if (fs.existsSync(uninstaller)) {
+      return false;
+    }
 
-    // Check 2: Portable artifact name pattern: nexus-X.X.X-x64.exe
-    const portablePattern = /^nexus-[\d.]+-x64\.exe$/i;
-    const matchesPortableName = portablePattern.test(exeName);
+    // Check 2: If running inside Temp directory without uninstaller → portable mode
+    if (lowerExePath.includes('temp') || lowerExePath.includes('appdata\\local\\temp')) {
+      logger.info('Portable mode detected via Temp path execution', 'updater', { exePath });
+      return true;
+    }
 
-    // NSIS installs have an uninstaller → definitely installed mode.
-    // Portable: no uninstaller AND exe name matches portable pattern.
-    // Fallback (no uninstaller, name doesn't match): check if inside Program Files.
-    const inProgramFiles = exePath.toLowerCase().includes('program files');
-    const isPortable = !hasUninstaller && !inProgramFiles && matchesPortableName;
-    // Looser fallback: no uninstaller, not in Program Files, and not just 'nexus.exe'
-    const exeIsNsisDefault = exeName === 'nexus.exe' && !matchesPortableName;
-    const resolvedIsPortable = !hasUninstaller && !inProgramFiles && !exeIsNsisDefault;
+    // Check 3: Check if inside standard installed directories (Program Files, AppData\Local\Programs)
+    const inInstalledDir = lowerExePath.includes('program files') || lowerExePath.includes('appdata\\local\\programs');
+    if (inInstalledDir) {
+      return false;
+    }
 
-    logger.info('Portable mode detection', 'updater', {
-      exePath,
-      exeName,
-      hasUninstaller,
-      inProgramFiles,
-      matchesPortableName,
-      exeIsNsisDefault,
-      resolvedIsPortable,
-      result: resolvedIsPortable ? 'portable' : 'nsis',
-    });
-
-    return resolvedIsPortable;
+    // Default fallback: if no uninstaller and not in standard installed dir → portable
+    return true;
   }
 
   /**
@@ -558,7 +549,10 @@ export class AppUpdater {
       return;
     }
 
-    const exeDir = path.dirname(exePath);
+    const portableDirFromEnv = process.env.PORTABLE_EXECUTABLE_DIR;
+    const exeDir = portableDirFromEnv && fs.existsSync(portableDirFromEnv)
+      ? portableDirFromEnv
+      : path.dirname(exePath);
     const targetExeName = `Nexus-${nextVersion}-x64.exe`;
     const targetExePath = path.join(exeDir, targetExeName);
     const updatePath = this.portableDownloadPath;
@@ -607,6 +601,13 @@ export class AppUpdater {
 
   private tryRetargetWindowsShortcuts(targetExePath: string): void {
     if (process.platform !== 'win32') return;
+
+    const lowerTarget = targetExePath.toLowerCase();
+    // Never retarget Windows shortcuts when running in Portable mode or if target is in Temp
+    if (this._isPortable || lowerTarget.includes('temp') || lowerTarget.includes('appdata\\local\\temp')) {
+      logger.info('Skipping shortcut retargeting for portable/temp execution', 'updater', { targetExePath });
+      return;
+    }
 
     const escapedTarget = targetExePath.replace(/'/g, "''");
     const script = `
