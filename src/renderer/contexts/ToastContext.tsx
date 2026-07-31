@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { Toast, ToastType } from '../components/Toast';
+import { Toast, ToastType, ToastAction } from '../components/Toast';
 import { useSettings } from '../hooks/useSettings';
+
+export type { ToastAction };
 
 interface ToastItem {
   id: string;
@@ -8,10 +10,17 @@ interface ToastItem {
   type: ToastType;
   duration?: number;
   onClick?: () => void;
+  actions?: ToastAction[];
 }
 
 interface ToastContextType {
-  showToast: (message: string, type?: ToastType, duration?: number, onClick?: () => void) => void;
+  showToast: (
+    message: string,
+    type?: ToastType,
+    duration?: number,
+    onClick?: () => void,
+    actions?: ToastAction[]
+  ) => void;
 }
 
 const ToastContext = createContext<ToastContextType | null>(null);
@@ -31,7 +40,8 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     message: string,
     type: ToastType = 'info',
     duration = 3500,
-    onClick?: () => void
+    onClick?: () => void,
+    actions?: ToastAction[]
   ) => {
     // Check if toast notifications parameter is enabled
     if (!showToastNotifications) {
@@ -39,7 +49,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    setToasts(prev => [...prev, { id, message, type, duration, onClick }]);
+    setToasts(prev => [...prev, { id, message, type, duration, onClick, actions }]);
   }, [showToastNotifications]);
 
   const removeToast = useCallback((id: string) => {
@@ -66,6 +76,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               type={toast.type}
               duration={toast.duration}
               onClick={toast.onClick}
+              actions={toast.actions}
               onClose={() => removeToast(toast.id)}
             />
           </div>

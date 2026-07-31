@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { supabase } from '../lib/supabase';
 import type { Organization, OrgMember, OrgInvite, OrgJoinRequest, OrgRole } from '../../shared/types/organization';
 import { useNotifications } from '../hooks/useNotifications';
+import { useToast } from './ToastContext';
 
 interface OrganizationContextType {
   // State
@@ -47,6 +48,7 @@ const ACTIVE_ORG_KEY = 'nexus-active-org-id';
 
 export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { showNotification } = useNotifications();
+  const { showToast } = useToast();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [activeOrg, setActiveOrgState] = useState<Organization | null>(null);
   const [members, setMembers] = useState<OrgMember[]>([]);
@@ -325,11 +327,61 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'org_join_requests', filter: `org_id=eq.${activeOrg.id}` },
-        (payload) => {
+        async (payload) => {
+          // Immediately reload org details so joinRequests state updates in real-time
+          if (activeOrg) {
+            void loadOrgDetails(activeOrg.id);
+          }
+
           if (initializedRef.current && payload.eventType === 'INSERT') {
             const inserted = payload.new as Record<string, unknown>;
-            const message = typeof inserted.message === 'string' ? inserted.message : '';
-            notifyOrgEvent('Nova solicitação de entrada', message || 'Uma nova solicitação foi enviada para sua organização.', `org-join-request-${activeOrg.id}`);
+            const requestId = typeof inserted.id === 'string' ? inserted.id : '';
+            const requesterId = typeof inserted.user_id === 'string' ? inserted.user_id : '';
+            const currentRole = myRole;
+
+            if (currentRole === 'owner' || currentRole === 'admin') {
+              let candidateName = 'Um novo usuário';
+              if (requesterId) {
+                const { data: profile } = await supabase
+                  .from('profiles')
+                  .select('display_name, email')
+                  .eq('id', requesterId)
+                  .maybeSingle();
+                if (profile) {
+                  candidateName = profile.display_name || profile.email || 'Um novo usuário';
+                }
+              }
+
+              // In-screen interactive Toast notification with Accept & Discard buttons
+              showToast(
+                `Solicitação de Entrada: ${candidateName} solicitou entrar na organização ${activeOrg.name}.`,
+                'info',
+                12000,
+                undefined,
+                [
+                  {
+                    label: 'Aceitar',
+                    variant: 'primary',
+                    onClick: () => {
+                      if (requestId) {
+                        void approveJoinRequest(requestId);
+                      }
+                    },
+                  },
+                  {
+                    label: 'Descartar',
+                    variant: 'danger',
+                    onClick: () => {
+                      if (requestId) {
+                        void rejectJoinRequest(requestId);
+                      }
+                    },
+                  },
+                ]
+              );
+
+              notifyOrgEvent('Nova solicitação de entrada', `${candidateName} solicitou entrar na organização.`, `org-join-request-${activeOrg.id}`);
+            }
           }
 
           if (initializedRef.current && payload.eventType === 'UPDATE') {
