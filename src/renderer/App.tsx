@@ -27,6 +27,7 @@ import { useAuth } from './contexts/AuthContext';
 import { useOrganization } from './contexts/OrganizationContext';
 import UpdateNotification from './components/UpdateNotification';
 import { NoOrganizationModal } from './components/NoOrganizationModal';
+import { desktopAdapter } from './lib/desktopAdapter';
 
 // Import styles
 import './styles/reset.css';
@@ -209,8 +210,17 @@ const App: React.FC<AppProps> = () => {
   useAppearance();
 
   // Hooks centralizados via Context (instância única)
-  const { signOut, isOffline } = useAuth();
+  const { user, signOut, isOffline } = useAuth();
   const { myRole, organizations, loading: orgsLoading } = useOrganization();
+
+  // Dynamic window resizing for Login vs App view
+  useEffect(() => {
+    if (user || isOffline) {
+      void desktopAdapter.setWindowSize(1280, 800, true);
+    } else {
+      void desktopAdapter.setWindowSize(480, 680, true);
+    }
+  }, [user, isOffline]);
   const { isLoading: notesLoading } = useNotes();
   const canViewMetrics = myRole === 'admin' || myRole === 'owner';
   const {

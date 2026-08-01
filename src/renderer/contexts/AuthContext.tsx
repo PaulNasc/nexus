@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Session, User, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { desktopAdapter } from '../lib/desktopAdapter';
 
 const SUPABASE_AUTH_STORAGE_KEY = 'nexus-supabase-auth';
 
@@ -270,7 +271,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signInWithGoogle = useCallback(async () => {
     try {
-      // Para Electron: gerar URL OAuth sem redirecionar automaticamente
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -281,16 +281,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) return { error };
 
-      // Abrir a URL no navegador externo do sistema via Electron IPC
       if (data?.url) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const api = (window as any).electronAPI;
-        if (api?.auth?.openExternal) {
-          await api.auth.openExternal(data.url);
-        } else {
-          // Fallback: tentar abrir diretamente (web)
-          window.open(data.url, '_blank');
-        }
+        await desktopAdapter.openExternal(data.url);
       }
 
       return { error: null };
@@ -312,13 +304,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) return { error };
 
       if (data?.url) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const api = (window as any).electronAPI;
-        if (api?.auth?.openExternal) {
-          await api.auth.openExternal(data.url);
-        } else {
-          window.open(data.url, '_blank');
-        }
+        await desktopAdapter.openExternal(data.url);
       }
 
       return { error: null };

@@ -30,6 +30,7 @@ export interface IDesktopAdapter {
   checkForUpdates(): Promise<void>;
   applyUpdate(): Promise<void>;
   getLogs(filter?: { level?: string; category?: string; limit?: number }): Promise<unknown[]>;
+  setWindowSize(width: number, height: number, center?: boolean): Promise<void>;
 }
 
 class DesktopAdapter implements IDesktopAdapter {
@@ -174,6 +175,29 @@ class DesktopAdapter implements IDesktopAdapter {
     }
 
     return [];
+  }
+
+  public async setWindowSize(width: number, height: number, center = true): Promise<void> {
+    if (this.isElectron()) {
+      const electronAPI = (window as unknown as { electronAPI?: { setWindowSize?: (w: number, h: number, c?: boolean) => Promise<void> } }).electronAPI;
+      if (electronAPI?.setWindowSize) {
+        await electronAPI.setWindowSize(width, height, center);
+        return;
+      }
+    }
+
+    if (this.isTauri()) {
+      try {
+        const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
+        const appWindow = getCurrentWindow();
+        await appWindow.setSize(new LogicalSize(width, height));
+        if (center) {
+          await appWindow.center();
+        }
+      } catch {
+        // Fallback
+      }
+    }
   }
 }
 
