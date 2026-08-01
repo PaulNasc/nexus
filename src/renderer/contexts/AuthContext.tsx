@@ -271,11 +271,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signInWithGoogle = useCallback(async () => {
     try {
+      const isDesktop = desktopAdapter.isElectron() || desktopAdapter.isTauri();
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: 'krigzis://auth/callback',
-          skipBrowserRedirect: true,
+          redirectTo: isDesktop ? 'krigzis://auth/callback' : window.location.origin,
+          skipBrowserRedirect: isDesktop,
         },
       });
 
@@ -293,11 +294,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signInWithDiscord = useCallback(async () => {
     try {
+      const isDesktop = desktopAdapter.isElectron() || desktopAdapter.isTauri();
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'discord',
         options: {
-          redirectTo: 'krigzis://auth/callback',
-          skipBrowserRedirect: true,
+          redirectTo: isDesktop ? 'krigzis://auth/callback' : window.location.origin,
+          skipBrowserRedirect: isDesktop,
         },
       });
 
