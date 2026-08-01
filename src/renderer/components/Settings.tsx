@@ -1785,34 +1785,51 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     <label style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '12px',
+                      gap: '14px',
                       cursor: 'pointer',
-                      padding: '12px',
+                      padding: '14px 16px',
                       backgroundColor: isDark ? '#141414' : '#FFFFFF',
-                      border: `1px solid ${isDark ? '#2A2A2A' : 'var(--color-border-primary)'}`,
-                      borderRadius: '8px',
-                      transition: 'all 0.2s ease'
+                      border: `1px solid ${!(settings.reduceAnimations ?? false) ? 'var(--color-primary-teal)' : (isDark ? '#2A2A2A' : 'var(--color-border-primary)')}`,
+                      borderRadius: '10px',
+                      transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                      boxShadow: !(settings.reduceAnimations ?? false) ? '0 0 12px rgba(20, 184, 166, 0.15)' : 'none',
                     }}>
                       <input
                         type="checkbox"
                         checked={!(settings.reduceAnimations ?? false)}
                         onChange={(e) => updateSettings({ reduceAnimations: !e.target.checked })}
-                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-teal)' }}
+                        style={{ width: '20px', height: '20px', accentColor: 'var(--color-primary-teal)' }}
                       />
                       <div style={{ flex: 1 }}>
                         <div style={{
                           fontSize: '14px',
                           color: 'var(--color-text-primary)',
-                          fontWeight: 500,
-                          marginBottom: '2px'
+                          fontWeight: 600,
+                          marginBottom: '3px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
                         }}>
-                          Animações e Transições
+                          <span>Animações e Transições Fluídas (Tauri v2)</span>
+                          {!(settings.reduceAnimations ?? false) && (
+                            <span style={{
+                              fontSize: '10px',
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              backgroundColor: 'rgba(20, 184, 166, 0.15)',
+                              color: 'var(--color-primary-teal)',
+                              fontWeight: 700,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px'
+                            }}>60 / 120 FPS Active</span>
+                          )}
                         </div>
                         <div style={{
                           fontSize: '12px',
-                          color: 'var(--color-text-secondary)'
+                          color: 'var(--color-text-secondary)',
+                          lineHeight: '1.4'
                         }}>
-                          Ativa efeitos visuais, hover e transições de tela
+                          Ativa efeitos visuais nativos, acelerados via GPU DirectComposition, hover dinâmico e transições suavizadas de modais e navegação.
                         </div>
                       </div>
                     </label>
