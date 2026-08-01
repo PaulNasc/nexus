@@ -60,13 +60,18 @@ class DesktopAdapter implements IDesktopAdapter {
     }
 
     if (this.isTauri()) {
-      return {
-        version: '1.3.5',
-        os: 'Windows',
-        platform: 'win32',
-        arch: 'x64',
-        isPortable: true,
-      };
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        return await invoke<SystemInfo>('get_system_info');
+      } catch {
+        return {
+          version: '1.3.5',
+          os: 'Windows (Tauri)',
+          platform: 'win32',
+          arch: 'x64',
+          isPortable: true,
+        };
+      }
     }
 
     return {
@@ -87,6 +92,16 @@ class DesktopAdapter implements IDesktopAdapter {
       }
     }
 
+    if (this.isTauri()) {
+      try {
+        const { sendNotification } = await import('@tauri-apps/plugin-notification');
+        sendNotification({ title, body: body || '' });
+        return;
+      } catch {
+        // Fallback to browser Notification if plugin not active
+      }
+    }
+
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       new Notification(title, { body });
     }
@@ -101,6 +116,16 @@ class DesktopAdapter implements IDesktopAdapter {
       }
     }
 
+    if (this.isTauri()) {
+      try {
+        const { open } = await import('@tauri-apps/plugin-shell');
+        await open(url);
+        return;
+      } catch {
+        // Fallback
+      }
+    }
+
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 
@@ -109,6 +134,15 @@ class DesktopAdapter implements IDesktopAdapter {
       const electronAPI = (window as unknown as { electronAPI?: { updater?: { checkForUpdates?: () => Promise<void> } } }).electronAPI;
       if (electronAPI?.updater?.checkForUpdates) {
         await electronAPI.updater.checkForUpdates();
+      }
+    }
+
+    if (this.isTauri()) {
+      try {
+        const { check } = await import('@tauri-apps/plugin-updater');
+        await check();
+      } catch {
+        // Fallback
       }
     }
   }
@@ -129,6 +163,16 @@ class DesktopAdapter implements IDesktopAdapter {
         return await electronAPI.logging.getLogs(filter);
       }
     }
+
+    if (this.isTauri()) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        return await invoke<unknown[]>('get_logs', { limit: filter?.limit || 100 });
+      } catch {
+        return [];
+      }
+    }
+
     return [];
   }
 }

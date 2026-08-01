@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/capability",
+  "identifier": "default",
+  "description": "Default capability for Nexus Tauri application",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "notification:default",
+    "dialog:default",
+    "fs:default",
+    "updater:default",
+    "shell:allow-open"
+  ]
+}
