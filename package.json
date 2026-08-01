@@ -48,6 +48,8 @@
     "build:optimize": "npm run build && echo 'Bundle optimized'",
     "analyze": "echo 'Bundle analysis completado'",
     "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
     "docs:organize": "node scripts/docs-organizer.js"
   },
   "keywords": [
