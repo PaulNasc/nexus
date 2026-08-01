@@ -31,6 +31,7 @@ export interface IDesktopAdapter {
   applyUpdate(): Promise<void>;
   getLogs(filter?: { level?: string; category?: string; limit?: number }): Promise<unknown[]>;
   setWindowSize(width: number, height: number, center?: boolean): Promise<void>;
+  fetchBlob(url: string, init?: RequestInit): Promise<Blob>;
 }
 
 class DesktopAdapter implements IDesktopAdapter {
@@ -198,6 +199,32 @@ class DesktopAdapter implements IDesktopAdapter {
         // Fallback
       }
     }
+  }
+
+  public async fetchBlob(url: string, init?: RequestInit): Promise<Blob> {
+    if (this.isTauri()) {
+      try {
+        const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
+        const res = await tauriFetch(url, {
+          method: init?.method || 'GET',
+          headers: init?.headers as Record<string, string>,
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const arrayBuffer = await res.arrayBuffer();
+        const contentType = res.headers.get('content-type') || 'application/octet-stream';
+        return new Blob([arrayBuffer], { type: contentType });
+      } catch (err) {
+        console.warn('Tauri native fetch failed, falling back to standard fetch', err);
+      }
+    }
+
+    const downloadResponse = await fetch(url, init);
+    if (!downloadResponse.ok) {
+      throw new Error(`HTTP ${downloadResponse.status}`);
+    }
+    return await downloadResponse.blob();
   }
 }
 
