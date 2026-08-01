@@ -47,6 +47,7 @@
     "test:ui": "jest --testPathPattern=src --testNamePattern='ui'",
     "build:optimize": "npm run build && echo 'Bundle optimized'",
     "analyze": "echo 'Bundle analysis completado'",
+    "tauri": "tauri",
     "docs:organize": "node scripts/docs-organizer.js"
   },
   "keywords": [
@@ -60,6 +61,7 @@
   "license": "ISC",
   "dependencies": {
     "@supabase/supabase-js": "^2.78.0",
+    "@tauri-apps/api": "^2.2.0",
     "archiver": "^7.0.1",
     "buffer": "^6.0.3",
     "cheerio": "^1.1.0",
@@ -79,6 +81,7 @@
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
+    "@tauri-apps/cli": "^2.2.0",
     "@types/archiver": "^7.0.0",
     "@types/cheerio": "^0.22.35",
     "@types/jest": "^29.5.14",
