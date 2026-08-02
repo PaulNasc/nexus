@@ -450,28 +450,83 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     const nextTempObjectUrls = new Set<string>();
     const xhrRefs: XMLHttpRequest[] = [];
 
-    const downloadWithProgress = (signedUrl: string, method: string, videoRef: string): Promise<Blob> => {
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhrRefs.push(xhr);
-        xhr.open(method, signedUrl, true);
-        xhr.responseType = 'blob';
-        xhr.onprogress = (event) => {
-          if (event.lengthComputable && !canceled) {
-            setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded: event.loaded, total: event.total } }));
+    const downloadWithProgress = async (signedUrl: string, videoRef: string): Promise<Blob> => {
+      // 1. In Tauri, use native HTTP plugin fetch to bypass browser CORS completely
+      if (desktopAdapter.isTauri()) {
+        try {
+          const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
+          const res = await tauriFetch(signedUrl, { method: 'GET' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const contentLength = Number(res.headers.get('content-length') || 0);
+
+          if (!res.body) {
+            const ab = await res.arrayBuffer();
+            if (!canceled) {
+              setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded: ab.byteLength, total: ab.byteLength } }));
+            }
+            const type = res.headers.get('content-type') || 'video/mp4';
+            return new Blob([ab], { type });
           }
-        };
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve(xhr.response as Blob);
-          } else {
-            reject(new Error(`HTTP ${xhr.status}`));
+
+          const reader = res.body.getReader();
+          const chunks: Uint8Array[] = [];
+          let loaded = 0;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) {
+              chunks.push(value);
+              loaded += value.length;
+              if (!canceled) {
+                setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded, total: contentLength } }));
+              }
+            }
           }
-        };
-        xhr.onerror = () => reject(new Error('Network error downloading video'));
-        xhr.onabort = () => reject(new Error('Download aborted'));
-        xhr.send();
-      });
+
+          const contentType = res.headers.get('content-type') || 'video/mp4';
+          return new Blob(chunks, { type: contentType });
+        } catch (tauriErr) {
+          console.warn('NoteViewerModal Tauri native stream fetch failed, falling back to desktopAdapter.fetchBlob:', tauriErr);
+          const blob = await desktopAdapter.fetchBlob(signedUrl);
+          if (!canceled) {
+            setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded: blob.size, total: blob.size } }));
+          }
+          return blob;
+        }
+      }
+
+      // 2. Standard fetch with stream progress for Web/Electron
+      const res = await fetch(signedUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const contentLength = Number(res.headers.get('content-length') || 0);
+
+      if (!res.body) {
+        const blob = await res.blob();
+        if (!canceled) {
+          setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded: blob.size, total: blob.size } }));
+        }
+        return blob;
+      }
+
+      const reader = res.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let loaded = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          loaded += value.length;
+          if (!canceled) {
+            setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded, total: contentLength } }));
+          }
+        }
+      }
+
+      const contentType = res.headers.get('content-type') || 'video/mp4';
+      return new Blob(chunks, { type: contentType });
     };
 
     const resolve = async () => {
@@ -502,7 +557,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
 
         if (urls[videoRef]) continue;
 
-        // ── Cloud download via native XHR for real progress support ────────
+        // ── Cloud download via native fetch for real progress support ──────
         let downloaded = false;
         let lastDownloadError: string | null = null;
 
@@ -514,7 +569,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
               setDownloadingVideos(prev => ({ ...prev, [videoRef]: true }));
               setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded: 0, total: 0 } }));
             }
-            const downloadedBlob = await downloadWithProgress(videoRef, 'GET', videoRef);
+            const downloadedBlob = await downloadWithProgress(videoRef, videoRef);
             if (!canceled) {
               const objectUrl = URL.createObjectURL(downloadedBlob);
               urls[videoRef] = objectUrl;
@@ -533,29 +588,37 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
 
         const candidateStoragePaths = new Set<string>();
         if (parsed.storagePath) {
-          candidateStoragePaths.add(parsed.storagePath);
+          try {
+            candidateStoragePaths.add(decodeURIComponent(parsed.storagePath));
+          } catch {
+            candidateStoragePaths.add(parsed.storagePath);
+          }
         }
 
-        const rawFileName = decodeFileLikePath(localVideoName).split('/').filter(Boolean).pop() || localVideoName;
-        if (noteOrgId && rawFileName) {
-          candidateStoragePaths.add(`org/${noteOrgId}/${rawFileName}`);
-          candidateStoragePaths.add(`org/${noteOrgId}/${encodeURIComponent(rawFileName)}`);
-          candidateStoragePaths.add(`org/${noteOrgId}/video/${rawFileName}`);
-          candidateStoragePaths.add(`org/${noteOrgId}/video/${encodeURIComponent(rawFileName)}`);
+        let rawFileName = localVideoName;
+        try {
+          rawFileName = decodeURIComponent(decodeFileLikePath(localVideoName).split('/').filter(Boolean).pop() || localVideoName);
+        } catch {
+          rawFileName = decodeFileLikePath(localVideoName).split('/').filter(Boolean).pop() || localVideoName;
         }
-        if (noteOwnerId && rawFileName) {
-          candidateStoragePaths.add(`user/${noteOwnerId}/${rawFileName}`);
-          candidateStoragePaths.add(`user/${noteOwnerId}/${encodeURIComponent(rawFileName)}`);
-          candidateStoragePaths.add(`user/${noteOwnerId}/video/${rawFileName}`);
-          candidateStoragePaths.add(`user/${noteOwnerId}/video/${encodeURIComponent(rawFileName)}`);
-        }
-        if (orgId && orgId !== noteOrgId && rawFileName) {
-          candidateStoragePaths.add(`org/${orgId}/${rawFileName}`);
-          candidateStoragePaths.add(`org/${orgId}/${encodeURIComponent(rawFileName)}`);
-        }
-        if (ownerId && ownerId !== noteOwnerId && rawFileName) {
-          candidateStoragePaths.add(`user/${ownerId}/${rawFileName}`);
-          candidateStoragePaths.add(`user/${ownerId}/${encodeURIComponent(rawFileName)}`);
+
+        if (rawFileName) {
+          if (noteOrgId) {
+            candidateStoragePaths.add(`org/${noteOrgId}/${rawFileName}`);
+            candidateStoragePaths.add(`org/${noteOrgId}/video/${rawFileName}`);
+          }
+          if (noteOwnerId) {
+            candidateStoragePaths.add(`user/${noteOwnerId}/${rawFileName}`);
+            candidateStoragePaths.add(`user/${noteOwnerId}/video/${rawFileName}`);
+          }
+          if (orgId && orgId !== noteOrgId) {
+            candidateStoragePaths.add(`org/${orgId}/${rawFileName}`);
+            candidateStoragePaths.add(`org/${orgId}/video/${rawFileName}`);
+          }
+          if (ownerId && ownerId !== noteOwnerId) {
+            candidateStoragePaths.add(`user/${ownerId}/${rawFileName}`);
+            candidateStoragePaths.add(`user/${ownerId}/video/${rawFileName}`);
+          }
         }
 
         if (candidateStoragePaths.size > 0) {
@@ -571,8 +634,8 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                 // 1. Get signed URL from Supabase edge function (native fetch)
                 const signed = await requestVideoSignedUrl(objectKey);
                 if (canceled) return;
-                // 2. Download blob using native XHR with progress events
-                downloadedBlob = await downloadWithProgress(signed.signedUrl, signed.method, videoRef);
+                // 2. Download blob using native fetch with stream progress
+                downloadedBlob = await downloadWithProgress(signed.signedUrl, videoRef);
               } catch (r2Err) {
                 lastDownloadError = r2Err instanceof Error ? r2Err.message : String(r2Err);
                 continue;

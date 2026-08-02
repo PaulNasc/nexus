@@ -10,6 +10,7 @@ import { useNotes } from '../contexts/NotesContext';
 import { useSystemTags } from '../contexts/SystemTagsContext';
 import { useStorageMode } from '../hooks/useStorageMode';
 import { isModuleLocked } from '../config/featureFlags';
+import { desktopAdapter } from '../lib/desktopAdapter';
 
 
 import { Button } from './ui/Button';
