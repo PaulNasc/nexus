@@ -32,11 +32,6 @@
       "endpoints": [
         "https://github.com/PaulNasc/nexus/releases/latest/download/latest.json"
       ]
-    },
-    "deep-link": {
-      "desktop": {
-        "schemes": ["nexus", "krigzis"]
-      }
     }
   },
   "bundle": {

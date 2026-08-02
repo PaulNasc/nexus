@@ -7,6 +7,7 @@ import { parseVideoRef } from '../utils/videoAttachment';
 import { parsePdfRef } from '../utils/pdfAttachment';
 import { downloadVideoBlobFromR2Signed } from '../lib/r2Videos';
 import { resolveImageUrl } from '../utils/image';
+import { desktopAdapter } from '../lib/desktopAdapter';
 
 interface NoteViewerModalProps {
   isOpen: boolean;

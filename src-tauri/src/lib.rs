@@ -13,7 +13,8 @@ pub fn run() {
             #[cfg(desktop)]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
-                let _ = app.deep_link().register_all();
+                let _ = app.deep_link().register("krigzis");
+                let _ = app.deep_link().register("nexus");
             }
             Ok(())
         })
