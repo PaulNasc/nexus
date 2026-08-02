@@ -10,6 +10,7 @@
     "fs:default",
     "updater:default",
     "shell:allow-open",
-    "http:default"
+    "http:default",
+    "deep-link:default"
   ]
 }

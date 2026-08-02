@@ -289,7 +289,21 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
         }
       }
 
-      const baseUrl = toPdfViewerUrl(primaryPdfSource);
+      const resolveLocalCandidate = async (rawUrl: string): Promise<string> => {
+        const cleanPath = decodeFileLikePath(rawUrl).replace(/\\/g, '/');
+        if (desktopAdapter.isTauri() && cleanPath && (cleanPath.includes('/') || /^[a-zA-Z]:/.test(cleanPath))) {
+          try {
+            const { convertFileSrc } = await import('@tauri-apps/api/core');
+            const assetUrl = convertFileSrc(cleanPath);
+            if (assetUrl) return assetUrl;
+          } catch (err) {
+            console.warn('NoteViewerModal convertFileSrc failed:', err);
+          }
+        }
+        return toPdfViewerUrl(rawUrl);
+      };
+
+      const baseUrl = await resolveLocalCandidate(primaryPdfSource);
       if (baseUrl && !candidates.includes(baseUrl)) candidates.push(baseUrl);
 
       const electron = getElectron();
@@ -303,7 +317,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
           const userDataDir = normalizedVideosDir.replace(/\/nexus-videos$/i, '');
           if (userDataDir && userDataDir !== normalizedVideosDir) {
             const remappedPath = `${userDataDir}/imported-pdfs/${fileName}`;
-            const remappedUrl = toPdfViewerUrl(remappedPath);
+            const remappedUrl = await resolveLocalCandidate(remappedPath);
             if (remappedUrl && !candidates.includes(remappedUrl)) {
               candidates.unshift(remappedUrl);
             }

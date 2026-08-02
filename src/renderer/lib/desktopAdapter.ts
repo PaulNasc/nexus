@@ -67,7 +67,7 @@ class DesktopAdapter implements IDesktopAdapter {
         return await invoke<SystemInfo>('get_system_info');
       } catch {
         return {
-          version: '1.3.5',
+          version: '1.4.0',
           os: 'Windows (Tauri)',
           platform: 'win32',
           arch: 'x64',
@@ -77,7 +77,7 @@ class DesktopAdapter implements IDesktopAdapter {
     }
 
     return {
-      version: '1.3.5',
+      version: '1.4.0',
       os: 'Web Browser',
       platform: 'web',
       arch: 'unknown',
@@ -191,12 +191,13 @@ class DesktopAdapter implements IDesktopAdapter {
       try {
         const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
         const appWindow = getCurrentWindow();
+        await appWindow.setResizable(true);
         await appWindow.setSize(new LogicalSize(width, height));
         if (center) {
           await appWindow.center();
         }
-      } catch {
-        // Fallback
+      } catch (err) {
+        console.warn('Tauri setWindowSize failed:', err);
       }
     }
   }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Nexus",
-  "version": "1.3.5",
+  "version": "1.4.0",
   "identifier": "com.nexus.app",
   "build": {
     "beforeDevCommand": "npm run dev:renderer",
@@ -32,11 +32,17 @@
       "endpoints": [
         "https://github.com/PaulNasc/nexus/releases/latest/download/latest.json"
       ]
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["nexus", "krigzis"]
+      }
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "Nexus Team",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Default capability for Nexus Tauri application","local":true,"windows":["main"],"permissions":["core:default","notification:default","dialog:default","fs:default","updater:default","shell:allow-open"]}}
