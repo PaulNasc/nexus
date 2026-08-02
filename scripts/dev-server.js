@@ -11,7 +11,7 @@ function freePort3000() {
       execSync('npx --yes kill-port 3000', { stdio: 'ignore' });
     }
   } catch {
-    // Port free
+    // Port already free
   }
 }
 
@@ -30,6 +30,14 @@ const server = spawn('npx', ['webpack', 'serve', '--config', 'webpack.renderer.c
   shell: true,
 });
 
-server.on('exit', (code) => {
-  process.exit(code || 0);
+// Propagate Ctrl+C gracefully to the child process
+process.on('SIGINT', () => { server.kill('SIGINT'); });
+process.on('SIGTERM', () => { server.kill('SIGTERM'); });
+
+server.on('exit', (code, signal) => {
+  // Tauri kills the webpack dev server on shutdown via signal or with exit code -1 / 4294967295.
+  // Treat any externally-signalled or unexpected kill as a clean exit (code 0)
+  // so `npm run tauri:dev` doesn't report a false npm ERR.
+  const isCleanShutdown = signal !== null || code === null || code === 0 || code === 4294967295 || code === -1;
+  process.exit(isCleanShutdown ? 0 : code);
 });
