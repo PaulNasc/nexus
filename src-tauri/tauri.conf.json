@@ -23,7 +23,18 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$HOME/**",
+          "$APPDATA/**",
+          "$APPDATA/../Local/**",
+          "$APPCONFIG/**",
+          "$DOCUMENT/**",
+          "$DOWNLOAD/**"
+        ]
+      }
     }
   },
   "plugins": {
