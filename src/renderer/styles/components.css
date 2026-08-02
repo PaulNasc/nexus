@@ -1456,6 +1456,23 @@
   }
 }
 
+.video-progress-indeterminate {
+  height: 100%;
+  border-radius: 99px;
+  background: var(--color-primary-teal, #00b4a0);
+  width: 40%;
+  animation: video-progress-indeterminate-anim 1.4s ease-in-out infinite;
+}
+
+@keyframes video-progress-indeterminate-anim {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
 .notes-utilities-folder-form {
   display: flex;
   align-items: center;

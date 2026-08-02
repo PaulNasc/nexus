@@ -93,6 +93,13 @@ const callR2Function = async (
   return responseBody;
 };
 
+export const requestVideoSignedUrl = async (objectKey: string): Promise<R2SignedUrlResponse> => {
+  return await requestSignedUrl({
+    action: 'download',
+    objectKey,
+  });
+};
+
 const requestSignedUrl = async (payload: R2SignedUrlRequest): Promise<R2SignedUrlResponse> => {
   const data = await callR2Function(payload);
 

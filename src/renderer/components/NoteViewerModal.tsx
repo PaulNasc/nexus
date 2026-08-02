@@ -5,7 +5,7 @@ import type { ElectronAPI } from '../../main/preload';
 import { Note, NoteAttachment } from '../../shared/types/note';
 import { parseVideoRef } from '../utils/videoAttachment';
 import { parsePdfRef } from '../utils/pdfAttachment';
-import { downloadVideoBlobFromR2Signed } from '../lib/r2Videos';
+import { requestVideoSignedUrl } from '../lib/r2Videos';
 import { resolveImageUrl } from '../utils/image';
 import { desktopAdapter } from '../lib/desktopAdapter';
 
@@ -131,8 +131,11 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [isIframeLoading, setIsIframeLoading] = useState(false);
   const [downloadingVideos, setDownloadingVideos] = useState<Record<string, boolean>>({});
+  const [videoProgress, setVideoProgress] = useState<Record<string, { loaded: number; total: number }>>({});
   const tempVideoObjectUrlsRef = useRef<Set<string>>(new Set());
   const tempPdfObjectUrlsRef = useRef<Set<string>>(new Set());
+  // Guard: tracks which videoRefs are actively being downloaded to prevent duplicate requests
+  const activeDownloadsRef = useRef<Set<string>>(new Set());
 
   const modalScrollRef = useRef<HTMLDivElement | null>(null);
   const [showModalScrollTop, setShowModalScrollTop] = useState(false);
@@ -384,6 +387,8 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       setVideoUrls({});
       setVideoPaths({});
       setVideoMissing({});
+      setVideoProgress({});
+      activeDownloadsRef.current.clear();
       return;
     }
 
@@ -393,11 +398,36 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       (window as unknown as { __TAURI__?: unknown }).__TAURI__
     );
 
-    // In non-Tauri, non-Electron context (pure web) — nothing to do
+    // In pure web context with no desktop API — nothing to do
     if (!electron?.video && !isTauri) return;
 
     let canceled = false;
     const nextTempObjectUrls = new Set<string>();
+    const xhrRefs: XMLHttpRequest[] = [];
+
+    const downloadWithProgress = (signedUrl: string, method: string, videoRef: string): Promise<Blob> => {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhrRefs.push(xhr);
+        xhr.open(method, signedUrl, true);
+        xhr.responseType = 'blob';
+        xhr.onprogress = (event) => {
+          if (event.lengthComputable && !canceled) {
+            setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded: event.loaded, total: event.total } }));
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(xhr.response as Blob);
+          } else {
+            reject(new Error(`HTTP ${xhr.status}`));
+          }
+        };
+        xhr.onerror = () => reject(new Error('Network error downloading video'));
+        xhr.onabort = () => reject(new Error('Download aborted'));
+        xhr.send();
+      });
+    };
 
     const resolve = async () => {
       const noteOwnerId = ownerId ?? null;
@@ -408,6 +438,11 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       const missing: Record<string, boolean> = {};
 
       for (const videoRef of note.attachedVideos!) {
+        if (canceled) break;
+
+        // Skip if already downloading this ref (guard against duplicate re-renders)
+        if (activeDownloadsRef.current.has(videoRef)) continue;
+
         const parsed = parseVideoRef(videoRef);
         const localVideoName = parsed.localFileName || videoRef;
 
@@ -420,10 +455,9 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
           }
         }
 
-        // If we already resolved from local cache, move on
         if (urls[videoRef]) continue;
 
-        // ── Cloud download (both Tauri & Electron fallback) ────────────────
+        // ── Cloud download via native XHR for real progress support ────────
         let downloaded = false;
         let lastDownloadError: string | null = null;
 
@@ -442,14 +476,20 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
         }
 
         if (candidateStoragePaths.size > 0) {
+          activeDownloadsRef.current.add(videoRef);
           try {
             if (!canceled) {
               setDownloadingVideos(prev => ({ ...prev, [videoRef]: true }));
+              setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded: 0, total: 0 } }));
             }
             for (const objectKey of candidateStoragePaths) {
               let downloadedBlob: Blob;
               try {
-                downloadedBlob = await downloadVideoBlobFromR2Signed(objectKey);
+                // 1. Get signed URL from Supabase edge function (native fetch)
+                const signed = await requestVideoSignedUrl(objectKey);
+                if (canceled) return;
+                // 2. Download blob using native XHR with progress events
+                downloadedBlob = await downloadWithProgress(signed.signedUrl, signed.method, videoRef);
               } catch (r2Err) {
                 lastDownloadError = r2Err instanceof Error ? r2Err.message : String(r2Err);
                 continue;
@@ -467,6 +507,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
           } catch (downloadError) {
             lastDownloadError = downloadError instanceof Error ? downloadError.message : String(downloadError);
           } finally {
+            activeDownloadsRef.current.delete(videoRef);
             if (!canceled) {
               setDownloadingVideos(prev => ({ ...prev, [videoRef]: false }));
             }
@@ -484,7 +525,6 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
 
         if (!downloaded) {
           missing[videoRef] = true;
-          // Electron: get expected local path for display
           if (electron?.video) {
             const expectedPath = await electron.video.getLocalPath(localVideoName);
             paths[videoRef] = expectedPath;
@@ -506,6 +546,10 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
 
     return () => {
       canceled = true;
+      // Abort any in-flight XHR requests
+      for (const xhr of xhrRefs) {
+        try { xhr.abort(); } catch { /* ignore */ }
+      }
       for (const objectUrl of nextTempObjectUrls) {
         try { URL.revokeObjectURL(objectUrl); } catch { /* ignore */ }
       }
@@ -852,11 +896,42 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                               </button>
                             </div>
                           </div>
-                          <div style={{ position: 'relative', width: '100%', height: '52vh', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <div style={{ position: 'relative', width: '100%', height: '52vh', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                             {isDownloading ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-                                <Loader2 className="notes-utilities-spin" size={32} color="#fff" />
-                                <span style={{ color: '#fff', fontSize: 13, background: 'rgba(0,0,0,0.7)', padding: '4px 10px', borderRadius: 6, animation: 'notes-pulse-opacity 2s ease-in-out infinite' }}>Baixando vídeo do R2...</span>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, width: '100%', padding: '0 32px' }}>
+                                <Loader2 className="notes-utilities-spin" size={28} color="rgba(255,255,255,0.9)" />
+                                {/* Progress bar */}
+                                <div style={{ width: '100%', maxWidth: 320 }}>
+                                  <div style={{
+                                    height: 3,
+                                    borderRadius: 99,
+                                    background: 'rgba(255,255,255,0.12)',
+                                    overflow: 'hidden',
+                                    position: 'relative',
+                                  }}>
+                                    {videoProgress[videoRef]?.total > 0 ? (
+                                      <div style={{
+                                        height: '100%',
+                                        borderRadius: 99,
+                                        background: 'var(--color-primary-teal, #00b4a0)',
+                                        width: `${Math.round((videoProgress[videoRef].loaded / videoProgress[videoRef].total) * 100)}%`,
+                                        transition: 'width 0.2s ease',
+                                      }} />
+                                    ) : (
+                                      <div className="video-progress-indeterminate" />
+                                    )}
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                                    <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11 }}>Baixando do R2...</span>
+                                    {videoProgress[videoRef]?.total > 0 && (
+                                      <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+                                        {Math.round((videoProgress[videoRef].loaded / videoProgress[videoRef].total) * 100)}%
+                                        {' · '}
+                                        {(videoProgress[videoRef].total / 1024 / 1024).toFixed(1)} MB
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
                             ) : isMissing ? (
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 20, textAlign: 'center' }}>
