@@ -11,7 +11,7 @@ function freePort3000() {
       execSync('npx --yes kill-port 3000', { stdio: 'ignore' });
     }
   } catch {
-    // Port 3000 was already free or no process was bound
+    // Port 3000 was free
   }
 }
 
