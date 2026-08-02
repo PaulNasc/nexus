@@ -318,13 +318,23 @@ const App: React.FC<AppProps> = () => {
         // Request notification permission
         await requestPermission();
 
-        // Get system information
-        if (electronAPI) {
-          const ver = await electronAPI.updater?.getVersion?.() || electronAPI.system?.version || '';
+        // Get system information via unified desktopAdapter
+        try {
+          const sysInfo = await desktopAdapter.getSystemInfo();
           setSystemInfo({
-            platform: electronAPI.system?.platform || '',
-            version: typeof ver === 'string' ? ver : String(ver)
+            platform: sysInfo.platform || 'win32',
+            version: sysInfo.version || '1.4.0'
           });
+        } catch {
+          if (electronAPI) {
+            const ver = await electronAPI.updater?.getVersion?.() || electronAPI.system?.version || '1.4.0';
+            setSystemInfo({
+              platform: electronAPI.system?.platform || 'win32',
+              version: typeof ver === 'string' ? ver : String(ver)
+            });
+          } else {
+            setSystemInfo({ platform: 'win32', version: '1.4.0' });
+          }
         }
 
         setIsLoading(false);

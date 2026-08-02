@@ -277,22 +277,67 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       const candidates: string[] = [];
       const parsedPdf = parsePdfRef(primaryPdfSource);
 
-      if (parsedPdf.storagePath) {
+      // 1. Direct HTTPS/HTTP URL (e.g. R2 signed URL): fetch as Blob to avoid WebView2 iframe cross-origin block
+      if (/^https?:\/\//i.test(primaryPdfSource)) {
         try {
-          const blob = await downloadVideoBlobFromR2Signed(parsedPdf.storagePath);
-          if (canceled) return;
-          const blobUrl = URL.createObjectURL(blob);
-          nextPdfObjectUrls.add(blobUrl);
-          candidates.push(blobUrl);
+          const blob = await desktopAdapter.fetchBlob(primaryPdfSource);
+          if (!canceled && blob) {
+            const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([await blob.arrayBuffer()], { type: 'application/pdf' });
+            const blobUrl = URL.createObjectURL(pdfBlob);
+            nextPdfObjectUrls.add(blobUrl);
+            candidates.push(blobUrl);
+          }
         } catch (err) {
-          console.warn('NoteViewerModal PDF cloud download failed:', {
-            source: primaryPdfSource,
-            storagePath: parsedPdf.storagePath,
-            error: err instanceof Error ? err.message : String(err),
-          });
+          console.warn('NoteViewerModal PDF HTTPS fetch failed, falling back to direct URL:', err);
         }
       }
 
+      // 2. Cloud PDF storage paths (pdfcloud: or candidate storage keys)
+      const noteOwnerId = note?.user_id || ownerId || null;
+      const noteOrgId = note?.organization_id || orgId || null;
+
+      const pdfCandidateStoragePaths = new Set<string>();
+      if (parsedPdf.storagePath) {
+        pdfCandidateStoragePaths.add(parsedPdf.storagePath);
+      } else if (!/^https?:\/\//i.test(primaryPdfSource) && !primaryPdfSource.startsWith('file://')) {
+        const rawFileName = decodeFileLikePath(primaryPdfSource).split('/').filter(Boolean).pop() || '';
+        if (rawFileName) {
+          if (noteOrgId) {
+            pdfCandidateStoragePaths.add(`org/${noteOrgId}/pdf/${rawFileName}`);
+            pdfCandidateStoragePaths.add(`org/${noteOrgId}/pdf/${encodeURIComponent(rawFileName)}`);
+            pdfCandidateStoragePaths.add(`org/${noteOrgId}/${rawFileName}`);
+            pdfCandidateStoragePaths.add(`org/${noteOrgId}/${encodeURIComponent(rawFileName)}`);
+          }
+          if (noteOwnerId) {
+            pdfCandidateStoragePaths.add(`user/${noteOwnerId}/pdf/${rawFileName}`);
+            pdfCandidateStoragePaths.add(`user/${noteOwnerId}/pdf/${encodeURIComponent(rawFileName)}`);
+            pdfCandidateStoragePaths.add(`user/${noteOwnerId}/${rawFileName}`);
+            pdfCandidateStoragePaths.add(`user/${noteOwnerId}/${encodeURIComponent(rawFileName)}`);
+          }
+          if (orgId && orgId !== noteOrgId) {
+            pdfCandidateStoragePaths.add(`org/${orgId}/pdf/${rawFileName}`);
+            pdfCandidateStoragePaths.add(`org/${orgId}/${rawFileName}`);
+          }
+        }
+      }
+
+      if (pdfCandidateStoragePaths.size > 0) {
+        for (const storagePath of pdfCandidateStoragePaths) {
+          try {
+            const blob = await downloadVideoBlobFromR2Signed(storagePath);
+            if (canceled) return;
+            const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([await blob.arrayBuffer()], { type: 'application/pdf' });
+            const blobUrl = URL.createObjectURL(pdfBlob);
+            nextPdfObjectUrls.add(blobUrl);
+            candidates.push(blobUrl);
+            break;
+          } catch (err) {
+            console.warn('NoteViewerModal PDF candidate storage path failed:', storagePath, err);
+          }
+        }
+      }
+
+      // 3. Local file candidate resolution
       const resolveLocalCandidate = async (rawUrl: string): Promise<string> => {
         const cleanPath = decodeFileLikePath(rawUrl).replace(/\\/g, '/');
         if (desktopAdapter.isTauri() && cleanPath && (cleanPath.includes('/') || /^[a-zA-Z]:/.test(cleanPath))) {
@@ -430,8 +475,8 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     };
 
     const resolve = async () => {
-      const noteOwnerId = ownerId ?? null;
-      const noteOrgId = orgId ?? null;
+      const noteOwnerId = note?.user_id || ownerId || null;
+      const noteOrgId = note?.organization_id || orgId || null;
 
       const urls: Record<string, string> = {};
       const paths: Record<string, string> = {};
@@ -461,18 +506,56 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
         let downloaded = false;
         let lastDownloadError: string | null = null;
 
+        // Direct HTTPS video URL
+        if (/^https?:\/\//i.test(videoRef)) {
+          activeDownloadsRef.current.add(videoRef);
+          try {
+            if (!canceled) {
+              setDownloadingVideos(prev => ({ ...prev, [videoRef]: true }));
+              setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded: 0, total: 0 } }));
+            }
+            const downloadedBlob = await downloadWithProgress(videoRef, 'GET', videoRef);
+            if (!canceled) {
+              const objectUrl = URL.createObjectURL(downloadedBlob);
+              urls[videoRef] = objectUrl;
+              paths[videoRef] = '[temporario em memoria]';
+              nextTempObjectUrls.add(objectUrl);
+              downloaded = true;
+            }
+          } catch (err) {
+            lastDownloadError = err instanceof Error ? err.message : String(err);
+          } finally {
+            activeDownloadsRef.current.delete(videoRef);
+            if (!canceled) setDownloadingVideos(prev => ({ ...prev, [videoRef]: false }));
+          }
+          if (downloaded) continue;
+        }
+
         const candidateStoragePaths = new Set<string>();
         if (parsed.storagePath) {
           candidateStoragePaths.add(parsed.storagePath);
-        } else {
-          if (noteOrgId) {
-            candidateStoragePaths.add(`org/${noteOrgId}/${encodeURIComponent(localVideoName)}`);
-            candidateStoragePaths.add(`org/${noteOrgId}/${localVideoName}`);
-          }
-          if (noteOwnerId) {
-            candidateStoragePaths.add(`user/${noteOwnerId}/${encodeURIComponent(localVideoName)}`);
-            candidateStoragePaths.add(`user/${noteOwnerId}/${localVideoName}`);
-          }
+        }
+
+        const rawFileName = decodeFileLikePath(localVideoName).split('/').filter(Boolean).pop() || localVideoName;
+        if (noteOrgId && rawFileName) {
+          candidateStoragePaths.add(`org/${noteOrgId}/${rawFileName}`);
+          candidateStoragePaths.add(`org/${noteOrgId}/${encodeURIComponent(rawFileName)}`);
+          candidateStoragePaths.add(`org/${noteOrgId}/video/${rawFileName}`);
+          candidateStoragePaths.add(`org/${noteOrgId}/video/${encodeURIComponent(rawFileName)}`);
+        }
+        if (noteOwnerId && rawFileName) {
+          candidateStoragePaths.add(`user/${noteOwnerId}/${rawFileName}`);
+          candidateStoragePaths.add(`user/${noteOwnerId}/${encodeURIComponent(rawFileName)}`);
+          candidateStoragePaths.add(`user/${noteOwnerId}/video/${rawFileName}`);
+          candidateStoragePaths.add(`user/${noteOwnerId}/video/${encodeURIComponent(rawFileName)}`);
+        }
+        if (orgId && orgId !== noteOrgId && rawFileName) {
+          candidateStoragePaths.add(`org/${orgId}/${rawFileName}`);
+          candidateStoragePaths.add(`org/${orgId}/${encodeURIComponent(rawFileName)}`);
+        }
+        if (ownerId && ownerId !== noteOwnerId && rawFileName) {
+          candidateStoragePaths.add(`user/${ownerId}/${rawFileName}`);
+          candidateStoragePaths.add(`user/${ownerId}/${encodeURIComponent(rawFileName)}`);
         }
 
         if (candidateStoragePaths.size > 0) {

@@ -205,14 +205,22 @@ const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
     </div>
   );
 };
-
-const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
+const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
   const [status, setStatus] = useState<UpdaterStatus>({ state: 'idle' });
   const [autoDownload, setAutoDownload] = useState(false);
+  const [currentVersion, setCurrentVersion] = useState('1.4.0');
+  const [platformInfo, setPlatformInfo] = useState('Windows (Tauri)');
+  const [isChecking, setIsChecking] = useState(false);
 
   const getElectron = () => (window as unknown as { electronAPI?: import('../../main/preload').ElectronAPI }).electronAPI;
 
   useEffect(() => {
+    // Load system version & platform via desktopAdapter
+    desktopAdapter.getSystemInfo().then((info) => {
+      if (info.version) setCurrentVersion(info.version);
+      if (info.os) setPlatformInfo(info.os);
+    }).catch(() => {});
+
     const electron = getElectron();
     if (!electron?.updater) return;
 
@@ -228,11 +236,20 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
   }, []);
 
   const checkUpdates = async () => {
+    setIsChecking(true);
     try {
-      const next = await getElectron()?.updater?.checkForUpdates?.();
-      if (next) setStatus(next as UpdaterStatus);
+      if (desktopAdapter.isTauri()) {
+        await desktopAdapter.checkForUpdates();
+        setStatus({ state: 'idle' });
+      } else {
+        const next = await getElectron()?.updater?.checkForUpdates?.();
+        if (next) setStatus(next as UpdaterStatus);
+      }
     } catch (error) {
       console.error('Falha ao verificar atualizações:', error);
+      setStatus({ state: 'error', error: 'Não foi possível verificar atualizações no momento.' });
+    } finally {
+      setIsChecking(false);
     }
   };
 
@@ -246,7 +263,11 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
 
   const installUpdate = async () => {
     try {
-      await getElectron()?.updater?.quitAndInstall?.();
+      if (desktopAdapter.isTauri()) {
+        await desktopAdapter.applyUpdate();
+      } else {
+        await getElectron()?.updater?.quitAndInstall?.();
+      }
     } catch (error) {
       console.error('Falha ao instalar atualização:', error);
     }
@@ -261,54 +282,123 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
     }
   };
 
+  const getStatusBadge = () => {
+    if (isChecking || status.state === 'checking') {
+      return { label: 'Verificando...', bg: 'rgba(59,130,246,0.12)', color: '#60A5FA', border: 'rgba(59,130,246,0.25)' };
+    }
+    switch (status.state) {
+      case 'available':
+        return { label: 'Atualização disponível', bg: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: 'rgba(245,158,11,0.25)' };
+      case 'downloading':
+        return { label: 'Baixando...', bg: 'rgba(59,130,246,0.12)', color: '#3B82F6', border: 'rgba(59,130,246,0.25)' };
+      case 'downloaded':
+        return { label: 'Pronto para instalar', bg: 'rgba(16,185,129,0.12)', color: '#10B981', border: 'rgba(16,185,129,0.25)' };
+      case 'error':
+        return { label: 'Erro ao verificar', bg: 'rgba(239,68,68,0.12)', color: '#EF4444', border: 'rgba(239,68,68,0.25)' };
+      default:
+        return { label: 'Você está usando a versão mais recente', bg: 'rgba(45,212,191,0.12)', color: 'var(--color-primary-teal)', border: 'rgba(45,212,191,0.25)' };
+    }
+  };
+
+  const badge = getStatusBadge();
+
   return (
-    <div style={{ display: 'grid', gap: '16px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* Header Info Card */}
       <div style={{
-        padding: '16px',
-        borderRadius: '10px',
-        border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-        backgroundColor: isDark ? '#0F0F0F' : '#FFFFFF',
+        padding: '20px',
+        borderRadius: '12px',
+        border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB'}`,
+        backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : '#FFFFFF',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '16px',
       }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div>
-            <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>Status</div>
-            <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFFFFF' : '#1F2937' }}>{status.state}</div>
+            <h4 style={{ fontSize: '16px', fontWeight: 600, color: isDark ? '#FFFFFF' : '#1F2937', margin: '0 0 4px 0' }}>
+              Atualizações do Nexus
+            </h4>
+            <p style={{ fontSize: '12px', color: isDark ? '#888' : '#6B7280', margin: 0 }}>
+              Gerencie a versão do aplicativo e atualizações automáticas do sistema.
+            </p>
+          </div>
+          <span style={{
+            fontSize: '12px',
+            fontWeight: 500,
+            padding: '4px 10px',
+            borderRadius: '999px',
+            backgroundColor: badge.bg,
+            color: badge.color,
+            border: `1px solid ${badge.border}`,
+          }}>
+            {badge.label}
+          </span>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: '12px',
+          padding: '14px 16px',
+          borderRadius: '10px',
+          backgroundColor: isDark ? 'rgba(0,0,0,0.25)' : '#F9FAFB',
+          border: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6'}`,
+        }}>
+          <div>
+            <div style={{ fontSize: '11px', color: isDark ? '#888' : '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Versão Instalação</div>
+            <div style={{ fontSize: '15px', fontWeight: 600, color: isDark ? '#FFFFFF' : '#1F2937', marginTop: '2px' }}>
+              v{currentVersion}
+            </div>
           </div>
           <div>
-            <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>Versão disponível</div>
-            <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFFFFF' : '#1F2937' }}>{status.version || '-'}</div>
+            <div style={{ fontSize: '11px', color: isDark ? '#888' : '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Plataforma</div>
+            <div style={{ fontSize: '13px', fontWeight: 500, color: isDark ? '#CCC' : '#374151', marginTop: '4px' }}>
+              {platformInfo}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: '11px', color: isDark ? '#888' : '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Nova Versão</div>
+            <div style={{ fontSize: '13px', fontWeight: 500, color: status.version ? 'var(--color-primary-teal)' : (isDark ? '#888' : '#9CA3AF'), marginTop: '4px' }}>
+              {status.version ? `v${status.version}` : 'Nenhuma'}
+            </div>
           </div>
         </div>
 
         {status.releaseNotes && (
-          <details style={{ marginBottom: '12px' }}>
-            <summary style={{ cursor: 'pointer', fontSize: '13px', color: 'var(--color-primary-teal)' }}>Release notes</summary>
-            <pre style={{ marginTop: '8px', whiteSpace: 'pre-wrap', fontSize: '12px', color: isDark ? '#A0A0A0' : '#4B5563' }}>{status.releaseNotes}</pre>
+          <details style={{ marginTop: '4px' }}>
+            <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 500, color: 'var(--color-primary-teal)' }}>Notas da versão</summary>
+            <pre style={{ marginTop: '8px', padding: '10px 12px', borderRadius: '8px', background: isDark ? '#080808' : '#F3F4F6', whiteSpace: 'pre-wrap', fontSize: '12px', color: isDark ? '#A0A0A0' : '#4B5563', maxHeight: 180, overflowY: 'auto' }}>{status.releaseNotes}</pre>
           </details>
         )}
 
         {status.progress && status.state === 'downloading' && (
-          <div style={{ marginBottom: '12px' }}>
-            <div style={{ width: '100%', height: '6px', borderRadius: '999px', backgroundColor: isDark ? '#2A2A2A' : '#E5E7EB', overflow: 'hidden' }}>
-              <div style={{ width: `${status.progress.percent}%`, height: '100%', background: 'var(--color-primary-gradient)' }} />
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: isDark ? '#CCC' : '#374151', marginBottom: '6px' }}>
+              <span>Progresso do download</span>
+              <span>{status.progress.percent}%</span>
             </div>
-            <div style={{ fontSize: '11px', marginTop: '4px', color: isDark ? '#A0A0A0' : '#6B7280' }}>{status.progress.percent}%</div>
+            <div style={{ width: '100%', height: '6px', borderRadius: '999px', backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB', overflow: 'hidden' }}>
+              <div style={{ width: `${status.progress.percent}%`, height: '100%', background: 'var(--color-primary-teal)', transition: 'width 0.2s ease' }} />
+            </div>
           </div>
         )}
 
         {status.error && (
-          <div style={{ marginBottom: '12px', fontSize: '12px', color: '#EF4444' }}>{status.error}</div>
+          <div style={{ fontSize: '12px', color: '#EF4444', backgroundColor: 'rgba(239,68,68,0.08)', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.2)' }}>
+            {status.error}
+          </div>
         )}
 
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <Button onClick={checkUpdates}>
-            <RefreshCw size={15} style={{ marginRight: '6px' }} />
-            Verificar Atualizações
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '4px' }}>
+          <Button onClick={checkUpdates} disabled={isChecking}>
+            <RefreshCw size={15} className={isChecking ? 'notes-utilities-spin' : ''} style={{ marginRight: '6px' }} />
+            {isChecking ? 'Verificando...' : 'Verificar Atualizações'}
           </Button>
           {(status.state === 'available' || status.state === 'downloading') && (
             <Button onClick={downloadUpdate} variant="secondary">
               <Download size={15} style={{ marginRight: '6px' }} />
-              Baixar
+              Baixar Atualização
             </Button>
           )}
           {status.state === 'downloaded' && (
@@ -319,22 +409,23 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
         </div>
       </div>
 
+      {/* Auto download preference card */}
       <div style={{
-        padding: '16px',
-        borderRadius: '10px',
-        border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-        backgroundColor: isDark ? '#0F0F0F' : '#FFFFFF',
+        padding: '16px 20px',
+        borderRadius: '12px',
+        border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB'}`,
+        backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : '#FFFFFF',
       }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
           <input
             type="checkbox"
             checked={autoDownload}
             onChange={(e) => { void toggleAutoDownload(e.target.checked); }}
-            style={{ width: '16px', height: '16px', accentColor: 'var(--color-primary-teal)' }}
+            style={{ width: '16px', height: '16px', accentColor: 'var(--color-primary-teal)', borderRadius: '4px' }}
           />
           <div>
-            <div style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#FFFFFF' : '#1F2937' }}>Download automático</div>
-            <div style={{ fontSize: '12px', color: isDark ? '#A0A0A0' : '#6B7280' }}>Baixar atualização automaticamente quando houver nova versão</div>
+            <div style={{ fontSize: '14px', fontWeight: 500, color: isDark ? '#FFFFFF' : '#1F2937' }}>Download automático de atualizações</div>
+            <div style={{ fontSize: '12px', color: isDark ? '#888' : '#6B7280', marginTop: '2px' }}>Baixar automaticamente quando houver nova versão estável disponível</div>
           </div>
         </label>
       </div>
