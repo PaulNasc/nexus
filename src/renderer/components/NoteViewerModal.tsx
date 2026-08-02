@@ -386,97 +386,114 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       setVideoMissing({});
       return;
     }
+
     const electron = getElectron();
-    if (!electron?.video) return;
+    const isTauri = Boolean(
+      (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ ||
+      (window as unknown as { __TAURI__?: unknown }).__TAURI__
+    );
+
+    // In non-Tauri, non-Electron context (pure web) — nothing to do
+    if (!electron?.video && !isTauri) return;
 
     let canceled = false;
     const nextTempObjectUrls = new Set<string>();
 
     const resolve = async () => {
-      // Use props directly — no Supabase round-trip needed.
-      // ownerId/orgId are already known from AuthContext + OrganizationContext.
       const noteOwnerId = ownerId ?? null;
       const noteOrgId = orgId ?? null;
 
       const urls: Record<string, string> = {};
       const paths: Record<string, string> = {};
       const missing: Record<string, boolean> = {};
+
       for (const videoRef of note.attachedVideos!) {
         const parsed = parseVideoRef(videoRef);
         const localVideoName = parsed.localFileName || videoRef;
 
-        const check = await electron.video.checkLocal(localVideoName);
-        if (check.exists && check.localPath) {
-          paths[videoRef] = check.localPath;
-          urls[videoRef] = `file://${check.localPath.replace(/\\/g, '/')}`;
+        // ── Electron path: check local cache first ─────────────────────────
+        if (electron?.video) {
+          const check = await electron.video.checkLocal(localVideoName);
+          if (check.exists && check.localPath) {
+            paths[videoRef] = check.localPath;
+            urls[videoRef] = `file://${check.localPath.replace(/\\/g, '/')}`;
+          }
+        }
+
+        // If we already resolved from local cache, move on
+        if (urls[videoRef]) continue;
+
+        // ── Cloud download (both Tauri & Electron fallback) ────────────────
+        let downloaded = false;
+        let lastDownloadError: string | null = null;
+
+        const candidateStoragePaths = new Set<string>();
+        if (parsed.storagePath) {
+          candidateStoragePaths.add(parsed.storagePath);
         } else {
-          let downloaded = false;
-          let lastDownloadError: string | null = null;
+          if (noteOrgId) {
+            candidateStoragePaths.add(`org/${noteOrgId}/${encodeURIComponent(localVideoName)}`);
+            candidateStoragePaths.add(`org/${noteOrgId}/${localVideoName}`);
+          }
+          if (noteOwnerId) {
+            candidateStoragePaths.add(`user/${noteOwnerId}/${encodeURIComponent(localVideoName)}`);
+            candidateStoragePaths.add(`user/${noteOwnerId}/${localVideoName}`);
+          }
+        }
 
-          const candidateStoragePaths = new Set<string>();
-          if (parsed.storagePath) {
-            candidateStoragePaths.add(parsed.storagePath);
-          } else {
-            if (noteOrgId) {
-              candidateStoragePaths.add(`org/${noteOrgId}/${encodeURIComponent(localVideoName)}`);
-              candidateStoragePaths.add(`org/${noteOrgId}/${localVideoName}`);
+        if (candidateStoragePaths.size > 0) {
+          try {
+            if (!canceled) {
+              setDownloadingVideos(prev => ({ ...prev, [videoRef]: true }));
             }
-            if (noteOwnerId) {
-              candidateStoragePaths.add(`user/${noteOwnerId}/${encodeURIComponent(localVideoName)}`);
-              candidateStoragePaths.add(`user/${noteOwnerId}/${localVideoName}`);
+            for (const objectKey of candidateStoragePaths) {
+              let downloadedBlob: Blob;
+              try {
+                downloadedBlob = await downloadVideoBlobFromR2Signed(objectKey);
+              } catch (r2Err) {
+                lastDownloadError = r2Err instanceof Error ? r2Err.message : String(r2Err);
+                continue;
+              }
+
+              if (canceled) return;
+
+              const objectUrl = URL.createObjectURL(downloadedBlob);
+              urls[videoRef] = objectUrl;
+              paths[videoRef] = '[temporario em memoria]';
+              nextTempObjectUrls.add(objectUrl);
+              downloaded = true;
+              break;
+            }
+          } catch (downloadError) {
+            lastDownloadError = downloadError instanceof Error ? downloadError.message : String(downloadError);
+          } finally {
+            if (!canceled) {
+              setDownloadingVideos(prev => ({ ...prev, [videoRef]: false }));
             }
           }
 
-          if (candidateStoragePaths.size > 0) {
-            try {
-              if (!canceled) {
-                setDownloadingVideos(prev => ({ ...prev, [videoRef]: true }));
-              }
-              for (const objectKey of candidateStoragePaths) {
-                let downloadedBlob: Blob;
-                try {
-                  downloadedBlob = await downloadVideoBlobFromR2Signed(objectKey);
-                } catch (r2Err) {
-                  lastDownloadError = r2Err instanceof Error
-                    ? r2Err.message
-                    : String(r2Err);
-                  continue;
-                }
-
-                if (canceled) return;
-
-                const objectUrl = URL.createObjectURL(downloadedBlob);
-                urls[videoRef] = objectUrl;
-                paths[videoRef] = '[temporario em memoria]';
-                nextTempObjectUrls.add(objectUrl);
-                downloaded = true;
-                break;
-              }
-            } catch (downloadError) {
-              lastDownloadError = downloadError instanceof Error ? downloadError.message : String(downloadError);
-            } finally {
-              if (!canceled) {
-                setDownloadingVideos(prev => ({ ...prev, [videoRef]: false }));
-              }
-            }
-
-            if (!downloaded && lastDownloadError) {
-              console.warn('NoteViewerModal cloud video download failed:', {
-                videoRef,
-                localVideoName,
-                candidateStoragePaths: Array.from(candidateStoragePaths),
-                error: lastDownloadError,
-              });
-            }
+          if (!downloaded && lastDownloadError) {
+            console.warn('NoteViewerModal cloud video download failed:', {
+              videoRef,
+              localVideoName,
+              candidateStoragePaths: Array.from(candidateStoragePaths),
+              error: lastDownloadError,
+            });
           }
+        }
 
-          if (!downloaded) {
-            missing[videoRef] = true;
+        if (!downloaded) {
+          missing[videoRef] = true;
+          // Electron: get expected local path for display
+          if (electron?.video) {
             const expectedPath = await electron.video.getLocalPath(localVideoName);
             paths[videoRef] = expectedPath;
+          } else {
+            paths[videoRef] = localVideoName;
           }
         }
       }
+
       if (canceled) return;
       clearTempVideoObjectUrls();
       tempVideoObjectUrlsRef.current = nextTempObjectUrls;
@@ -484,16 +501,13 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       setVideoPaths(paths);
       setVideoMissing(missing);
     };
+
     resolve();
 
     return () => {
       canceled = true;
       for (const objectUrl of nextTempObjectUrls) {
-        try {
-          URL.revokeObjectURL(objectUrl);
-        } catch {
-          // ignore cleanup errors
-        }
+        try { URL.revokeObjectURL(objectUrl); } catch { /* ignore */ }
       }
       clearTempVideoObjectUrls();
     };
