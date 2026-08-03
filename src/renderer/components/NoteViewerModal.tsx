@@ -5,7 +5,7 @@ import type { ElectronAPI } from '../../main/preload';
 import { Note, NoteAttachment } from '../../shared/types/note';
 import { parseVideoRef } from '../utils/videoAttachment';
 import { parsePdfRef } from '../utils/pdfAttachment';
-import { requestVideoSignedUrl } from '../lib/r2Videos';
+import { requestVideoSignedUrl, downloadVideoBlobFromR2Signed } from '../lib/r2Videos';
 import { resolveImageUrl } from '../utils/image';
 import { desktopAdapter } from '../lib/desktopAdapter';
 
@@ -300,19 +300,21 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       if (parsedPdf.storagePath) {
         pdfCandidateStoragePaths.add(parsedPdf.storagePath);
       } else if (!/^https?:\/\//i.test(primaryPdfSource) && !primaryPdfSource.startsWith('file://')) {
-        const rawFileName = decodeFileLikePath(primaryPdfSource).split('/').filter(Boolean).pop() || '';
+        let rawFileName = primaryPdfSource;
+        try {
+          rawFileName = decodeURIComponent(decodeFileLikePath(primaryPdfSource).split('/').filter(Boolean).pop() || primaryPdfSource);
+        } catch {
+          rawFileName = decodeFileLikePath(primaryPdfSource).split('/').filter(Boolean).pop() || primaryPdfSource;
+        }
+
         if (rawFileName) {
           if (noteOrgId) {
             pdfCandidateStoragePaths.add(`org/${noteOrgId}/pdf/${rawFileName}`);
-            pdfCandidateStoragePaths.add(`org/${noteOrgId}/pdf/${encodeURIComponent(rawFileName)}`);
             pdfCandidateStoragePaths.add(`org/${noteOrgId}/${rawFileName}`);
-            pdfCandidateStoragePaths.add(`org/${noteOrgId}/${encodeURIComponent(rawFileName)}`);
           }
           if (noteOwnerId) {
             pdfCandidateStoragePaths.add(`user/${noteOwnerId}/pdf/${rawFileName}`);
-            pdfCandidateStoragePaths.add(`user/${noteOwnerId}/pdf/${encodeURIComponent(rawFileName)}`);
             pdfCandidateStoragePaths.add(`user/${noteOwnerId}/${rawFileName}`);
-            pdfCandidateStoragePaths.add(`user/${noteOwnerId}/${encodeURIComponent(rawFileName)}`);
           }
           if (orgId && orgId !== noteOrgId) {
             pdfCandidateStoragePaths.add(`org/${orgId}/pdf/${rawFileName}`);
@@ -977,11 +979,11 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                           PDF não encontrado neste dispositivo. Caminhos locais de outra máquina podem não existirem aqui.
                         </div>
                       )}
-                      {primaryPdfUrl && (
+                      {!isDownloadingPdf && primaryPdfUrl && primaryPdfUrl.trim().length > 0 && (
                         <iframe
                           src={primaryPdfUrl}
                           title={primaryPdf?.name || 'PDF'}
-                          style={{ width: '100%', height: '100%', border: 0, opacity: (isDownloadingPdf || isIframeLoading) ? 0 : 1, transition: 'opacity 0.2s ease' }}
+                          style={{ width: '100%', height: '100%', border: 0, opacity: isIframeLoading ? 0 : 1, transition: 'opacity 0.2s ease' }}
                           onLoad={handlePdfIframeLoad}
                           onError={handlePdfIframeError}
                         />
@@ -1045,7 +1047,6 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                           <div style={{ position: 'relative', width: '100%', height: '52vh', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                             {isDownloading ? (
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, width: '100%', padding: '0 32px' }}>
-                                <Loader2 className="notes-utilities-spin" size={28} color="rgba(255,255,255,0.9)" />
                                 {/* Progress bar */}
                                 <div style={{ width: '100%', maxWidth: 320 }}>
                                   <div style={{
@@ -1239,11 +1240,11 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                           PDF não encontrado neste dispositivo. Caminhos locais de outra máquina podem não existir aqui.
                         </div>
                       )}
-                      {primaryPdfUrl && (
+                      {!isDownloadingPdf && primaryPdfUrl && primaryPdfUrl.trim().length > 0 && (
                         <iframe
                           src={primaryPdfUrl}
                           title={primaryPdf?.name || 'PDF'}
-                          style={{ width: '100%', height: '100%', border: 0, opacity: (isDownloadingPdf || isIframeLoading) ? 0 : 1, transition: 'opacity 0.2s ease' }}
+                          style={{ width: '100%', height: '100%', border: 0, opacity: isIframeLoading ? 0 : 1, transition: 'opacity 0.2s ease' }}
                           onLoad={handlePdfIframeLoad}
                           onError={handlePdfIframeError}
                         />
