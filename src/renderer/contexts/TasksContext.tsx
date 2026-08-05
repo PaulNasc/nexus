@@ -567,10 +567,33 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [useCloud, activeOrg]);
 
-  // Load initial data once and when storage mode changes
+  // Load initial data once and when storage mode changes, tracking params to prevent duplicate calls
+  const lastFetchedParamsRef = useRef<{
+    userId: string | null;
+    orgId: string | null;
+    useCloud: boolean;
+    useLocal: boolean;
+  } | null>(null);
+
   useEffect(() => {
-    getAllTasks();
-  }, [getAllTasks]);
+    const currentParams = {
+      userId: user?.id || null,
+      orgId: activeOrg?.id || null,
+      useCloud,
+      useLocal,
+    };
+
+    const isSame = lastFetchedParamsRef.current && 
+      lastFetchedParamsRef.current.userId === currentParams.userId &&
+      lastFetchedParamsRef.current.orgId === currentParams.orgId &&
+      lastFetchedParamsRef.current.useCloud === currentParams.useCloud &&
+      lastFetchedParamsRef.current.useLocal === currentParams.useLocal;
+
+    if (!isSame) {
+      lastFetchedParamsRef.current = currentParams;
+      void getAllTasks();
+    }
+  }, [user?.id, activeOrg?.id, useCloud, useLocal, getAllTasks]);
 
   // Realtime subscription for cloud tasks
   useEffect(() => {

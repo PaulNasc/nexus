@@ -1312,10 +1312,63 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
     }
   }, [useCloud, useLocal]);
 
-  // Load notes on mount and when storage mode changes
+  // Load notes on mount and when storage mode changes, tracking params to prevent duplicate calls
+  const lastFetchedParamsRef = useRef<{
+    userId: string | null;
+    orgId: string | null;
+    search: string;
+    colors: string[];
+    pinned: boolean;
+    tags: string[];
+    sysTags: number[];
+    sort: string;
+    useCloud: boolean;
+    useLocal: boolean;
+  } | null>(null);
+
   useEffect(() => {
-    fetchNotes();
-  }, [fetchNotes]);
+    const currentParams = {
+      userId: user?.id || null,
+      orgId: activeOrg?.id || null,
+      search: debouncedSearch,
+      colors: filterColors,
+      pinned: filterPinned,
+      tags: filterTags,
+      sysTags: filterSystemTagIds,
+      sort: sortBy,
+      useCloud,
+      useLocal,
+    };
+
+    const isSame = lastFetchedParamsRef.current && 
+      lastFetchedParamsRef.current.userId === currentParams.userId &&
+      lastFetchedParamsRef.current.orgId === currentParams.orgId &&
+      lastFetchedParamsRef.current.search === currentParams.search &&
+      JSON.stringify(lastFetchedParamsRef.current.colors) === JSON.stringify(currentParams.colors) &&
+      lastFetchedParamsRef.current.pinned === currentParams.pinned &&
+      JSON.stringify(lastFetchedParamsRef.current.tags) === JSON.stringify(currentParams.tags) &&
+      JSON.stringify(lastFetchedParamsRef.current.sysTags) === JSON.stringify(currentParams.sysTags) &&
+      lastFetchedParamsRef.current.sort === currentParams.sort &&
+      lastFetchedParamsRef.current.useCloud === currentParams.useCloud &&
+      lastFetchedParamsRef.current.useLocal === currentParams.useLocal;
+
+    if (!isSame) {
+      lastFetchedParamsRef.current = currentParams;
+      void fetchNotes();
+    }
+  }, [
+    user?.id,
+    activeOrg?.id,
+    debouncedSearch,
+    filterColors,
+    filterPinned,
+    filterTags,
+    filterSystemTagIds,
+    sortBy,
+    useCloud,
+    useLocal,
+    fetchNotes
+  ]);
 
   // Realtime subscription for cloud notes
   useEffect(() => {

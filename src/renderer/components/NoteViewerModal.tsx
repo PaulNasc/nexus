@@ -288,16 +288,32 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
 
       // 1. Direct HTTPS/HTTP URL (e.g. R2 signed URL): fetch as Blob to avoid WebView2 iframe cross-origin block
       if (/^https?:\/\//i.test(primaryPdfSource)) {
-        try {
-          const blob = await downloadPdfBlobWithProgress(primaryPdfSource);
-          if (!canceled && blob) {
-            const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([await blob.arrayBuffer()], { type: 'application/pdf' });
-            const blobUrl = URL.createObjectURL(pdfBlob);
-            nextPdfObjectUrls.add(blobUrl);
-            candidates.push(blobUrl);
+        if (desktopAdapter.isTauri()) {
+          try {
+            const { invoke, convertFileSrc } = await import('@tauri-apps/api/core');
+            const pdfName = parsedPdf.localFileName || 'document.pdf';
+            const localPath = await invoke<string>('download_video_to_cache', { url: primaryPdfSource, filename: pdfName });
+            const assetUrl = convertFileSrc(localPath);
+            if (!canceled) {
+              candidates.push(assetUrl);
+              setIsDownloadingPdf(false);
+              setPdfLoadError(false);
+            }
+          } catch (err) {
+            console.warn('NoteViewerModal PDF Tauri download failed:', err);
           }
-        } catch (err) {
-          console.warn('NoteViewerModal PDF HTTPS fetch failed, falling back to direct URL:', err);
+        } else {
+          try {
+            const blob = await downloadPdfBlobWithProgress(primaryPdfSource);
+            if (!canceled && blob) {
+              const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([await blob.arrayBuffer()], { type: 'application/pdf' });
+              const blobUrl = URL.createObjectURL(pdfBlob);
+              nextPdfObjectUrls.add(blobUrl);
+              candidates.push(blobUrl);
+            }
+          } catch (err) {
+            console.warn('NoteViewerModal PDF HTTPS fetch failed, falling back to direct URL:', err);
+          }
         }
       }
 
@@ -337,13 +353,26 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
           try {
             const signed = await requestVideoSignedUrl(storagePath);
             if (canceled) return;
-            const blob = await downloadPdfBlobWithProgress(signed.signedUrl);
-            if (canceled) return;
-            const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([await blob.arrayBuffer()], { type: 'application/pdf' });
-            const blobUrl = URL.createObjectURL(pdfBlob);
-            nextPdfObjectUrls.add(blobUrl);
-            candidates.push(blobUrl);
-            break;
+            if (desktopAdapter.isTauri()) {
+              const { invoke, convertFileSrc } = await import('@tauri-apps/api/core');
+              const pdfName = parsedPdf.localFileName || 'document.pdf';
+              const localPath = await invoke<string>('download_video_to_cache', { url: signed.signedUrl, filename: pdfName });
+              const assetUrl = convertFileSrc(localPath);
+              if (!canceled) {
+                candidates.push(assetUrl);
+                setIsDownloadingPdf(false);
+                setPdfLoadError(false);
+                break;
+              }
+            } else {
+              const blob = await downloadPdfBlobWithProgress(signed.signedUrl);
+              if (canceled) return;
+              const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([await blob.arrayBuffer()], { type: 'application/pdf' });
+              const blobUrl = URL.createObjectURL(pdfBlob);
+              nextPdfObjectUrls.add(blobUrl);
+              candidates.push(blobUrl);
+              break;
+            }
           } catch (err) {
             console.warn('NoteViewerModal PDF candidate storage path failed:', storagePath, err);
           }
