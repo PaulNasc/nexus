@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from './AuthContext';
 import type { Organization, OrgMember, OrgInvite, OrgJoinRequest, OrgRole } from '../../shared/types/organization';
 import { useNotifications } from '../hooks/useNotifications';
 import { useToast } from './ToastContext';
@@ -49,6 +50,7 @@ const ACTIVE_ORG_KEY = 'nexus-active-org-id';
 export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { showNotification } = useNotifications();
   const { showToast } = useToast();
+  const { user } = useAuth();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [activeOrg, setActiveOrgState] = useState<Organization | null>(null);
   const [members, setMembers] = useState<OrgMember[]>([]);
@@ -57,8 +59,9 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [myInvites, setMyInvites] = useState<OrgInvite[]>([]);
   const [myRole, setMyRole] = useState<OrgRole | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  // Derive currentUserId/Email directly from auth context (no separate state or getUser() calls)
+  const currentUserId = user?.id || null;
+  const currentUserEmail = user?.email || null;
   const initializedRef = useRef(false);
 
   // Generate slug from name
@@ -76,7 +79,6 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // Load all orgs the user belongs to
   const loadOrganizations = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
 
       // Get org IDs where user is a member
@@ -116,12 +118,11 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   // Load members, invites, join requests for active org
   const loadOrgDetails = useCallback(async (orgId: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       // Members with profile info (use explicit FK hint to avoid ambiguity)
@@ -188,13 +189,12 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     } catch (err) {
       console.error('Failed to load org details:', err);
     }
-  }, []);
+  }, [user]);
 
   // Load invites addressed to current user
   const loadMyInvites = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user?.email) return;
 
       const { data: inviteRows } = await supabase
         .from('org_invites')
@@ -213,7 +213,7 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     } catch (err) {
       console.error('Failed to load my invites:', err);
     }
-  }, []);
+  }, [user?.email]);
 
   const notifyOrgEvent = useCallback((title: string, body: string, tag: string) => {
     showNotification({
@@ -225,32 +225,26 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     });
   }, [showNotification]);
 
-  // Init
+  // Init: trigger on user change (login/logout)
   useEffect(() => {
+    if (!user) {
+      // User logged out - clear org state
+      setOrganizations([]);
+      setMyInvites([]);
+      setLoading(false);
+      initializedRef.current = false;
+      return;
+    }
+
     let mounted = true;
     const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (mounted) {
-        setCurrentUserId(user?.id || null);
-        setCurrentUserEmail(user?.email || null);
-      }
-
       await Promise.all([loadOrganizations(), loadMyInvites()]);
       if (mounted) initializedRef.current = true;
     };
 
     void init();
-
-    const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setCurrentUserId(session?.user?.id || null);
-      setCurrentUserEmail(session?.user?.email || null);
-    });
-
-    return () => {
-      mounted = false;
-      authSub.subscription.unsubscribe();
-    };
-  }, [loadOrganizations, loadMyInvites]);
+    return () => { mounted = false; };
+  }, [user, loadOrganizations, loadMyInvites]);
 
   // Sync display_name in real-time when user updates their username in settings
   useEffect(() => {
@@ -550,7 +544,6 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const createOrganization = useCallback(async (name: string, description?: string): Promise<Organization | null> => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Não autenticado');
 
       // Limit: max 2 orgs owned per user
@@ -693,7 +686,6 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const leaveOrganization = useCallback(async (orgId: string): Promise<boolean> => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return false;
 
       const { error } = await supabase
@@ -722,7 +714,6 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const inviteMember = useCallback(async (email: string, role: 'admin' | 'member' = 'member'): Promise<boolean> => {
     try {
       if (!activeOrg) return false;
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return false;
 
       const { error } = await supabase.from('org_invites').insert({
@@ -755,7 +746,6 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const acceptInvite = useCallback(async (inviteId: string): Promise<boolean> => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return false;
 
       // Get invite details
@@ -822,7 +812,6 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const requestToJoin = useCallback(async (orgId: string, message?: string): Promise<boolean> => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return false;
 
       const { error } = await supabase.from('org_join_requests').insert({
@@ -841,7 +830,6 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const approveJoinRequest = useCallback(async (requestId: string): Promise<boolean> => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return false;
 
       // Get request details
@@ -908,7 +896,6 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const rejectJoinRequest = useCallback(async (requestId: string): Promise<boolean> => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return false;
 
       await supabase

@@ -117,8 +117,7 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const now = new Date().toISOString();
 
       if (useCloud) {
-        const { data: userData } = await supabase.auth.getUser();
-        const userId = userData?.user?.id;
+        const userId = user?.id;
         if (!userId) throw new Error('Usuário não autenticado');
 
         const { data: inserted, error: insertError } = await supabase

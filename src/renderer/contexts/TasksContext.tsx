@@ -144,8 +144,7 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // ── CLOUD (Supabase) helpers ──────────────────────────────────
   const getAllTasksCloud = useCallback(async (): Promise<Task[]> => {
-    const { data: userData } = await supabase.auth.getUser();
-    const currentUserId = userData?.user?.id;
+    const currentUserId = user?.id;
 
     if (activeOrg && currentUserId) {
       // Fetch user's own tasks in this org
@@ -232,8 +231,7 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [activeOrg]);
 
   const createTaskCloud = useCallback(async (taskData: CreateTaskData): Promise<Task | null> => {
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData?.user?.id;
+    const userId = user?.id;
     if (!userId) throw new Error('Usuário não autenticado');
 
     const insertData: Record<string, unknown> = {
@@ -366,8 +364,7 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (updates.assigned_to !== undefined) {
           updateData.assigned_to = updates.assigned_to || null;
           if (updates.assigned_to) {
-            const { data: userData } = await supabase.auth.getUser();
-            updateData.assigned_by = userData?.user?.id || null;
+            updateData.assigned_by = user?.id || null;
           } else {
             updateData.assigned_by = null;
           }
@@ -528,8 +525,7 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const moveToPersonal = useCallback(async (taskId: number): Promise<boolean> => {
     try {
       setError(null);
-      const { data: userData } = await supabase.auth.getUser();
-      const currentUserId = userData?.user?.id;
+      const currentUserId = user?.id;
       if (!currentUserId) return false;
 
       // Find the user's Backlog category

@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from './AuthContext';
 import { useOrganization } from './OrganizationContext';
 import type { OrgSystemTag } from '../../shared/types/systemTag';
 
@@ -71,6 +72,7 @@ const SystemTagsContext = createContext<SystemTagsContextType | null>(null);
 
 export const SystemTagsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { activeOrg } = useOrganization();
+  const { user } = useAuth();
   const [tags, setTags] = useState<OrgSystemTag[]>([]);
   const [loading, setLoading] = useState(false);
   const [useLocalFallback, setUseLocalFallback] = useState(false);
@@ -164,8 +166,7 @@ export const SystemTagsProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (!activeOrg?.id) return false;
 
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      const userId = authData?.user?.id;
+      const userId = user?.id;
       if (!userId) return false;
 
       if (useLocalFallback) {
@@ -207,8 +208,7 @@ export const SystemTagsProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         markMissingOrgSystemTagsTable(activeOrg.id);
         const now = new Date().toISOString();
         const current = loadLocalFallbackTags(activeOrg.id);
-        const { data: authData } = await supabase.auth.getUser();
-        const userId = authData?.user?.id;
+        const userId = user?.id;
         if (!userId) return false;
         const nextId = current.length > 0 ? Math.max(...current.map((tag) => tag.id)) + 1 : 1;
         const nextTags = [
