@@ -194,10 +194,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       import('@tauri-apps/plugin-deep-link')
         .then(async ({ onOpenUrl, getCurrent }) => {
           try {
-            const initialUrls = await getCurrent();
-            if (initialUrls && initialUrls.length > 0) {
-              for (const url of initialUrls) {
-                processOAuthUrl(url);
+            // Only process initial deep-link URLs if user is NOT already authenticated.
+            // This prevents re-opening the OAuth window when the app restarts with an existing session.
+            const { data: existingSession } = await supabase.auth.getSession();
+            if (!existingSession?.session) {
+              const initialUrls = await getCurrent();
+              if (initialUrls && initialUrls.length > 0) {
+                for (const url of initialUrls) {
+                  processOAuthUrl(url);
+                }
               }
             }
           } catch {

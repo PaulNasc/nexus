@@ -481,7 +481,8 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     pinnedVal = filterPinned,
     tagsVal = filterTags,
     sysTagsVal = filterSystemTagIds,
-    sortVal = sortBy
+    sortVal = sortBy,
+    currentUserId = user?.id
   ): Promise<Note[]> => {
     // Paginated fetch: load NOTES_PAGE_SIZE rows per call.
     // Page 0 = first load (fast); subsequent pages triggered by infinite scroll.
@@ -635,9 +636,6 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       linkMap.set(link.note_id, existing);
     }
 
-    const { data: currentAuth } = await supabase.auth.getUser();
-    const currentUserId = currentAuth?.user?.id;
-
     const mappedNotes = rows.map(row => {
       const note = dbRowToNote(row, linkMap.get(row.id));
       let resolvedName = profileMap.get(row.user_id);
@@ -648,15 +646,12 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return note;
     });
 
-    const electron = getElectron();
-    if (!electron) {
-      return mappedNotes;
-    }
-
     return mappedNotes;
   }, [
     activeOrg,
+    user?.id,
     settings.showDashboard,
+    settings.userName,
     debouncedSearch,
     filterColors,
     filterPinned,
@@ -984,25 +979,24 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
       let updated: Note | null = null;
 
       if (useCloud) {
-        const { data: userData } = await supabase.auth.getUser();
-        const userId = userData?.user?.id;
+        const userId = user?.id;
         const orgId = activeOrg?.id || null;
 
-        let editorDisplayName = settings.userName || '';
+        // Resolve display name from settings first (no extra network call)
+        const editorDisplayName = settings.userName
+          || user?.user_metadata?.display_name
+          || user?.email?.split('@')[0]
+          || 'Usuário';
+
         if (userId) {
-          try {
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('display_name')
-              .eq('id', userId)
-              .single();
-            editorDisplayName = settings.userName || profile?.display_name || userData?.user?.user_metadata?.display_name || (userData?.user?.email ? userData.user.email.split('@')[0] : 'Usuário');
-          } catch {
-            editorDisplayName = settings.userName || userData?.user?.user_metadata?.display_name || (userData?.user?.email ? userData.user.email.split('@')[0] : 'Usuário');
-          }
           updates.user_id = userId;
           updates.creator_display_name = editorDisplayName;
         }
+
+        // Optimistic update: apply name immediately before DB round-trip
+        setNotes(prev => prev.map(n =>
+          n.id === id ? { ...n, ...updates, creator_display_name: editorDisplayName, updated_at: new Date().toISOString() } : n
+        ));
 
         const previousNote = notes.find(note => note.id === id);
         const previousCloudPaths = extractCloudVideoPaths(previousNote?.attachedVideos);
@@ -1111,7 +1105,8 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
       }
 
       if (updated) {
-        setNotes(prev => prev.map(n => n.id === id ? updated! : n));
+        // Merge to preserve creator_display_name set in optimistic update
+        setNotes(prev => prev.map(n => n.id === id ? { ...updated!, creator_display_name: updated!.creator_display_name || n.creator_display_name } : n));
       }
       return updated;
     } catch (err) {
@@ -1357,7 +1352,12 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
             });
           } else if (eventType === 'UPDATE') {
             const note = dbRowToNote(newRow as unknown as SupabaseNoteRow);
-            setNotes(prev => prev.map(n => n.id === note.id ? { ...n, ...note } : n));
+            // Preserve creator_display_name from existing note if realtime payload doesn't include it
+            setNotes(prev => prev.map(n =>
+              n.id === note.id
+                ? { ...n, ...note, creator_display_name: note.creator_display_name || n.creator_display_name }
+                : n
+            ));
           }
         }
       )
