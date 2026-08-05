@@ -60,3 +60,8 @@ pub async fn download_video_to_cache(app: AppHandle, url: String, filename: Stri
         
     Ok(dest_path.to_string_lossy().into_owned())
 }
+
+#[tauri::command]
+pub async fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
+    fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))
+}
