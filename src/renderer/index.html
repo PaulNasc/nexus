@@ -18,7 +18,7 @@
         style-src 'self' 'unsafe-inline';
         img-src 'self' data: https: file: blob:;
         media-src 'self' file: blob:;
-        frame-src 'self' file: blob: data:;
+        frame-src 'self' file: blob: data: asset: http://asset.localhost http://localhost:* https:;
         font-src 'self';
         connect-src 'self' ws: wss: http: https:;
     ">

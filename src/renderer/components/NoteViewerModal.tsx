@@ -5,8 +5,9 @@ import type { ElectronAPI } from '../../main/preload';
 import { Note, NoteAttachment } from '../../shared/types/note';
 import { parseVideoRef } from '../utils/videoAttachment';
 import { parsePdfRef } from '../utils/pdfAttachment';
-import { downloadVideoBlobFromR2Signed } from '../lib/r2Videos';
+import { requestVideoSignedUrl, downloadVideoBlobFromR2Signed } from '../lib/r2Videos';
 import { resolveImageUrl } from '../utils/image';
+import { desktopAdapter } from '../lib/desktopAdapter';
 
 interface NoteViewerModalProps {
   isOpen: boolean;
@@ -129,9 +130,13 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
   const [pdfLoadError, setPdfLoadError] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [isIframeLoading, setIsIframeLoading] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState<{ loaded: number; total: number }>({ loaded: 0, total: 0 });
   const [downloadingVideos, setDownloadingVideos] = useState<Record<string, boolean>>({});
+  const [videoProgress, setVideoProgress] = useState<Record<string, { loaded: number; total: number }>>({});
   const tempVideoObjectUrlsRef = useRef<Set<string>>(new Set());
   const tempPdfObjectUrlsRef = useRef<Set<string>>(new Set());
+  // Guard: tracks which videoRefs are actively being downloaded to prevent duplicate requests
+  const activeDownloadsRef = useRef<Set<string>>(new Set());
 
   const modalScrollRef = useRef<HTMLDivElement | null>(null);
   const [showModalScrollTop, setShowModalScrollTop] = useState(false);
@@ -257,6 +262,12 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     let canceled = false;
     const nextPdfObjectUrls = new Set<string>();
 
+    const downloadPdfBlobWithProgress = async (signedUrl: string): Promise<Blob> => {
+      const blob = await desktopAdapter.fetchBlob(signedUrl);
+      if (!canceled) setPdfProgress({ loaded: blob.size, total: blob.size });
+      return blob;
+    };
+
     const resolvePdfCandidates = async () => {
       if (!isOpen || !primaryPdfSource) {
         if (!canceled) {
@@ -265,31 +276,96 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
           setPdfCandidateIndex(0);
           setPdfLoadError(false);
           setIsDownloadingPdf(false);
+          setPdfProgress({ loaded: 0, total: 0 });
         }
         return;
       }
 
       setIsDownloadingPdf(true);
+      setPdfProgress({ loaded: 0, total: 0 });
       const candidates: string[] = [];
       const parsedPdf = parsePdfRef(primaryPdfSource);
 
-      if (parsedPdf.storagePath) {
+      // 1. Direct HTTPS/HTTP URL (e.g. R2 signed URL): fetch as Blob to avoid WebView2 iframe cross-origin block
+      if (/^https?:\/\//i.test(primaryPdfSource)) {
         try {
-          const blob = await downloadVideoBlobFromR2Signed(parsedPdf.storagePath);
-          if (canceled) return;
-          const blobUrl = URL.createObjectURL(blob);
-          nextPdfObjectUrls.add(blobUrl);
-          candidates.push(blobUrl);
+          const blob = await downloadPdfBlobWithProgress(primaryPdfSource);
+          if (!canceled && blob) {
+            const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([await blob.arrayBuffer()], { type: 'application/pdf' });
+            const blobUrl = URL.createObjectURL(pdfBlob);
+            nextPdfObjectUrls.add(blobUrl);
+            candidates.push(blobUrl);
+          }
         } catch (err) {
-          console.warn('NoteViewerModal PDF cloud download failed:', {
-            source: primaryPdfSource,
-            storagePath: parsedPdf.storagePath,
-            error: err instanceof Error ? err.message : String(err),
-          });
+          console.warn('NoteViewerModal PDF HTTPS fetch failed, falling back to direct URL:', err);
         }
       }
 
-      const baseUrl = toPdfViewerUrl(primaryPdfSource);
+      // 2. Cloud PDF storage paths (pdfcloud: or candidate storage keys)
+      const noteOwnerId = note?.user_id || ownerId || null;
+      const noteOrgId = note?.organization_id || orgId || null;
+
+      const pdfCandidateStoragePaths = new Set<string>();
+      if (parsedPdf.storagePath) {
+        pdfCandidateStoragePaths.add(parsedPdf.storagePath);
+      } else if (!/^https?:\/\//i.test(primaryPdfSource) && !primaryPdfSource.startsWith('file://')) {
+        let rawFileName = primaryPdfSource;
+        try {
+          rawFileName = decodeURIComponent(decodeFileLikePath(primaryPdfSource).split('/').filter(Boolean).pop() || primaryPdfSource);
+        } catch {
+          rawFileName = decodeFileLikePath(primaryPdfSource).split('/').filter(Boolean).pop() || primaryPdfSource;
+        }
+
+        if (rawFileName) {
+          if (noteOrgId) {
+            pdfCandidateStoragePaths.add(`org/${noteOrgId}/pdf/${rawFileName}`);
+            pdfCandidateStoragePaths.add(`org/${noteOrgId}/${rawFileName}`);
+          }
+          if (noteOwnerId) {
+            pdfCandidateStoragePaths.add(`user/${noteOwnerId}/pdf/${rawFileName}`);
+            pdfCandidateStoragePaths.add(`user/${noteOwnerId}/${rawFileName}`);
+          }
+          if (orgId && orgId !== noteOrgId) {
+            pdfCandidateStoragePaths.add(`org/${orgId}/pdf/${rawFileName}`);
+            pdfCandidateStoragePaths.add(`org/${orgId}/${rawFileName}`);
+          }
+        }
+      }
+
+      if (pdfCandidateStoragePaths.size > 0) {
+        for (const storagePath of pdfCandidateStoragePaths) {
+          try {
+            const signed = await requestVideoSignedUrl(storagePath);
+            if (canceled) return;
+            const blob = await downloadPdfBlobWithProgress(signed.signedUrl);
+            if (canceled) return;
+            const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([await blob.arrayBuffer()], { type: 'application/pdf' });
+            const blobUrl = URL.createObjectURL(pdfBlob);
+            nextPdfObjectUrls.add(blobUrl);
+            candidates.push(blobUrl);
+            break;
+          } catch (err) {
+            console.warn('NoteViewerModal PDF candidate storage path failed:', storagePath, err);
+          }
+        }
+      }
+
+      // 3. Local file candidate resolution
+      const resolveLocalCandidate = async (rawUrl: string): Promise<string> => {
+        const cleanPath = decodeFileLikePath(rawUrl).replace(/\\/g, '/');
+        if (desktopAdapter.isTauri() && cleanPath && (cleanPath.includes('/') || /^[a-zA-Z]:/.test(cleanPath))) {
+          try {
+            const { convertFileSrc } = await import('@tauri-apps/api/core');
+            const assetUrl = convertFileSrc(cleanPath);
+            if (assetUrl) return assetUrl;
+          } catch (err) {
+            console.warn('NoteViewerModal convertFileSrc failed:', err);
+          }
+        }
+        return toPdfViewerUrl(rawUrl);
+      };
+
+      const baseUrl = await resolveLocalCandidate(primaryPdfSource);
       if (baseUrl && !candidates.includes(baseUrl)) candidates.push(baseUrl);
 
       const electron = getElectron();
@@ -303,7 +379,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
           const userDataDir = normalizedVideosDir.replace(/\/nexus-videos$/i, '');
           if (userDataDir && userDataDir !== normalizedVideosDir) {
             const remappedPath = `${userDataDir}/imported-pdfs/${fileName}`;
-            const remappedUrl = toPdfViewerUrl(remappedPath);
+            const remappedUrl = await resolveLocalCandidate(remappedPath);
             if (remappedUrl && !candidates.includes(remappedUrl)) {
               candidates.unshift(remappedUrl);
             }
@@ -369,99 +445,183 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       setVideoUrls({});
       setVideoPaths({});
       setVideoMissing({});
+      setVideoProgress({});
+      activeDownloadsRef.current.clear();
       return;
     }
+
     const electron = getElectron();
-    if (!electron?.video) return;
+    const isTauri = Boolean(
+      (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ ||
+      (window as unknown as { __TAURI__?: unknown }).__TAURI__
+    );
+
+    // In pure web context with no desktop API — nothing to do
+    if (!electron?.video && !isTauri) return;
 
     let canceled = false;
     const nextTempObjectUrls = new Set<string>();
+    const xhrRefs: XMLHttpRequest[] = [];
+
+    const downloadWithProgress = async (signedUrl: string, videoRef: string): Promise<Blob> => {
+      const blob = await desktopAdapter.fetchBlob(signedUrl);
+      if (!canceled) {
+        setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded: blob.size, total: blob.size } }));
+      }
+      return blob;
+    };
 
     const resolve = async () => {
-      // Use props directly — no Supabase round-trip needed.
-      // ownerId/orgId are already known from AuthContext + OrganizationContext.
-      const noteOwnerId = ownerId ?? null;
-      const noteOrgId = orgId ?? null;
+      const noteOwnerId = note?.user_id || ownerId || null;
+      const noteOrgId = note?.organization_id || orgId || null;
 
       const urls: Record<string, string> = {};
       const paths: Record<string, string> = {};
       const missing: Record<string, boolean> = {};
+
       for (const videoRef of note.attachedVideos!) {
+        if (canceled) break;
+
+        // Skip if already downloading this ref (guard against duplicate re-renders)
+        if (activeDownloadsRef.current.has(videoRef)) continue;
+
         const parsed = parseVideoRef(videoRef);
         const localVideoName = parsed.localFileName || videoRef;
 
-        const check = await electron.video.checkLocal(localVideoName);
-        if (check.exists && check.localPath) {
-          paths[videoRef] = check.localPath;
-          urls[videoRef] = `file://${check.localPath.replace(/\\/g, '/')}`;
-        } else {
-          let downloaded = false;
-          let lastDownloadError: string | null = null;
+        // ── Electron path: check local cache first ─────────────────────────
+        if (electron?.video) {
+          const check = await electron.video.checkLocal(localVideoName);
+          if (check.exists && check.localPath) {
+            paths[videoRef] = check.localPath;
+            urls[videoRef] = `file://${check.localPath.replace(/\\/g, '/')}`;
+          }
+        }
 
-          const candidateStoragePaths = new Set<string>();
-          if (parsed.storagePath) {
+        if (urls[videoRef]) continue;
+
+        // ── Cloud download via native fetch for real progress support ──────
+        let downloaded = false;
+        let lastDownloadError: string | null = null;
+
+        // Direct HTTPS video URL
+        if (/^https?:\/\//i.test(videoRef)) {
+          activeDownloadsRef.current.add(videoRef);
+          try {
+            if (!canceled) {
+              setDownloadingVideos(prev => ({ ...prev, [videoRef]: true }));
+              setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded: 0, total: 0 } }));
+            }
+            const downloadedBlob = await downloadWithProgress(videoRef, videoRef);
+            if (!canceled) {
+              const objectUrl = URL.createObjectURL(downloadedBlob);
+              urls[videoRef] = objectUrl;
+              paths[videoRef] = '[temporario em memoria]';
+              nextTempObjectUrls.add(objectUrl);
+              downloaded = true;
+            }
+          } catch (err) {
+            lastDownloadError = err instanceof Error ? err.message : String(err);
+          } finally {
+            activeDownloadsRef.current.delete(videoRef);
+            if (!canceled) setDownloadingVideos(prev => ({ ...prev, [videoRef]: false }));
+          }
+          if (downloaded) continue;
+        }
+
+        const candidateStoragePaths = new Set<string>();
+        if (parsed.storagePath) {
+          try {
+            candidateStoragePaths.add(decodeURIComponent(parsed.storagePath));
+          } catch {
             candidateStoragePaths.add(parsed.storagePath);
-          } else {
-            if (noteOrgId) {
-              candidateStoragePaths.add(`org/${noteOrgId}/${encodeURIComponent(localVideoName)}`);
-              candidateStoragePaths.add(`org/${noteOrgId}/${localVideoName}`);
-            }
-            if (noteOwnerId) {
-              candidateStoragePaths.add(`user/${noteOwnerId}/${encodeURIComponent(localVideoName)}`);
-              candidateStoragePaths.add(`user/${noteOwnerId}/${localVideoName}`);
-            }
           }
+        }
 
-          if (candidateStoragePaths.size > 0) {
-            try {
-              if (!canceled) {
-                setDownloadingVideos(prev => ({ ...prev, [videoRef]: true }));
-              }
-              for (const objectKey of candidateStoragePaths) {
-                let downloadedBlob: Blob;
-                try {
-                  downloadedBlob = await downloadVideoBlobFromR2Signed(objectKey);
-                } catch (r2Err) {
-                  lastDownloadError = r2Err instanceof Error
-                    ? r2Err.message
-                    : String(r2Err);
-                  continue;
-                }
+        let rawFileName = localVideoName;
+        try {
+          rawFileName = decodeURIComponent(decodeFileLikePath(localVideoName).split('/').filter(Boolean).pop() || localVideoName);
+        } catch {
+          rawFileName = decodeFileLikePath(localVideoName).split('/').filter(Boolean).pop() || localVideoName;
+        }
 
+        if (rawFileName) {
+          if (noteOrgId) {
+            candidateStoragePaths.add(`org/${noteOrgId}/${rawFileName}`);
+            candidateStoragePaths.add(`org/${noteOrgId}/video/${rawFileName}`);
+          }
+          if (noteOwnerId) {
+            candidateStoragePaths.add(`user/${noteOwnerId}/${rawFileName}`);
+            candidateStoragePaths.add(`user/${noteOwnerId}/video/${rawFileName}`);
+          }
+          if (orgId && orgId !== noteOrgId) {
+            candidateStoragePaths.add(`org/${orgId}/${rawFileName}`);
+            candidateStoragePaths.add(`org/${orgId}/video/${rawFileName}`);
+          }
+          if (ownerId && ownerId !== noteOwnerId) {
+            candidateStoragePaths.add(`user/${ownerId}/${rawFileName}`);
+            candidateStoragePaths.add(`user/${ownerId}/video/${rawFileName}`);
+          }
+        }
+
+        if (candidateStoragePaths.size > 0) {
+          activeDownloadsRef.current.add(videoRef);
+          try {
+            if (!canceled) {
+              setDownloadingVideos(prev => ({ ...prev, [videoRef]: true }));
+              setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded: 0, total: 0 } }));
+            }
+            for (const objectKey of candidateStoragePaths) {
+              let downloadedBlob: Blob;
+              try {
+                // 1. Get signed URL from Supabase edge function (native fetch)
+                const signed = await requestVideoSignedUrl(objectKey);
                 if (canceled) return;
+                // 2. Download blob using native fetch with stream progress
+                downloadedBlob = await downloadWithProgress(signed.signedUrl, videoRef);
+              } catch (r2Err) {
+                lastDownloadError = r2Err instanceof Error ? r2Err.message : String(r2Err);
+                continue;
+              }
 
-                const objectUrl = URL.createObjectURL(downloadedBlob);
-                urls[videoRef] = objectUrl;
-                paths[videoRef] = '[temporario em memoria]';
-                nextTempObjectUrls.add(objectUrl);
-                downloaded = true;
-                break;
-              }
-            } catch (downloadError) {
-              lastDownloadError = downloadError instanceof Error ? downloadError.message : String(downloadError);
-            } finally {
-              if (!canceled) {
-                setDownloadingVideos(prev => ({ ...prev, [videoRef]: false }));
-              }
+              if (canceled) return;
+
+              const objectUrl = URL.createObjectURL(downloadedBlob);
+              urls[videoRef] = objectUrl;
+              paths[videoRef] = '[temporario em memoria]';
+              nextTempObjectUrls.add(objectUrl);
+              downloaded = true;
+              break;
             }
-
-            if (!downloaded && lastDownloadError) {
-              console.warn('NoteViewerModal cloud video download failed:', {
-                videoRef,
-                localVideoName,
-                candidateStoragePaths: Array.from(candidateStoragePaths),
-                error: lastDownloadError,
-              });
+          } catch (downloadError) {
+            lastDownloadError = downloadError instanceof Error ? downloadError.message : String(downloadError);
+          } finally {
+            activeDownloadsRef.current.delete(videoRef);
+            if (!canceled) {
+              setDownloadingVideos(prev => ({ ...prev, [videoRef]: false }));
             }
           }
 
-          if (!downloaded) {
-            missing[videoRef] = true;
+          if (!downloaded && lastDownloadError) {
+            console.warn('NoteViewerModal cloud video download failed:', {
+              videoRef,
+              localVideoName,
+              candidateStoragePaths: Array.from(candidateStoragePaths),
+              error: lastDownloadError,
+            });
+          }
+        }
+
+        if (!downloaded) {
+          missing[videoRef] = true;
+          if (electron?.video) {
             const expectedPath = await electron.video.getLocalPath(localVideoName);
             paths[videoRef] = expectedPath;
+          } else {
+            paths[videoRef] = localVideoName;
           }
         }
       }
+
       if (canceled) return;
       clearTempVideoObjectUrls();
       tempVideoObjectUrlsRef.current = nextTempObjectUrls;
@@ -469,16 +629,17 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       setVideoPaths(paths);
       setVideoMissing(missing);
     };
+
     resolve();
 
     return () => {
       canceled = true;
+      // Abort any in-flight XHR requests
+      for (const xhr of xhrRefs) {
+        try { xhr.abort(); } catch { /* ignore */ }
+      }
       for (const objectUrl of nextTempObjectUrls) {
-        try {
-          URL.revokeObjectURL(objectUrl);
-        } catch {
-          // ignore cleanup errors
-        }
+        try { URL.revokeObjectURL(objectUrl); } catch { /* ignore */ }
       }
       clearTempVideoObjectUrls();
     };
@@ -743,14 +904,44 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                           flexDirection: 'column',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: 12,
-                          background: 'rgba(10, 10, 10, 0.85)',
-                          zIndex: 10
+                          gap: 14,
+                          background: 'rgba(10, 10, 10, 0.9)',
+                          zIndex: 10,
+                          padding: '0 32px'
                         }}>
-                          <Loader2 className="notes-utilities-spin" size={28} color="var(--color-primary-teal)" />
-                          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', animation: 'notes-pulse-opacity 2s ease-in-out infinite' }}>
-                            {isDownloadingPdf ? 'Carregando arquivo PDF do R2...' : 'Renderizando PDF...'}
-                          </span>
+                          <div style={{ width: '100%', maxWidth: 320 }}>
+                            <div style={{
+                              height: 3,
+                              borderRadius: 99,
+                              background: 'rgba(255,255,255,0.12)',
+                              overflow: 'hidden',
+                              position: 'relative',
+                            }}>
+                              {pdfProgress.total > 0 ? (
+                                <div style={{
+                                  height: '100%',
+                                  borderRadius: 99,
+                                  background: 'var(--color-primary-teal, #00b4a0)',
+                                  width: `${Math.round((pdfProgress.loaded / pdfProgress.total) * 100)}%`,
+                                  transition: 'width 0.2s ease',
+                                }} />
+                              ) : (
+                                <div className="video-progress-indeterminate" />
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                              <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11 }}>
+                                {isDownloadingPdf ? 'Baixando PDF do R2...' : 'Renderizando PDF...'}
+                              </span>
+                              {pdfProgress.total > 0 && (
+                                <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+                                  {Math.round((pdfProgress.loaded / pdfProgress.total) * 100)}%
+                                  {' · '}
+                                  {(pdfProgress.total / 1024 / 1024).toFixed(1)} MB
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
                       {pdfLoadError && (
@@ -758,11 +949,11 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                           PDF não encontrado neste dispositivo. Caminhos locais de outra máquina podem não existirem aqui.
                         </div>
                       )}
-                      {primaryPdfUrl && (
+                      {!isDownloadingPdf && primaryPdfUrl && primaryPdfUrl.trim().length > 0 && (
                         <iframe
                           src={primaryPdfUrl}
                           title={primaryPdf?.name || 'PDF'}
-                          style={{ width: '100%', height: '100%', border: 0, opacity: (isDownloadingPdf || isIframeLoading) ? 0 : 1, transition: 'opacity 0.2s ease' }}
+                          style={{ width: '100%', height: '100%', border: 0, opacity: isIframeLoading ? 0 : 1, transition: 'opacity 0.2s ease' }}
                           onLoad={handlePdfIframeLoad}
                           onError={handlePdfIframeError}
                         />
@@ -823,11 +1014,41 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                               </button>
                             </div>
                           </div>
-                          <div style={{ position: 'relative', width: '100%', height: '52vh', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <div style={{ position: 'relative', width: '100%', height: '52vh', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                             {isDownloading ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-                                <Loader2 className="notes-utilities-spin" size={32} color="#fff" />
-                                <span style={{ color: '#fff', fontSize: 13, background: 'rgba(0,0,0,0.7)', padding: '4px 10px', borderRadius: 6, animation: 'notes-pulse-opacity 2s ease-in-out infinite' }}>Baixando vídeo do R2...</span>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, width: '100%', padding: '0 32px' }}>
+                                {/* Progress bar */}
+                                <div style={{ width: '100%', maxWidth: 320 }}>
+                                  <div style={{
+                                    height: 3,
+                                    borderRadius: 99,
+                                    background: 'rgba(255,255,255,0.12)',
+                                    overflow: 'hidden',
+                                    position: 'relative',
+                                  }}>
+                                    {videoProgress[videoRef]?.total > 0 ? (
+                                      <div style={{
+                                        height: '100%',
+                                        borderRadius: 99,
+                                        background: 'var(--color-primary-teal, #00b4a0)',
+                                        width: `${Math.round((videoProgress[videoRef].loaded / videoProgress[videoRef].total) * 100)}%`,
+                                        transition: 'width 0.2s ease',
+                                      }} />
+                                    ) : (
+                                      <div className="video-progress-indeterminate" />
+                                    )}
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                                    <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11 }}>Baixando do R2...</span>
+                                    {videoProgress[videoRef]?.total > 0 && (
+                                      <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+                                        {Math.round((videoProgress[videoRef].loaded / videoProgress[videoRef].total) * 100)}%
+                                        {' · '}
+                                        {(videoProgress[videoRef].total / 1024 / 1024).toFixed(1)} MB
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
                             ) : isMissing ? (
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 20, textAlign: 'center' }}>
@@ -974,14 +1195,44 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                           flexDirection: 'column',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: 12,
-                          background: 'rgba(10, 10, 10, 0.85)',
-                          zIndex: 10
+                          gap: 14,
+                          background: 'rgba(10, 10, 10, 0.9)',
+                          zIndex: 10,
+                          padding: '0 32px'
                         }}>
-                          <Loader2 className="notes-utilities-spin" size={28} color="var(--color-primary-teal)" />
-                          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', animation: 'notes-pulse-opacity 2s ease-in-out infinite' }}>
-                            {isDownloadingPdf ? 'Carregando arquivo PDF do R2...' : 'Renderizando PDF...'}
-                          </span>
+                          <div style={{ width: '100%', maxWidth: 320 }}>
+                            <div style={{
+                              height: 3,
+                              borderRadius: 99,
+                              background: 'rgba(255,255,255,0.12)',
+                              overflow: 'hidden',
+                              position: 'relative',
+                            }}>
+                              {pdfProgress.total > 0 ? (
+                                <div style={{
+                                  height: '100%',
+                                  borderRadius: 99,
+                                  background: 'var(--color-primary-teal, #00b4a0)',
+                                  width: `${Math.round((pdfProgress.loaded / pdfProgress.total) * 100)}%`,
+                                  transition: 'width 0.2s ease',
+                                }} />
+                              ) : (
+                                <div className="video-progress-indeterminate" />
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                              <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11 }}>
+                                {isDownloadingPdf ? 'Baixando PDF do R2...' : 'Renderizando PDF...'}
+                              </span>
+                              {pdfProgress.total > 0 && (
+                                <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+                                  {Math.round((pdfProgress.loaded / pdfProgress.total) * 100)}%
+                                  {' · '}
+                                  {(pdfProgress.total / 1024 / 1024).toFixed(1)} MB
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
                       {pdfLoadError && (
@@ -989,11 +1240,11 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                           PDF não encontrado neste dispositivo. Caminhos locais de outra máquina podem não existir aqui.
                         </div>
                       )}
-                      {primaryPdfUrl && (
+                      {!isDownloadingPdf && primaryPdfUrl && primaryPdfUrl.trim().length > 0 && (
                         <iframe
                           src={primaryPdfUrl}
                           title={primaryPdf?.name || 'PDF'}
-                          style={{ width: '100%', height: '100%', border: 0, opacity: (isDownloadingPdf || isIframeLoading) ? 0 : 1, transition: 'opacity 0.2s ease' }}
+                          style={{ width: '100%', height: '100%', border: 0, opacity: isIframeLoading ? 0 : 1, transition: 'opacity 0.2s ease' }}
                           onLoad={handlePdfIframeLoad}
                           onError={handlePdfIframeError}
                         />

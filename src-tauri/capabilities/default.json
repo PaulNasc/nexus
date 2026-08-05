@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/capability",
+  "identifier": "default",
+  "description": "Default capability for Nexus Tauri application",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "core:window:allow-set-resizable",
+    "core:window:allow-set-size",
+    "core:window:allow-center",
+    "notification:default",
+    "dialog:default",
+    "fs:default",
+    "updater:default",
+    "shell:allow-open",
+    "http:default",
+    "http:allow-fetch",
+    "deep-link:default"
+  ]
+}

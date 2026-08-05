@@ -10,8 +10,10 @@ export const useAppearance = () => {
     const fontSize = settings.fontSizePx ?? (settings.largeFontMode ? 16 : 14);
     html.style.fontSize = `${fontSize}px`;
 
+    const reduceAnim = settings.reduceAnimations ?? false;
     html.classList.toggle('high-contrast', settings.highContrastMode ?? false);
-    html.classList.toggle('reduce-motion', settings.reduceAnimations ?? false);
+    html.classList.toggle('reduce-motion', reduceAnim);
+    html.classList.toggle('smooth-tauri-transitions', !reduceAnim);
     html.setAttribute('data-density', settings.interfaceDensity ?? 'normal');
 
     const opacity = Math.max(0, Math.min(1, (settings.cardOpacity ?? 95) / 100));

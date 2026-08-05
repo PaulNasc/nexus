@@ -9,6 +9,8 @@ dist/
 release/
 releases/
 manual-build/
+src-tauri/target/
+src-tauri/gen/
 
 # Cache
 .cache/

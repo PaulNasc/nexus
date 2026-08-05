@@ -1,4 +1,5 @@
 import { supabase, SUPABASE_ANON_KEY, SUPABASE_URL } from './supabase';
+import { desktopAdapter } from './desktopAdapter';
 
 export interface R2SignedUrlResponse {
   signedUrl: string;
@@ -92,6 +93,13 @@ const callR2Function = async (
   return responseBody;
 };
 
+export const requestVideoSignedUrl = async (objectKey: string): Promise<R2SignedUrlResponse> => {
+  return await requestSignedUrl({
+    action: 'download',
+    objectKey,
+  });
+};
+
 const requestSignedUrl = async (payload: R2SignedUrlRequest): Promise<R2SignedUrlResponse> => {
   const data = await callR2Function(payload);
 
@@ -143,15 +151,9 @@ export const downloadVideoBlobFromR2Signed = async (objectKey: string): Promise<
     objectKey,
   });
 
-  const downloadResponse = await fetch(signed.signedUrl, {
+  return await desktopAdapter.fetchBlob(signed.signedUrl, {
     method: signed.method,
   });
-
-  if (!downloadResponse.ok) {
-    throw new Error(`Falha no download do R2 (${downloadResponse.status})`);
-  }
-
-  return await downloadResponse.blob();
 };
 
 export const deleteVideoFromR2 = async (objectKey: string): Promise<void> => {

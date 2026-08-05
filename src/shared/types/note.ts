@@ -11,6 +11,9 @@ export interface Note {
   created_at: string;
   updated_at: string;
   workspace_id?: number;
+  user_id?: string;
+  organization_id?: string;
+  org_id?: string;
   is_pinned?: boolean;
   is_archived?: boolean;
   color?: string;

@@ -544,23 +544,39 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const loadSystemInfo = async () => {
-    // Fetch real version from electron-updater (app.getVersion())
-    let appVersion = '1.0.0';
+    // Fetch real version from platform APIs
+    let appVersion = '1.4.0';
     let hwMachineId = '';
+
     const electron = (window as unknown as {
       electronAPI?: {
         updater?: { getVersion?: () => Promise<string> };
         system?: { getMachineId?: () => Promise<string> };
       };
     }).electronAPI;
+
     try {
+      // Electron runtime
       if (electron?.updater?.getVersion) {
         appVersion = await electron.updater.getVersion() || appVersion;
       }
       if (electron?.system?.getMachineId) {
         hwMachineId = await electron.system.getMachineId();
       }
-    } catch { /* fallback */ }
+
+      // Tauri runtime — read version from src-tauri/tauri.conf.json via invoke
+      if (!electron) {
+        const isTauri = Boolean(
+          (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ ||
+          (window as unknown as { __TAURI__?: unknown }).__TAURI__
+        );
+        if (isTauri) {
+          const { desktopAdapter } = await import('../lib/desktopAdapter');
+          const info = await desktopAdapter.getSystemInfo();
+          if (info?.version) appVersion = info.version;
+        }
+      }
+    } catch { /* fallback to default */ }
 
     try {
       const storedSystemInfo = localStorage.getItem(SYSTEM_INFO_STORAGE_KEY);
@@ -600,6 +616,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setSystemInfo(fallbackSystemInfo);
     }
   };
+
 
   const loadSessionInfo = () => {
     try {

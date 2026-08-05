@@ -17,6 +17,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.4.0',
+    date: '2026-08-02',
+    highlights: [
+      { category: 'feature', text: 'Migração completa para Tauri v2 — substituição do Electron por binário nativo Rust com menor footprint e maior segurança' },
+      { category: 'feature', text: 'Login OAuth (Google e Discord) com deep-link protocol para redirecionamento direto ao app desktop (nexus://)' },
+      { category: 'fix', text: 'Visualização de PDFs e vídeos em notas corrigida — permissões de asset protocol e HTTP fetch scope configuradas para R2/Supabase' },
+      { category: 'fix', text: 'Janela do CMD oculta na inicialização (windows_subsystem = windows)' },
+      { category: 'improvement', text: 'Redimensionamento automático da janela para 1280×800 após login com centralização' },
+      { category: 'performance', text: 'Servidor de desenvolvimento sincronizado — webpack compila antes do Tauri iniciar, eliminando tela em branco na primeira abertura' },
+      { category: 'security', text: 'Capabilities do Tauri configuradas com escopo de URLs mínimo necessário para Supabase e Cloudflare R2' },
+    ],
+  },
+  {
     version: '1.3.5',
     date: '2026-07-29',
     highlights: [

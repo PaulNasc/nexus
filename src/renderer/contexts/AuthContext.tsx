@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Session, User, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { desktopAdapter } from '../lib/desktopAdapter';
 
 const SUPABASE_AUTH_STORAGE_KEY = 'nexus-supabase-auth';
 
@@ -131,14 +132,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // Escutar deep link callback do OAuth (krigzis://auth/callback#access_token=...&refresh_token=...)
+  // Escutar deep link callback do OAuth (nexus:// ou krigzis://) em Electron e Tauri v2
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const api = (window as any).electronAPI;
-    if (!api?.on) return;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleOAuthCallback = async (_event: any, url: string) => {
+    const processOAuthUrl = async (url: string) => {
       try {
         let paramsString = '';
         const hashIndex = url.indexOf('#');
@@ -183,13 +179,65 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    api.on('auth:oauth-callback', handleOAuthCallback);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api = (window as any).electronAPI;
+    if (api?.on) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const handleOAuthCallback = (_event: any, url: string) => {
+        processOAuthUrl(url);
+      };
+      api.on('auth:oauth-callback', handleOAuthCallback);
+    }
+
+    let unsubscribeTauri: (() => void) | undefined;
+    if (desktopAdapter.isTauri()) {
+      import('@tauri-apps/plugin-deep-link')
+        .then(async ({ onOpenUrl, getCurrent }) => {
+          try {
+            const initialUrls = await getCurrent();
+            if (initialUrls && initialUrls.length > 0) {
+              for (const url of initialUrls) {
+                processOAuthUrl(url);
+              }
+            }
+          } catch {
+            // ignore initial check error
+          }
+          return onOpenUrl((urls) => {
+            for (const url of urls) {
+              processOAuthUrl(url);
+            }
+          });
+        })
+        .then((unsub) => {
+          if (typeof unsub === 'function') {
+            unsubscribeTauri = unsub;
+          }
+        })
+        .catch((err) => {
+          console.warn('Tauri deep-link listener init error:', err);
+        });
+    }
 
     return () => {
       if (api?.off) {
-        api.off('auth:oauth-callback', handleOAuthCallback);
+        api.off('auth:oauth-callback', processOAuthUrl);
+      }
+      if (unsubscribeTauri) {
+        unsubscribeTauri();
       }
     };
+  }, []);
+
+  const getOAuthRedirectUrl = useCallback(() => {
+    const isDesktop = desktopAdapter.isElectron() || desktopAdapter.isTauri();
+    if (isDesktop) {
+      return 'krigzis://auth/callback';
+    }
+    if (typeof window !== 'undefined' && window.location.origin) {
+      return window.location.origin;
+    }
+    return 'http://localhost:3000';
   }, []);
 
   const signUp = useCallback(async (email: string, password: string, displayName: string) => {
@@ -270,62 +318,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signInWithGoogle = useCallback(async () => {
     try {
-      // Para Electron: gerar URL OAuth sem redirecionar automaticamente
+      const isDesktop = desktopAdapter.isElectron() || desktopAdapter.isTauri();
+      const redirectUrl = getOAuthRedirectUrl();
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: 'krigzis://auth/callback',
-          skipBrowserRedirect: true,
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: isDesktop,
         },
       });
 
       if (error) return { error };
 
-      // Abrir a URL no navegador externo do sistema via Electron IPC
       if (data?.url) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const api = (window as any).electronAPI;
-        if (api?.auth?.openExternal) {
-          await api.auth.openExternal(data.url);
-        } else {
-          // Fallback: tentar abrir diretamente (web)
-          window.open(data.url, '_blank');
-        }
+        await desktopAdapter.openExternal(data.url);
       }
 
       return { error: null };
     } catch (err) {
       return { error: { message: err instanceof Error ? err.message : 'Erro ao iniciar login com Google' } as AuthError };
     }
-  }, []);
+  }, [getOAuthRedirectUrl]);
 
   const signInWithDiscord = useCallback(async () => {
     try {
+      const isDesktop = desktopAdapter.isElectron() || desktopAdapter.isTauri();
+      const redirectUrl = getOAuthRedirectUrl();
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'discord',
         options: {
-          redirectTo: 'krigzis://auth/callback',
-          skipBrowserRedirect: true,
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: isDesktop,
         },
       });
 
       if (error) return { error };
 
       if (data?.url) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const api = (window as any).electronAPI;
-        if (api?.auth?.openExternal) {
-          await api.auth.openExternal(data.url);
-        } else {
-          window.open(data.url, '_blank');
-        }
+        await desktopAdapter.openExternal(data.url);
       }
 
       return { error: null };
     } catch (err) {
       return { error: { message: err instanceof Error ? err.message : 'Erro ao iniciar login com Discord' } as AuthError };
     }
-  }, []);
+  }, [getOAuthRedirectUrl]);
 
   const resetPassword = useCallback(async (email: string) => {
     const targetEmail = email.trim() === 'admin@admin' ? 'admin@admin.com' : email;

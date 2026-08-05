@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schema.tauri.app/config/capability",
+  "identifier": "http-fetch-scope",
+  "description": "Allows fetch to Supabase and Cloudflare R2 endpoints for PDF and video download",
+  "windows": ["main"],
+  "permissions": [
+    {
+      "identifier": "http:allow-fetch",
+      "allow": [
+        { "url": "https://hubpmhyiuzyllkgjzjoo.supabase.co/**" },
+        { "url": "https://*.supabase.co/**" },
+        { "url": "https://*.r2.cloudflarestorage.com/**" },
+        { "url": "https://*.cloudflare.com/**" },
+        { "url": "https://*.cloudflareresearch.com/**" }
+      ]
+    }
+  ]
+}

@@ -27,6 +27,7 @@ import { useAuth } from './contexts/AuthContext';
 import { useOrganization } from './contexts/OrganizationContext';
 import UpdateNotification from './components/UpdateNotification';
 import { NoOrganizationModal } from './components/NoOrganizationModal';
+import { desktopAdapter } from './lib/desktopAdapter';
 
 // Import styles
 import './styles/reset.css';
@@ -209,8 +210,17 @@ const App: React.FC<AppProps> = () => {
   useAppearance();
 
   // Hooks centralizados via Context (instância única)
-  const { signOut, isOffline } = useAuth();
+  const { user, signOut, isOffline } = useAuth();
   const { myRole, organizations, loading: orgsLoading } = useOrganization();
+
+  // Dynamic window resizing for Login vs App view
+  useEffect(() => {
+    if (user || isOffline) {
+      void desktopAdapter.setWindowSize(1280, 800, true);
+    } else {
+      void desktopAdapter.setWindowSize(480, 680, true);
+    }
+  }, [user, isOffline]);
   const { isLoading: notesLoading } = useNotes();
   const canViewMetrics = myRole === 'admin' || myRole === 'owner';
   const {
@@ -308,13 +318,23 @@ const App: React.FC<AppProps> = () => {
         // Request notification permission
         await requestPermission();
 
-        // Get system information
-        if (electronAPI) {
-          const ver = await electronAPI.updater?.getVersion?.() || electronAPI.system?.version || '';
+        // Get system information via unified desktopAdapter
+        try {
+          const sysInfo = await desktopAdapter.getSystemInfo();
           setSystemInfo({
-            platform: electronAPI.system?.platform || '',
-            version: typeof ver === 'string' ? ver : String(ver)
+            platform: sysInfo.platform || 'win32',
+            version: sysInfo.version || '1.4.0'
           });
+        } catch {
+          if (electronAPI) {
+            const ver = await electronAPI.updater?.getVersion?.() || electronAPI.system?.version || '1.4.0';
+            setSystemInfo({
+              platform: electronAPI.system?.platform || 'win32',
+              version: typeof ver === 'string' ? ver : String(ver)
+            });
+          } else {
+            setSystemInfo({ platform: 'win32', version: '1.4.0' });
+          }
         }
 
         setIsLoading(false);

@@ -96,7 +96,7 @@ module.exports = {
     },
     headers: {
       'Access-Control-Allow-Origin': '*',
-      'Content-Security-Policy': "default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: file: blob:; media-src 'self' file: blob:; frame-src 'self' file: blob: data:; font-src 'self'; connect-src 'self' ws: wss: http: https:;",
+      'Content-Security-Policy': "default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: file: blob:; media-src 'self' file: blob:; frame-src 'self' file: blob: data: asset: http://asset.localhost http://localhost:* https:; font-src 'self'; connect-src 'self' ws: wss: http: https:;",
     }
   },
   

@@ -1,20 +1,20 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { useNotes } from '../contexts/NotesContext';
 import { useSystemTags } from '../contexts/SystemTagsContext';
 import { useTheme } from '../hooks/useTheme';
-import { useAuth } from '../contexts/AuthContext';
-import { useSettings } from '../hooks/useSettings';
-import { supabase } from '../lib/supabase';
+import { useToast } from '../contexts/ToastContext';
 import {
   BarChart3,
-  Users,
   Eye,
   Tag,
   Pin,
   Paperclip,
   Activity,
   Notebook,
+  Copy,
+  Download,
+  Check,
 } from 'lucide-react';
 
 interface MostViewedNote {
@@ -30,289 +30,214 @@ interface NotesBySystemTag {
   note_count: number;
 }
 
-interface NotesMetrics {
-  total_notes: number;
-  pinned_notes: number;
-  attachment_notes: number;
-  most_viewed: MostViewedNote[];
-  online_users_count: number;
-  notes_by_system_tag: NotesBySystemTag[];
-}
-
 export const NotesMetricsPanel: React.FC = () => {
   const { activeOrg, members } = useOrganization();
   const { notes } = useNotes();
   const { tags: systemTags } = useSystemTags();
   const { theme } = useTheme();
-  const { user, isOffline } = useAuth();
-  const { settings } = useSettings();
+  const { showToast } = useToast();
   const isDark = theme.mode === 'dark';
 
-  const [metrics, setMetrics] = useState<NotesMetrics | null>(null);
-  const [chartData, setChartData] = useState<Array<{ date: string; count: number }>>([]);
-  const [loading, setLoading] = useState(true);
-  const [animateChart, setAnimateChart] = useState(false);
+  const [copiedMd, setCopiedMd] = useState(false);
 
-  const lastFetchTimeRef = useRef<number>(0);
-  const lastOrgIdRef = useRef<string | null>(activeOrg?.id || null);
+  // Compute metrics synchronously in 0ms from in-memory notes
+  const metrics = useMemo(() => {
+    const total_notes = notes.length;
+    const pinned_notes = notes.filter(n => n.is_pinned).length;
+    const attachment_notes = notes.filter(n =>
+      (n.attachedImages && n.attachedImages.length > 0) ||
+      (n.attachedVideos && n.attachedVideos.length > 0)
+    ).length;
 
-  // Determine storage mode (identical to NotesContext)
-  const storageMode = settings.storageMode || 'cloud';
-  const isAuthenticated = !!user && !isOffline;
-  const useCloud = (storageMode === 'cloud' || storageMode === 'hybrid') && isAuthenticated;
+    const most_viewed: MostViewedNote[] = [...notes]
+      .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
+      .slice(0, 5)
+      .map(note => ({
+        id: note.id,
+        title: note.title,
+        updated_at: note.updated_at || note.created_at,
+      }));
 
-  useEffect(() => {
-    const activeSystemTags = systemTags.filter(tag => tag.is_active);
-    const systemTagById = new Map(activeSystemTags.map(tag => [tag.id, tag]));
+    // Map system tag names to colors for fast lookup
+    const tagColorByName = new Map<string, string>();
+    const tagIdByName = new Map<string, number>();
+    systemTags.forEach(st => {
+      tagColorByName.set(st.name.toLowerCase(), st.color);
+      tagIdByName.set(st.name.toLowerCase(), st.id);
+    });
 
-    const fetchMetrics = async () => {
-      const now = Date.now();
-      const orgChanged = lastOrgIdRef.current !== (activeOrg?.id || null);
-      
-      if (!orgChanged && now - lastFetchTimeRef.current < 10000 && metrics) {
-        return;
-      }
-      
-      lastOrgIdRef.current = activeOrg?.id || null;
-      lastFetchTimeRef.current = now;
+    const tagCounts = new Map<string, { id: number; name: string; color: string; count: number }>();
+    let untaggedCount = 0;
 
-      if (!metrics || orgChanged) {
-        setLoading(true);
-      }
-      
-      if (!useCloud) {
-        // Local calculation (offline or local storage mode)
-        const totalCount = notes.length;
-        const pinnedCount = notes.filter(n => n.is_pinned).length;
-        const attachmentCount = notes.filter(n => 
-          (n.attachedImages && n.attachedImages.length > 0) || 
-          (n.attachedVideos && n.attachedVideos.length > 0)
-        ).length;
+    notes.forEach(note => {
+      const noteTagNames = new Set<string>();
 
-        const recentNotes = [...notes]
-          .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
-          .slice(0, 5)
-          .map(note => ({
-            id: note.id,
-            title: note.title,
-            updated_at: note.updated_at || note.created_at,
-          }));
-
-        const notesByTag: NotesBySystemTag[] = [];
-        for (const tag of activeSystemTags) {
-          const count = notes.filter(note => note.system_tag_id === tag.id).length;
-          if (count > 0) {
-            notesByTag.push({
-              tag_id: tag.id,
-              tag_name: tag.name,
-              tag_color: tag.color,
-              note_count: count,
-            });
-          }
+      // System tag ID link
+      if (note.system_tag_id) {
+        const sysTag = systemTags.find(st => st.id === note.system_tag_id);
+        if (sysTag) {
+          noteTagNames.add(sysTag.name);
         }
-        notesByTag.sort((a, b) => b.note_count - a.note_count);
-
-        // Group local notes by day for the last 7 days
-        const last7Days = Array.from({ length: 7 }).map((_, i) => {
-          const d = new Date();
-          d.setDate(d.getDate() - i);
-          return d.toISOString().split('T')[0];
-        }).reverse();
-
-        const countsByDay = last7Days.reduce((acc, day) => {
-          acc[day] = 0;
-          return acc;
-        }, {} as Record<string, number>);
-
-        notes.forEach(note => {
-          if (note.created_at) {
-            const day = note.created_at.split('T')[0];
-            if (day in countsByDay) {
-              countsByDay[day]++;
-            }
-          }
-        });
-
-        const localChartData = last7Days.map(day => ({
-          date: day,
-          count: countsByDay[day]
-        }));
-
-        setMetrics({
-          total_notes: totalCount,
-          pinned_notes: pinnedCount,
-          attachment_notes: attachmentCount,
-          most_viewed: recentNotes,
-          online_users_count: 1,
-          notes_by_system_tag: notesByTag,
-        });
-        setChartData(localChartData);
-        setLoading(false);
-        return;
       }
 
-      // Cloud calculation (online cloud or hybrid storage mode)
-      try {
-        // Construct queries
-        let metaQuery = supabase
-          .from('notes')
-          .select('is_pinned, system_tag_id, attached_images, attached_videos, created_at');
-
-        let recentQuery = supabase
-          .from('notes')
-          .select('id, title, updated_at, created_at')
-          .order('updated_at', { ascending: false })
-          .limit(5);
-
-        // Apply organization scopes
-        if (activeOrg) {
-          metaQuery = metaQuery.eq('organization_id', activeOrg.id);
-          recentQuery = recentQuery.eq('organization_id', activeOrg.id);
-        } else {
-          metaQuery = metaQuery.is('organization_id', null);
-          recentQuery = recentQuery.is('organization_id', null);
-        }
-
-        // Online count query: only count profiles updated in the last 5 minutes
-        const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-        const onlineCountQuery = activeOrg && members.length > 0
-          ? supabase
-              .from('profiles')
-              .select('id', { count: 'exact', head: true })
-              .in('id', members.map(m => m.user_id))
-              .gte('updated_at', fiveMinsAgo)
-          : Promise.resolve({ count: 1 });
-
-        // Run queries in parallel (only 2 DB tables queries)
-        const [
-          metaRes,
-          recentRes,
-          onlineCountRes
-        ] = await Promise.all([
-          metaQuery,
-          recentQuery,
-          onlineCountQuery
-        ]);
-
-        if (metaRes.error) throw metaRes.error;
-        if (recentRes.error) throw recentRes.error;
-
-        const metaData = metaRes.data || [];
-        const totalCount = metaData.length;
-        const pinnedCount = metaData.filter(n => n.is_pinned).length;
-
-        const attachmentCount = metaData.filter(n => 
-          (n.attached_images && n.attached_images.length > 0) || 
-          (n.attached_videos && n.attached_videos.length > 0)
-        ).length;
-
-        const recentNotes = (recentRes.data || []).map(r => ({
-          id: r.id,
-          title: r.title,
-          updated_at: r.updated_at || r.created_at,
-        }));
-
-        const notesByTag: NotesBySystemTag[] = [];
-        for (const tag of activeSystemTags) {
-          const count = metaData.filter(note => note.system_tag_id === tag.id).length;
-          if (count > 0) {
-            notesByTag.push({
-              tag_id: tag.id,
-              tag_name: tag.name,
-              tag_color: tag.color,
-              note_count: count,
-            });
-          }
-        }
-        
-        // Sort tags by count descending (most used first)
-        notesByTag.sort((a, b) => b.note_count - a.note_count);
-
-        const last7Days = Array.from({ length: 7 }).map((_, i) => {
-          const d = new Date();
-          d.setDate(d.getDate() - i);
-          return d.toISOString().split('T')[0];
-        }).reverse();
-
-        const countsByDay = last7Days.reduce((acc, day) => {
-          acc[day] = 0;
-          return acc;
-        }, {} as Record<string, number>);
-
-        metaData.forEach(n => {
-          if (n.created_at) {
-            const day = n.created_at.split('T')[0];
-            if (day in countsByDay) {
-              countsByDay[day]++;
-            }
+      // String tags array (e.g. note.tags = ['Interno', 'pdf-importado'])
+      if (note.tags && Array.isArray(note.tags) && note.tags.length > 0) {
+        note.tags.forEach(t => {
+          if (t && typeof t === 'string' && t.trim()) {
+            noteTagNames.add(t.trim());
           }
         });
-
-        const cloudChartData = last7Days.map(day => ({
-          date: day,
-          count: countsByDay[day]
-        }));
-
-        setMetrics({
-          total_notes: totalCount,
-          pinned_notes: pinnedCount,
-          attachment_notes: attachmentCount,
-          most_viewed: recentNotes,
-          online_users_count: onlineCountRes.count ?? 0,
-          notes_by_system_tag: notesByTag,
-        });
-        setChartData(cloudChartData);
-      } catch (error) {
-        console.error('Erro ao buscar métricas da nuvem:', error);
-      } finally {
-        setLoading(false);
       }
-    };
 
-    fetchMetrics();
-  }, [useCloud, activeOrg, notes, members, systemTags, user, settings.userName]);
+      if (noteTagNames.size === 0) {
+        untaggedCount++;
+      } else {
+        noteTagNames.forEach(tagName => {
+          const key = tagName.toLowerCase();
+          const existing = tagCounts.get(key);
+          if (existing) {
+            existing.count++;
+          } else {
+            const color = tagColorByName.get(key) || '#00D4AA';
+            const id = tagIdByName.get(key) || Math.abs(key.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0));
+            tagCounts.set(key, { id, name: tagName, color, count: 1 });
+          }
+        });
+      }
+    });
 
-  useEffect(() => {
-    if (metrics) {
-      const timer = setTimeout(() => setAnimateChart(true), 150);
-      return () => clearTimeout(timer);
+    const notes_by_system_tag: NotesBySystemTag[] = Array.from(tagCounts.values())
+      .map(item => ({
+        tag_id: item.id,
+        tag_name: item.name,
+        tag_color: item.color,
+        note_count: item.count,
+      }))
+      .sort((a, b) => b.note_count - a.note_count);
+
+    if (untaggedCount > 0) {
+      notes_by_system_tag.push({
+        tag_id: -1,
+        tag_name: 'Sem Tag',
+        tag_color: '#6B7280',
+        note_count: untaggedCount,
+      });
     }
-  }, [metrics]);
 
-  const formatRelativeTime = (dateString: string): string => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    return {
+      total_notes,
+      pinned_notes,
+      attachment_notes,
+      most_viewed,
+      online_users_count: Math.max(1, members.length),
+      notes_by_system_tag,
+    };
+  }, [notes, systemTags, members]);
+
+  // Compute 7-day activity chart synchronously
+  const chartData = useMemo(() => {
+    const last7Days = Array.from({ length: 7 }).map((_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      return d.toISOString().split('T')[0];
+    }).reverse();
+
+    const countsByDay = last7Days.reduce((acc, day) => {
+      acc[day] = 0;
+      return acc;
+    }, {} as Record<string, number>);
+
+    notes.forEach(note => {
+      if (note.created_at) {
+        const day = note.created_at.split('T')[0];
+        if (day in countsByDay) {
+          countsByDay[day]++;
+        }
+      }
+    });
+
+    return last7Days.map(day => ({
+      date: day,
+      count: countsByDay[day]
+    }));
+  }, [notes]);
+
+  const maxCount = useMemo(() => Math.max(...chartData.map(d => d.count), 1), [chartData]);
+
+  const generateMarkdownReport = useCallback((): string => {
+    const nowStr = new Date().toLocaleString('pt-BR');
+    const orgName = activeOrg?.name || 'Local/Pessoal';
+
+    let md = `# 📊 Relatório de Métricas Nexus\n\n`;
+    md += `**Organização:** ${orgName}  \n`;
+    md += `**Gerado em:** ${nowStr}  \n\n`;
+    md += `---  \n\n`;
+    md += `## 📈 Resumo Geral\n\n`;
+    md += `- **Total de Notas:** ${metrics.total_notes}\n`;
+    md += `- **Notas Fixadas:** ${metrics.pinned_notes}\n`;
+    md += `- **Notas com Anexos:** ${metrics.attachment_notes}\n`;
+    md += `- **Membros Registrados:** ${metrics.online_users_count}\n\n`;
+    md += `## 🏷️ Distribuição por Tags de Sistema\n\n`;
+    if (metrics.notes_by_system_tag.length === 0) {
+      md += `*Nenhuma tag de sistema em uso.*\n\n`;
+    } else {
+      metrics.notes_by_system_tag.forEach(t => {
+        md += `- **${t.tag_name}:** ${t.note_count} nota(s)\n`;
+      });
+      md += `\n`;
+    }
+    md += `## 📝 Notas Recentes\n\n`;
+    if (metrics.most_viewed.length === 0) {
+      md += `*Nenhuma nota recente.*\n\n`;
+    } else {
+      metrics.most_viewed.forEach(n => {
+        md += `- **#${n.id} ${n.title}** (Atualizada em: ${new Date(n.updated_at).toLocaleDateString('pt-BR')})\n`;
+      });
+    }
+    return md;
+  }, [metrics, activeOrg]);
+
+  const handleCopyMarkdown = async () => {
+    const md = generateMarkdownReport();
+    try {
+      await navigator.clipboard.writeText(md);
+      setCopiedMd(true);
+      showToast('Relatório copiado em MD!', 'success');
+      setTimeout(() => setCopiedMd(false), 2000);
+    } catch {
+      showToast('Erro ao copiar relatório', 'error');
+    }
   };
 
-  if (loading) {
-    return (
-      <div style={{
-        padding: '80px 40px',
-        textAlign: 'center',
-        color: isDark ? '#888' : '#9CA3AF',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '16px',
-      }}>
-        <BarChart3 size={32} className="pulse-dot" color="var(--color-primary-teal)" />
-        <p style={{ fontSize: '14px', fontWeight: 500 }}>Carregando dados do Dashboard...</p>
-      </div>
-    );
-  }
+  const handleExportReport = () => {
+    const md = generateMarkdownReport();
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `relatorio-nexus-${new Date().toISOString().slice(0, 10)}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Relatório exportado com sucesso!', 'success');
+  };
 
-  if (!metrics) {
-    return (
-      <div style={{
-        padding: '80px 40px',
-        textAlign: 'center',
-        color: isDark ? '#888' : '#9CA3AF',
-      }}>
-        <p>Nenhum dado de Dashboard disponível</p>
-      </div>
-    );
-  }
+  const formatRelativeTime = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'agora mesmo';
+    if (diffMins < 60) return `há ${diffMins} min`;
+    if (diffHours < 24) return `há ${diffHours} h`;
+    if (diffDays === 1) return 'ontem';
+    if (diffDays < 7) return `há ${diffDays} dias`;
+    return d.toLocaleDateString('pt-BR');
+  };
 
   const cardStyle: React.CSSProperties = {
     background: isDark ? 'rgba(26, 26, 26, 0.45)' : 'rgba(255, 255, 255, 0.85)',
@@ -343,162 +268,74 @@ export const NotesMetricsPanel: React.FC = () => {
       gradient: 'linear-gradient(135deg, #3B82F6 0%, #1e3a8a 100%)',
     },
     {
-      label: 'Usuários Online',
+      label: 'Membros',
       value: metrics.online_users_count,
       icon: <Activity size={20} />,
       gradient: 'linear-gradient(135deg, #EC4899 0%, #9d174d 100%)',
     },
   ];
 
-  const renderChart = () => {
-    if (!chartData || chartData.length === 0) return null;
-
-    const maxCount = Math.max(...chartData.map(d => d.count), 1);
-
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%' }}>
-        <h3 style={{
-          fontSize: '13px',
-          fontWeight: 600,
-          color: isDark ? '#FFF' : '#111',
-          marginBottom: '4px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-        }}>
-          <BarChart3 size={16} color="var(--color-primary-teal)" />
-          Atividade Semanal (Notas Criadas)
-        </h3>
-        
-        {/* SVG/CSS Chart */}
-        <div style={{
-          height: '200px',
-          display: 'flex',
-          alignItems: 'flex-end',
-          justifyContent: 'space-between',
-          padding: '24px 16px 12px',
-          background: isDark ? 'rgba(10, 10, 10, 0.4)' : '#F9FAFB',
-          border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-          borderRadius: '8px',
-          gap: '12px',
-          position: 'relative',
-          boxSizing: 'border-box'
-        }}>
-          {chartData.map((d) => {
-            const heightPercent = (d.count / maxCount) * 80;
-            const formattedDate = new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' });
-            
-            return (
-              <div key={d.date} style={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '8px',
-                height: '100%',
-                justifyContent: 'flex-end',
-                position: 'relative',
-              }}>
-                {/* Tooltip on Hover */}
-                <div className="chart-tooltip" style={{
-                  position: 'absolute',
-                  bottom: `calc(${heightPercent}% + 32px)`,
-                  background: 'var(--color-accent-purple)',
-                  color: '#fff',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  fontSize: '10px',
-                  fontWeight: 600,
-                  opacity: 0,
-                  transition: 'opacity 0.2s, transform 0.2s',
-                  transform: 'translateY(4px)',
-                  pointerEvents: 'none',
-                  whiteSpace: 'nowrap',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                  zIndex: 10,
-                }}>
-                  {d.count} {d.count === 1 ? 'nota' : 'notas'}
-                </div>
-
-                {/* Animated Bar */}
-                <div
-                  className="chart-bar"
-                  style={{
-                    width: '100%',
-                    maxWidth: '32px',
-                    height: animateChart ? `${heightPercent}%` : '0%',
-                    background: 'linear-gradient(180deg, var(--color-primary-teal) 0%, var(--color-accent-purple) 100%)',
-                    borderRadius: '6px 6px 0 0',
-                    cursor: 'pointer',
-                    transition: 'height 0.8s cubic-bezier(0.4, 0, 0.2, 1), filter 0.2s, transform 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    const tooltip = e.currentTarget.previousSibling as HTMLDivElement;
-                    if (tooltip) {
-                      tooltip.style.opacity = '1';
-                      tooltip.style.transform = 'translateY(0)';
-                    }
-                    e.currentTarget.style.filter = 'brightness(1.15)';
-                    e.currentTarget.style.transform = 'scaleX(1.05)';
-                  }}
-                  onMouseLeave={(e) => {
-                    const tooltip = e.currentTarget.previousSibling as HTMLDivElement;
-                    if (tooltip) {
-                      tooltip.style.opacity = '0';
-                      tooltip.style.transform = 'translateY(4px)';
-                    }
-                    e.currentTarget.style.filter = 'none';
-                    e.currentTarget.style.transform = 'none';
-                  }}
-                />
-
-                {/* Date Label */}
-                <span style={{
-                  fontSize: '10px',
-                  color: isDark ? '#888' : '#6B7280',
-                  textAlign: 'center',
-                  textTransform: 'capitalize',
-                  fontWeight: 500,
-                }}>
-                  {formattedDate.replace('.', '')}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px', maxWidth: '1200px', margin: '0 auto' }}>
-      
-      {/* CSS Animado Pulsante Keyframes */}
-      <style>{`
-        @keyframes ping {
-          75%, 100% {
-            transform: scale(2.2);
-            opacity: 0;
-          }
-        }
-        .pulse-dot {
-          animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
-        }
-      `}</style>
-
       {/* Header */}
-      <div style={{ marginBottom: '4px' }}>
-        <h2 style={{
-          fontSize: '20px',
-          fontWeight: 700,
-          color: isDark ? '#FFF' : '#111',
-          marginBottom: '2px',
-        }}>
-          Dashboard — {activeOrg?.name || 'Pessoal'}
-        </h2>
-        <p style={{ fontSize: '12px', color: isDark ? '#666' : '#9CA3AF' }}>
-          Visão geral de atividades e membros da organização
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '4px' }}>
+        <div>
+          <h2 style={{
+            fontSize: '20px',
+            fontWeight: 700,
+            color: isDark ? '#FFF' : '#111',
+            marginBottom: '2px',
+          }}>
+            Dashboard — {activeOrg?.name || 'Pessoal'}
+          </h2>
+          <p style={{ fontSize: '12px', color: isDark ? '#666' : '#9CA3AF' }}>
+            Visão geral de atividades e membros da organização em tempo real
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handleCopyMarkdown}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              fontSize: '12px',
+              fontWeight: 500,
+              borderRadius: '8px',
+              border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB'}`,
+              backgroundColor: copiedMd ? 'var(--color-primary-teal)' : (isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF'),
+              color: copiedMd ? '#FFF' : (isDark ? '#CCC' : '#374151'),
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            {copiedMd ? <Check size={14} /> : <Copy size={14} />}
+            {copiedMd ? 'Copiado!' : 'Copiar MD'}
+          </button>
+
+          <button
+            onClick={handleExportReport}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              fontSize: '12px',
+              fontWeight: 500,
+              borderRadius: '8px',
+              border: '1px solid rgba(0, 180, 160, 0.3)',
+              backgroundColor: 'rgba(0, 180, 160, 0.1)',
+              color: 'var(--color-primary-teal)',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <Download size={14} />
+            Exportar Relatório
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards Row */}
@@ -518,14 +355,6 @@ export const NotesMetricsPanel: React.FC = () => {
             cursor: 'default',
           }}
           className="metric-card"
-          onMouseEnter={e => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = isDark ? '0 12px 36px rgba(0,0,0,0.45)' : '0 12px 36px rgba(15,23,42,0.08)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.transform = 'none';
-            e.currentTarget.style.boxShadow = isDark ? '0 8px 32px rgba(0, 0, 0, 0.3)' : '0 8px 32px rgba(15, 23, 42, 0.05)';
-          }}
           >
             <div style={{
               display: 'flex',
@@ -560,7 +389,73 @@ export const NotesMetricsPanel: React.FC = () => {
       }}>
         {/* Weekly activity Chart */}
         <div style={cardStyle}>
-          {renderChart()}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%' }}>
+            <h3 style={{
+              fontSize: '13px',
+              fontWeight: 600,
+              color: isDark ? '#FFF' : '#111',
+              marginBottom: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}>
+              <BarChart3 size={14} color="var(--color-primary-teal)" />
+              Atividade dos Últimos 7 Dias
+            </h3>
+            <div style={{
+              height: '200px',
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'space-between',
+              padding: '24px 16px 12px',
+              background: isDark ? 'rgba(10, 10, 10, 0.4)' : '#F9FAFB',
+              border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
+              borderRadius: '8px',
+              gap: '12px',
+              position: 'relative',
+              boxSizing: 'border-box'
+            }}>
+              {chartData.map((d) => {
+                const heightPercent = (d.count / maxCount) * 80;
+                const formattedDate = new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' });
+                
+                return (
+                  <div key={d.date} style={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '8px',
+                    height: '100%',
+                    justifyContent: 'flex-end',
+                    position: 'relative',
+                  }}>
+                    <div
+                      className="chart-bar"
+                      style={{
+                        width: '100%',
+                        maxWidth: '32px',
+                        height: `${heightPercent}%`,
+                        background: 'linear-gradient(180deg, var(--color-primary-teal) 0%, var(--color-accent-purple) 100%)',
+                        borderRadius: '6px 6px 0 0',
+                        cursor: 'pointer',
+                        transition: 'height 0.3s ease',
+                      }}
+                    />
+                    <span style={{
+                      fontSize: '10px',
+                      color: isDark ? '#888' : '#6B7280',
+                      textAlign: 'center',
+                      textTransform: 'capitalize',
+                      fontWeight: 500,
+                    }}>
+                      {formattedDate.replace('.', '')}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {/* Recent Notes */}
@@ -626,8 +521,6 @@ export const NotesMetricsPanel: React.FC = () => {
           </div>
         </div>
 
-
-
         {/* Notes by System Tag */}
         <div style={cardStyle}>
           <h3 style={{
@@ -680,7 +573,6 @@ export const NotesMetricsPanel: React.FC = () => {
           </div>
         </div>
       </div>
-
     </div>
   );
 };
