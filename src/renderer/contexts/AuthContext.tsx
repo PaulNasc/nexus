@@ -190,6 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     let unsubscribeTauri: (() => void) | undefined;
+    let unsubscribeSingleInstance: (() => void) | undefined;
     if (desktopAdapter.isTauri()) {
       import('@tauri-apps/plugin-deep-link')
         .then(async ({ onOpenUrl, getCurrent }) => {
@@ -222,6 +223,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .catch((err) => {
           console.warn('Tauri deep-link listener init error:', err);
         });
+
+      import('@tauri-apps/api/event')
+        .then(({ listen }) => {
+          return listen<string>('single-instance-deep-link', (event) => {
+            if (event.payload) {
+              processOAuthUrl(event.payload);
+            }
+          });
+        })
+        .then((unsub) => {
+          unsubscribeSingleInstance = unsub;
+        })
+        .catch((err) => {
+          console.warn('Tauri single-instance event listener init error:', err);
+        });
     }
 
     return () => {
@@ -230,6 +246,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       if (unsubscribeTauri) {
         unsubscribeTauri();
+      }
+      if (unsubscribeSingleInstance) {
+        unsubscribeSingleInstance();
       }
     };
   }, []);
