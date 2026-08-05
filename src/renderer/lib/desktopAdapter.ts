@@ -222,19 +222,6 @@ class DesktopAdapter implements IDesktopAdapter {
   }
 
   public async fetchBlob(url: string, init?: RequestInit): Promise<Blob> {
-    // 1. Try standard browser fetch first (executes entirely in WebView2/Chromium C++ networking)
-    // When Webview is launched with --disable-web-security, this handles R2 signed URLs directly
-    // bypassing Tauri's IPC messaging layer, resulting in exactly ONE network request and 0 IPC logs.
-    try {
-      const response = await fetch(url, init);
-      if (response.ok) {
-        return await response.blob();
-      }
-    } catch (err) {
-      console.warn('Standard Webview fetch failed/blocked by CORS, falling back to Tauri HTTP plugin fetch:', err);
-    }
-
-    // 2. Fallback to Tauri native fetch plugin if browser fetch fails (runs in Rust background)
     if (this.isTauri()) {
       try {
         const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
@@ -249,11 +236,10 @@ class DesktopAdapter implements IDesktopAdapter {
         const contentType = res.headers.get('content-type') || 'application/octet-stream';
         return new Blob([arrayBuffer], { type: contentType });
       } catch (err) {
-        console.warn('Tauri native fetch failed:', err);
+        console.warn('Tauri native fetch failed, falling back to standard fetch', err);
       }
     }
 
-    // 3. Fallback for non-Tauri environment or last resort
     const downloadResponse = await fetch(url, init);
     if (!downloadResponse.ok) {
       throw new Error(`HTTP ${downloadResponse.status}`);

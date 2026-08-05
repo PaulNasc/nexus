@@ -19,8 +19,7 @@
         "resizable": true,
         "fullscreen": false,
         "decorations": true,
-        "transparent": false,
-        "additionalBrowserArgs": "--disable-web-security"
+        "transparent": false
       }
     ],
     "security": {
