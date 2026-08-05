@@ -439,6 +439,10 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     setPdfLoadError(false);
   };
 
+  const attachedVideosSerialized = useMemo(() => {
+    return JSON.stringify(note?.attachedVideos || []);
+  }, [note?.attachedVideos]);
+
   useEffect(() => {
     if (!isOpen || !note?.attachedVideos || note.attachedVideos.length === 0) {
       clearTempVideoObjectUrls();
@@ -643,7 +647,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       }
       clearTempVideoObjectUrls();
     };
-  }, [isOpen, note?.attachedVideos, note?.id, ownerId, orgId]);
+  }, [isOpen, attachedVideosSerialized, note?.id, ownerId, orgId]);
 
   const allImages = useMemo(() => {
     if (!note) return [];
