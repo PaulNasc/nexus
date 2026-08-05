@@ -130,6 +130,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
   const [pdfLoadError, setPdfLoadError] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [isIframeLoading, setIsIframeLoading] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState<{ loaded: number; total: number }>({ loaded: 0, total: 0 });
   const [downloadingVideos, setDownloadingVideos] = useState<Record<string, boolean>>({});
   const [videoProgress, setVideoProgress] = useState<Record<string, { loaded: number; total: number }>>({});
   const tempVideoObjectUrlsRef = useRef<Set<string>>(new Set());
@@ -261,6 +262,68 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     let canceled = false;
     const nextPdfObjectUrls = new Set<string>();
 
+    const downloadPdfBlobWithProgress = async (signedUrl: string): Promise<Blob> => {
+      if (desktopAdapter.isTauri()) {
+        try {
+          const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
+          const res = await tauriFetch(signedUrl, { method: 'GET' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const contentLength = Number(res.headers.get('content-length') || 0);
+
+          if (!res.body) {
+            const ab = await res.arrayBuffer();
+            if (!canceled) setPdfProgress({ loaded: ab.byteLength, total: ab.byteLength });
+            return new Blob([ab], { type: 'application/pdf' });
+          }
+
+          const reader = res.body.getReader();
+          const chunks: Uint8Array[] = [];
+          let loaded = 0;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) {
+              chunks.push(value);
+              loaded += value.length;
+              if (!canceled) setPdfProgress({ loaded, total: contentLength });
+            }
+          }
+
+          return new Blob(chunks, { type: 'application/pdf' });
+        } catch {
+          const blob = await desktopAdapter.fetchBlob(signedUrl);
+          if (!canceled) setPdfProgress({ loaded: blob.size, total: blob.size });
+          return blob;
+        }
+      }
+
+      const res = await fetch(signedUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const contentLength = Number(res.headers.get('content-length') || 0);
+      if (!res.body) {
+        const blob = await res.blob();
+        if (!canceled) setPdfProgress({ loaded: blob.size, total: blob.size });
+        return blob;
+      }
+
+      const reader = res.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let loaded = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          loaded += value.length;
+          if (!canceled) setPdfProgress({ loaded, total: contentLength });
+        }
+      }
+
+      return new Blob(chunks, { type: 'application/pdf' });
+    };
+
     const resolvePdfCandidates = async () => {
       if (!isOpen || !primaryPdfSource) {
         if (!canceled) {
@@ -269,18 +332,20 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
           setPdfCandidateIndex(0);
           setPdfLoadError(false);
           setIsDownloadingPdf(false);
+          setPdfProgress({ loaded: 0, total: 0 });
         }
         return;
       }
 
       setIsDownloadingPdf(true);
+      setPdfProgress({ loaded: 0, total: 0 });
       const candidates: string[] = [];
       const parsedPdf = parsePdfRef(primaryPdfSource);
 
       // 1. Direct HTTPS/HTTP URL (e.g. R2 signed URL): fetch as Blob to avoid WebView2 iframe cross-origin block
       if (/^https?:\/\//i.test(primaryPdfSource)) {
         try {
-          const blob = await desktopAdapter.fetchBlob(primaryPdfSource);
+          const blob = await downloadPdfBlobWithProgress(primaryPdfSource);
           if (!canceled && blob) {
             const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([await blob.arrayBuffer()], { type: 'application/pdf' });
             const blobUrl = URL.createObjectURL(pdfBlob);
@@ -326,7 +391,9 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       if (pdfCandidateStoragePaths.size > 0) {
         for (const storagePath of pdfCandidateStoragePaths) {
           try {
-            const blob = await downloadVideoBlobFromR2Signed(storagePath);
+            const signed = await requestVideoSignedUrl(storagePath);
+            if (canceled) return;
+            const blob = await downloadPdfBlobWithProgress(signed.signedUrl);
             if (canceled) return;
             const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([await blob.arrayBuffer()], { type: 'application/pdf' });
             const blobUrl = URL.createObjectURL(pdfBlob);
@@ -964,14 +1031,44 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                           flexDirection: 'column',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: 12,
-                          background: 'rgba(10, 10, 10, 0.85)',
-                          zIndex: 10
+                          gap: 14,
+                          background: 'rgba(10, 10, 10, 0.9)',
+                          zIndex: 10,
+                          padding: '0 32px'
                         }}>
-                          <Loader2 className="notes-utilities-spin" size={28} color="var(--color-primary-teal)" />
-                          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', animation: 'notes-pulse-opacity 2s ease-in-out infinite' }}>
-                            {isDownloadingPdf ? 'Carregando arquivo PDF do R2...' : 'Renderizando PDF...'}
-                          </span>
+                          <div style={{ width: '100%', maxWidth: 320 }}>
+                            <div style={{
+                              height: 3,
+                              borderRadius: 99,
+                              background: 'rgba(255,255,255,0.12)',
+                              overflow: 'hidden',
+                              position: 'relative',
+                            }}>
+                              {pdfProgress.total > 0 ? (
+                                <div style={{
+                                  height: '100%',
+                                  borderRadius: 99,
+                                  background: 'var(--color-primary-teal, #00b4a0)',
+                                  width: `${Math.round((pdfProgress.loaded / pdfProgress.total) * 100)}%`,
+                                  transition: 'width 0.2s ease',
+                                }} />
+                              ) : (
+                                <div className="video-progress-indeterminate" />
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                              <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11 }}>
+                                {isDownloadingPdf ? 'Baixando PDF do R2...' : 'Renderizando PDF...'}
+                              </span>
+                              {pdfProgress.total > 0 && (
+                                <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+                                  {Math.round((pdfProgress.loaded / pdfProgress.total) * 100)}%
+                                  {' · '}
+                                  {(pdfProgress.total / 1024 / 1024).toFixed(1)} MB
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
                       {pdfLoadError && (
@@ -1225,14 +1322,44 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                           flexDirection: 'column',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: 12,
-                          background: 'rgba(10, 10, 10, 0.85)',
-                          zIndex: 10
+                          gap: 14,
+                          background: 'rgba(10, 10, 10, 0.9)',
+                          zIndex: 10,
+                          padding: '0 32px'
                         }}>
-                          <Loader2 className="notes-utilities-spin" size={28} color="var(--color-primary-teal)" />
-                          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', animation: 'notes-pulse-opacity 2s ease-in-out infinite' }}>
-                            {isDownloadingPdf ? 'Carregando arquivo PDF do R2...' : 'Renderizando PDF...'}
-                          </span>
+                          <div style={{ width: '100%', maxWidth: 320 }}>
+                            <div style={{
+                              height: 3,
+                              borderRadius: 99,
+                              background: 'rgba(255,255,255,0.12)',
+                              overflow: 'hidden',
+                              position: 'relative',
+                            }}>
+                              {pdfProgress.total > 0 ? (
+                                <div style={{
+                                  height: '100%',
+                                  borderRadius: 99,
+                                  background: 'var(--color-primary-teal, #00b4a0)',
+                                  width: `${Math.round((pdfProgress.loaded / pdfProgress.total) * 100)}%`,
+                                  transition: 'width 0.2s ease',
+                                }} />
+                              ) : (
+                                <div className="video-progress-indeterminate" />
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                              <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11 }}>
+                                {isDownloadingPdf ? 'Baixando PDF do R2...' : 'Renderizando PDF...'}
+                              </span>
+                              {pdfProgress.total > 0 && (
+                                <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+                                  {Math.round((pdfProgress.loaded / pdfProgress.total) * 100)}%
+                                  {' · '}
+                                  {(pdfProgress.total / 1024 / 1024).toFixed(1)} MB
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
                       {pdfLoadError && (

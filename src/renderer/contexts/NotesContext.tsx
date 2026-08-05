@@ -988,7 +988,7 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
         const userId = userData?.user?.id;
         const orgId = activeOrg?.id || null;
 
-        let editorDisplayName = '';
+        let editorDisplayName = settings.userName || '';
         if (userId) {
           try {
             const { data: profile } = await supabase
@@ -996,9 +996,9 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
               .select('display_name')
               .eq('id', userId)
               .single();
-            editorDisplayName = profile?.display_name || userData?.user?.email || 'Usuário';
+            editorDisplayName = settings.userName || profile?.display_name || userData?.user?.user_metadata?.display_name || (userData?.user?.email ? userData.user.email.split('@')[0] : 'Usuário');
           } catch {
-            editorDisplayName = userData?.user?.email || 'Usuário';
+            editorDisplayName = settings.userName || userData?.user?.user_metadata?.display_name || (userData?.user?.email ? userData.user.email.split('@')[0] : 'Usuário');
           }
           updates.user_id = userId;
           updates.creator_display_name = editorDisplayName;

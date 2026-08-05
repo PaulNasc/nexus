@@ -6,6 +6,7 @@ import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../hooks/useSettings';
 import { supabase } from '../lib/supabase';
+import { useToast } from '../contexts/ToastContext';
 import {
   BarChart3,
   Users,
@@ -15,6 +16,10 @@ import {
   Paperclip,
   Activity,
   Notebook,
+  Copy,
+  Download,
+  Check,
+  FileText
 } from 'lucide-react';
 
 interface MostViewedNote {
@@ -470,6 +475,71 @@ export const NotesMetricsPanel: React.FC = () => {
     );
   };
 
+  const { showToast } = useToast();
+  const [copiedMd, setCopiedMd] = useState(false);
+
+  const generateMarkdownReport = useCallback((): string => {
+    if (!metrics) return '';
+    const nowStr = new Date().toLocaleString('pt-BR');
+    const orgName = activeOrg?.name || 'Local/Pessoal';
+
+    let md = `# 📊 Relatório de Métricas Nexus\n\n`;
+    md += `**Organização:** ${orgName}  \n`;
+    md += `**Gerado em:** ${nowStr}  \n\n`;
+    md += `---  \n\n`;
+    md += `## 📈 Resumo Geral\n\n`;
+    md += `- **Total de Notas:** ${metrics.total_notes}\n`;
+    md += `- **Notas Fixadas:** ${metrics.pinned_notes}\n`;
+    md += `- **Notas com Anexos:** ${metrics.attachment_notes}\n`;
+    md += `- **Membros Online:** ${metrics.online_users_count}\n\n`;
+    md += `## 🏷️ Distribuição por Tags de Sistema\n\n`;
+    if (metrics.notes_by_system_tag.length === 0) {
+      md += `*Nenhuma tag de sistema em uso.*\n\n`;
+    } else {
+      metrics.notes_by_system_tag.forEach(t => {
+        md += `- **${t.tag_name}:** ${t.note_count} nota(s)\n`;
+      });
+      md += `\n`;
+    }
+    md += `## 📝 Notas Recentes\n\n`;
+    if (metrics.most_viewed.length === 0) {
+      md += `*Nenhuma nota recente.*\n\n`;
+    } else {
+      metrics.most_viewed.forEach(n => {
+        md += `- **#${n.id} ${n.title}** (Atualizada em: ${new Date(n.updated_at).toLocaleDateString('pt-BR')})\n`;
+      });
+    }
+    return md;
+  }, [metrics, activeOrg]);
+
+  const handleCopyMarkdown = async () => {
+    const md = generateMarkdownReport();
+    if (!md) return;
+    try {
+      await navigator.clipboard.writeText(md);
+      setCopiedMd(true);
+      showToast('Relatório copiado em MD!', 'success');
+      setTimeout(() => setCopiedMd(false), 2000);
+    } catch {
+      showToast('Erro ao copiar relatório', 'error');
+    }
+  };
+
+  const handleExportReport = () => {
+    const md = generateMarkdownReport();
+    if (!md) return;
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `relatorio-nexus-${new Date().toISOString().slice(0, 10)}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Relatório exportado com sucesso!', 'success');
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px', maxWidth: '1200px', margin: '0 auto' }}>
       
@@ -487,18 +557,64 @@ export const NotesMetricsPanel: React.FC = () => {
       `}</style>
 
       {/* Header */}
-      <div style={{ marginBottom: '4px' }}>
-        <h2 style={{
-          fontSize: '20px',
-          fontWeight: 700,
-          color: isDark ? '#FFF' : '#111',
-          marginBottom: '2px',
-        }}>
-          Dashboard — {activeOrg?.name || 'Pessoal'}
-        </h2>
-        <p style={{ fontSize: '12px', color: isDark ? '#666' : '#9CA3AF' }}>
-          Visão geral de atividades e membros da organização
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '4px' }}>
+        <div>
+          <h2 style={{
+            fontSize: '20px',
+            fontWeight: 700,
+            color: isDark ? '#FFF' : '#111',
+            marginBottom: '2px',
+          }}>
+            Dashboard — {activeOrg?.name || 'Pessoal'}
+          </h2>
+          <p style={{ fontSize: '12px', color: isDark ? '#666' : '#9CA3AF' }}>
+            Visão geral de atividades e membros da organização
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handleCopyMarkdown}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              fontSize: '12px',
+              fontWeight: 500,
+              borderRadius: '8px',
+              border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB'}`,
+              backgroundColor: copiedMd ? 'var(--color-primary-teal)' : (isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF'),
+              color: copiedMd ? '#FFF' : (isDark ? '#CCC' : '#374151'),
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            {copiedMd ? <Check size={14} /> : <Copy size={14} />}
+            {copiedMd ? 'Copiado!' : 'Copiar MD'}
+          </button>
+
+          <button
+            onClick={handleExportReport}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              fontSize: '12px',
+              fontWeight: 500,
+              borderRadius: '8px',
+              border: '1px solid rgba(0, 180, 160, 0.3)',
+              backgroundColor: 'rgba(0, 180, 160, 0.1)',
+              color: 'var(--color-primary-teal)',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <Download size={14} />
+            Exportar Relatório
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards Row */}
