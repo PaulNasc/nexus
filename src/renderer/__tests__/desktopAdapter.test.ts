@@ -1,9 +1,12 @@
+if (typeof window === 'undefined') {
+  (global as unknown as { window: Record<string, unknown> }).window = {};
+}
+
 import { desktopAdapter } from '../lib/desktopAdapter';
 
 describe('DesktopAdapter', () => {
-  const originalWindow = { ...window };
-
   afterEach(() => {
+    (desktopAdapter as unknown as { cachedSystemInfo: null }).cachedSystemInfo = null;
     delete (window as unknown as { electronAPI?: unknown }).electronAPI;
     delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
     delete (window as unknown as { __TAURI__?: unknown }).__TAURI__;

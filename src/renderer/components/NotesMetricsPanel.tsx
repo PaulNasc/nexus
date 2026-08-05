@@ -58,20 +58,71 @@ export const NotesMetricsPanel: React.FC = () => {
         updated_at: note.updated_at || note.created_at,
       }));
 
-    const activeSystemTags = systemTags.filter(tag => tag.is_active);
-    const notes_by_system_tag: NotesBySystemTag[] = [];
-    for (const tag of activeSystemTags) {
-      const count = notes.filter(note => note.system_tag_id === tag.id).length;
-      if (count > 0) {
-        notes_by_system_tag.push({
-          tag_id: tag.id,
-          tag_name: tag.name,
-          tag_color: tag.color,
-          note_count: count,
+    // Map system tag names to colors for fast lookup
+    const tagColorByName = new Map<string, string>();
+    const tagIdByName = new Map<string, number>();
+    systemTags.forEach(st => {
+      tagColorByName.set(st.name.toLowerCase(), st.color);
+      tagIdByName.set(st.name.toLowerCase(), st.id);
+    });
+
+    const tagCounts = new Map<string, { id: number; name: string; color: string; count: number }>();
+    let untaggedCount = 0;
+
+    notes.forEach(note => {
+      const noteTagNames = new Set<string>();
+
+      // System tag ID link
+      if (note.system_tag_id) {
+        const sysTag = systemTags.find(st => st.id === note.system_tag_id);
+        if (sysTag) {
+          noteTagNames.add(sysTag.name);
+        }
+      }
+
+      // String tags array (e.g. note.tags = ['Interno', 'pdf-importado'])
+      if (note.tags && Array.isArray(note.tags) && note.tags.length > 0) {
+        note.tags.forEach(t => {
+          if (t && typeof t === 'string' && t.trim()) {
+            noteTagNames.add(t.trim());
+          }
         });
       }
+
+      if (noteTagNames.size === 0) {
+        untaggedCount++;
+      } else {
+        noteTagNames.forEach(tagName => {
+          const key = tagName.toLowerCase();
+          const existing = tagCounts.get(key);
+          if (existing) {
+            existing.count++;
+          } else {
+            const color = tagColorByName.get(key) || '#00D4AA';
+            const id = tagIdByName.get(key) || Math.abs(key.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0));
+            tagCounts.set(key, { id, name: tagName, color, count: 1 });
+          }
+        });
+      }
+    });
+
+    const notes_by_system_tag: NotesBySystemTag[] = Array.from(tagCounts.values())
+      .map(item => ({
+        tag_id: item.id,
+        tag_name: item.name,
+        tag_color: item.color,
+        note_count: item.count,
+      }))
+      .sort((a, b) => b.note_count - a.note_count);
+
+    if (untaggedCount > 0) {
+      notes_by_system_tag.push({
+        tag_id: -1,
+        tag_name: 'Sem Tag',
+        tag_color: '#6B7280',
+        note_count: untaggedCount,
+      });
     }
-    notes_by_system_tag.sort((a, b) => b.note_count - a.note_count);
 
     return {
       total_notes,

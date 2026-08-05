@@ -263,65 +263,9 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     const nextPdfObjectUrls = new Set<string>();
 
     const downloadPdfBlobWithProgress = async (signedUrl: string): Promise<Blob> => {
-      if (desktopAdapter.isTauri()) {
-        try {
-          const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
-          const res = await tauriFetch(signedUrl, { method: 'GET' });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const contentLength = Number(res.headers.get('content-length') || 0);
-
-          if (!res.body) {
-            const ab = await res.arrayBuffer();
-            if (!canceled) setPdfProgress({ loaded: ab.byteLength, total: ab.byteLength });
-            return new Blob([ab], { type: 'application/pdf' });
-          }
-
-          const reader = res.body.getReader();
-          const chunks: BlobPart[] = [];
-          let loaded = 0;
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            if (value) {
-              chunks.push(value);
-              loaded += value.length;
-              if (!canceled) setPdfProgress({ loaded, total: contentLength });
-            }
-          }
-
-          return new Blob(chunks, { type: 'application/pdf' });
-        } catch {
-          const blob = await desktopAdapter.fetchBlob(signedUrl);
-          if (!canceled) setPdfProgress({ loaded: blob.size, total: blob.size });
-          return blob;
-        }
-      }
-
-      const res = await fetch(signedUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const contentLength = Number(res.headers.get('content-length') || 0);
-      if (!res.body) {
-        const blob = await res.blob();
-        if (!canceled) setPdfProgress({ loaded: blob.size, total: blob.size });
-        return blob;
-      }
-
-      const reader = res.body.getReader();
-      const chunks: BlobPart[] = [];
-      let loaded = 0;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          chunks.push(value);
-          loaded += value.length;
-          if (!canceled) setPdfProgress({ loaded, total: contentLength });
-        }
-      }
-
-      return new Blob(chunks, { type: 'application/pdf' });
+      const blob = await desktopAdapter.fetchBlob(signedUrl);
+      if (!canceled) setPdfProgress({ loaded: blob.size, total: blob.size });
+      return blob;
     };
 
     const resolvePdfCandidates = async () => {
@@ -520,82 +464,11 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     const xhrRefs: XMLHttpRequest[] = [];
 
     const downloadWithProgress = async (signedUrl: string, videoRef: string): Promise<Blob> => {
-      // 1. In Tauri, use native HTTP plugin fetch to bypass browser CORS completely
-      if (desktopAdapter.isTauri()) {
-        try {
-          const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
-          const res = await tauriFetch(signedUrl, { method: 'GET' });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const contentLength = Number(res.headers.get('content-length') || 0);
-
-          if (!res.body) {
-            const ab = await res.arrayBuffer();
-            if (!canceled) {
-              setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded: ab.byteLength, total: ab.byteLength } }));
-            }
-            const type = res.headers.get('content-type') || 'video/mp4';
-            return new Blob([ab], { type });
-          }
-
-          const reader = res.body.getReader();
-          const chunks: BlobPart[] = [];
-          let loaded = 0;
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            if (value) {
-              chunks.push(value);
-              loaded += value.length;
-              if (!canceled) {
-                setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded, total: contentLength } }));
-              }
-            }
-          }
-
-          const contentType = res.headers.get('content-type') || 'video/mp4';
-          return new Blob(chunks, { type: contentType });
-        } catch (tauriErr) {
-          console.warn('NoteViewerModal Tauri native stream fetch failed, falling back to desktopAdapter.fetchBlob:', tauriErr);
-          const blob = await desktopAdapter.fetchBlob(signedUrl);
-          if (!canceled) {
-            setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded: blob.size, total: blob.size } }));
-          }
-          return blob;
-        }
+      const blob = await desktopAdapter.fetchBlob(signedUrl);
+      if (!canceled) {
+        setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded: blob.size, total: blob.size } }));
       }
-
-      // 2. Standard fetch with stream progress for Web/Electron
-      const res = await fetch(signedUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const contentLength = Number(res.headers.get('content-length') || 0);
-
-      if (!res.body) {
-        const blob = await res.blob();
-        if (!canceled) {
-          setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded: blob.size, total: blob.size } }));
-        }
-        return blob;
-      }
-
-      const reader = res.body.getReader();
-      const chunks: BlobPart[] = [];
-      let loaded = 0;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          chunks.push(value);
-          loaded += value.length;
-          if (!canceled) {
-            setVideoProgress(prev => ({ ...prev, [videoRef]: { loaded, total: contentLength } }));
-          }
-        }
-      }
-
-      const contentType = res.headers.get('content-type') || 'video/mp4';
-      return new Blob(chunks, { type: contentType });
+      return blob;
     };
 
     const resolve = async () => {
