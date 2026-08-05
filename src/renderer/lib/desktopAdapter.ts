@@ -49,40 +49,56 @@ class DesktopAdapter implements IDesktopAdapter {
     return this.runtime === 'tauri';
   }
 
+  private cachedSystemInfo: SystemInfo | null = null;
+  private lastSizeKey: string = '';
+
   public isElectron(): boolean {
     return this.runtime === 'electron';
   }
 
   public async getSystemInfo(): Promise<SystemInfo> {
+    if (this.cachedSystemInfo) {
+      return this.cachedSystemInfo;
+    }
+
+    let info: SystemInfo;
     if (this.isElectron()) {
       const electronAPI = (window as unknown as { electronAPI?: { systemInfo?: { getInfo?: () => Promise<SystemInfo> } } }).electronAPI;
       if (electronAPI?.systemInfo?.getInfo) {
-        return await electronAPI.systemInfo.getInfo();
+        info = await electronAPI.systemInfo.getInfo();
+        this.cachedSystemInfo = info;
+        return info;
       }
     }
 
     if (this.isTauri()) {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        return await invoke<SystemInfo>('get_system_info');
+        info = await invoke<SystemInfo>('get_system_info');
+        this.cachedSystemInfo = info;
+        return info;
       } catch {
-        return {
+        info = {
           version: '1.4.0',
           os: 'Windows (Tauri)',
           platform: 'win32',
           arch: 'x64',
           isPortable: true,
         };
+        this.cachedSystemInfo = info;
+        return info;
       }
     }
 
-    return {
+    info = {
       version: '1.4.0',
       os: 'Web Browser',
       platform: 'web',
       arch: 'unknown',
       isPortable: false,
     };
+    this.cachedSystemInfo = info;
+    return info;
   }
 
   public async showNotification(title: string, body?: string): Promise<void> {
@@ -179,6 +195,10 @@ class DesktopAdapter implements IDesktopAdapter {
   }
 
   public async setWindowSize(width: number, height: number, center = true): Promise<void> {
+    const key = `${width}x${height}_${center}`;
+    if (this.lastSizeKey === key) return;
+    this.lastSizeKey = key;
+
     if (this.isElectron()) {
       const electronAPI = (window as unknown as { electronAPI?: { setWindowSize?: (w: number, h: number, c?: boolean) => Promise<void> } }).electronAPI;
       if (electronAPI?.setWindowSize) {
@@ -191,7 +211,6 @@ class DesktopAdapter implements IDesktopAdapter {
       try {
         const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
         const appWindow = getCurrentWindow();
-        await appWindow.setResizable(true);
         await appWindow.setSize(new LogicalSize(width, height));
         if (center) {
           await appWindow.center();

@@ -277,7 +277,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
           }
 
           const reader = res.body.getReader();
-          const chunks: Uint8Array[] = [];
+          const chunks: BlobPart[] = [];
           let loaded = 0;
 
           while (true) {
@@ -308,7 +308,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       }
 
       const reader = res.body.getReader();
-      const chunks: Uint8Array[] = [];
+      const chunks: BlobPart[] = [];
       let loaded = 0;
 
       while (true) {
@@ -538,7 +538,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
           }
 
           const reader = res.body.getReader();
-          const chunks: Uint8Array[] = [];
+          const chunks: BlobPart[] = [];
           let loaded = 0;
 
           while (true) {
@@ -579,7 +579,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       }
 
       const reader = res.body.getReader();
-      const chunks: Uint8Array[] = [];
+      const chunks: BlobPart[] = [];
       let loaded = 0;
 
       while (true) {
