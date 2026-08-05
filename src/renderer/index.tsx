@@ -11,6 +11,7 @@ import { OrganizationProvider } from './contexts/OrganizationContext';
 import { SystemTagsProvider } from './contexts/SystemTagsContext';
 import AuthScreen from './components/AuthScreen';
 import { migrateLegacyStorageKeys } from './utils/migrateLegacyStorage';
+import { desktopAdapter } from './lib/desktopAdapter';
 
 migrateLegacyStorageKeys();
 
@@ -137,6 +138,17 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 // Root component that handles auth routing
 const RootApp: React.FC = () => {
   const { user, loading, isOffline } = useAuth();
+
+  // Dynamic window resizing for Login vs App view
+  // RootApp stays mounted during transitions, guaranteeing that resizing executes correctly
+  React.useEffect(() => {
+    if (loading) return;
+    if (user || isOffline) {
+      void desktopAdapter.setWindowSize(1280, 800, true);
+    } else {
+      void desktopAdapter.setWindowSize(480, 680, true);
+    }
+  }, [user, isOffline, loading]);
 
   // Show loading spinner while checking auth state
   if (loading) {

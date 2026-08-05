@@ -213,14 +213,6 @@ const App: React.FC<AppProps> = () => {
   const { user, signOut, isOffline } = useAuth();
   const { myRole, organizations, loading: orgsLoading } = useOrganization();
 
-  // Dynamic window resizing for Login vs App view
-  useEffect(() => {
-    if (user || isOffline) {
-      void desktopAdapter.setWindowSize(1280, 800, true);
-    } else {
-      void desktopAdapter.setWindowSize(480, 680, true);
-    }
-  }, [user, isOffline]);
   const { isLoading: notesLoading } = useNotes();
   const canViewMetrics = myRole === 'admin' || myRole === 'owner';
   const {

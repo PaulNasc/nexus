@@ -507,6 +507,73 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
         let downloaded = false;
         let lastDownloadError: string | null = null;
 
+        // ── Tauri path: check/download to local cache natively on Rust backend ──────────────────
+        if (isTauri) {
+          activeDownloadsRef.current.add(videoRef);
+          try {
+            if (!canceled) {
+              setDownloadingVideos(prev => ({ ...prev, [videoRef]: true }));
+            }
+
+            let downloadUrl = videoRef;
+            if (!/^https?:\/\//i.test(videoRef)) {
+              let resolvedSignedUrl: string | null = null;
+              
+              const tauriCandidates = new Set<string>();
+              if (parsed.storagePath) {
+                try { tauriCandidates.add(decodeURIComponent(parsed.storagePath)); } catch { tauriCandidates.add(parsed.storagePath); }
+              }
+              let rawFileName = localVideoName;
+              try {
+                rawFileName = decodeURIComponent(decodeFileLikePath(localVideoName).split('/').filter(Boolean).pop() || localVideoName);
+              } catch {
+                rawFileName = decodeFileLikePath(localVideoName).split('/').filter(Boolean).pop() || localVideoName;
+              }
+              if (rawFileName) {
+                if (noteOrgId) {
+                  tauriCandidates.add(`org/${noteOrgId}/${rawFileName}`);
+                  tauriCandidates.add(`org/${noteOrgId}/video/${rawFileName}`);
+                }
+                if (noteOwnerId) {
+                  tauriCandidates.add(`user/${noteOwnerId}/${rawFileName}`);
+                  tauriCandidates.add(`user/${noteOwnerId}/video/${rawFileName}`);
+                }
+              }
+
+              for (const objectKey of tauriCandidates) {
+                try {
+                  const signed = await requestVideoSignedUrl(objectKey);
+                  resolvedSignedUrl = signed.signedUrl;
+                  break;
+                } catch {
+                  continue;
+                }
+              }
+
+              if (!resolvedSignedUrl) {
+                throw new Error('Nenhum caminho de armazenamento válido encontrado para obter link do R2');
+              }
+              downloadUrl = resolvedSignedUrl;
+            }
+
+            const { invoke, convertFileSrc } = await import('@tauri-apps/api/core');
+            const localPath = await invoke<string>('download_video_to_cache', { url: downloadUrl, filename: localVideoName });
+            const assetUrl = convertFileSrc(localPath);
+
+            if (!canceled) {
+              urls[videoRef] = assetUrl;
+              paths[videoRef] = localPath;
+              downloaded = true;
+            }
+          } catch (err) {
+            lastDownloadError = err instanceof Error ? err.message : String(err);
+          } finally {
+            activeDownloadsRef.current.delete(videoRef);
+            if (!canceled) setDownloadingVideos(prev => ({ ...prev, [videoRef]: false }));
+          }
+          if (downloaded) continue;
+        }
+
         // Direct HTTPS video URL
         if (/^https?:\/\//i.test(videoRef)) {
           activeDownloadsRef.current.add(videoRef);

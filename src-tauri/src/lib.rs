@@ -30,7 +30,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::sysinfo::get_system_info,
-            commands::logging::get_logs
+            commands::logging::get_logs,
+            commands::download::download_video_to_cache
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
