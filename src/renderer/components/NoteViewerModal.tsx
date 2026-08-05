@@ -293,7 +293,8 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
             const { invoke, convertFileSrc } = await import('@tauri-apps/api/core');
             const pdfName = parsedPdf.localFileName || 'document.pdf';
             const localPath = await invoke<string>('download_video_to_cache', { url: primaryPdfSource, filename: pdfName });
-            const assetUrl = convertFileSrc(localPath);
+            const normalizedPath = localPath.replace(/\\/g, '/');
+            const assetUrl = convertFileSrc(normalizedPath);
             if (!canceled) {
               candidates.push(assetUrl);
               setIsDownloadingPdf(false);
@@ -357,7 +358,8 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
               const { invoke, convertFileSrc } = await import('@tauri-apps/api/core');
               const pdfName = parsedPdf.localFileName || 'document.pdf';
               const localPath = await invoke<string>('download_video_to_cache', { url: signed.signedUrl, filename: pdfName });
-              const assetUrl = convertFileSrc(localPath);
+              const normalizedPath = localPath.replace(/\\/g, '/');
+              const assetUrl = convertFileSrc(normalizedPath);
               if (!canceled) {
                 candidates.push(assetUrl);
                 setIsDownloadingPdf(false);
@@ -587,7 +589,8 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
 
             const { invoke, convertFileSrc } = await import('@tauri-apps/api/core');
             const localPath = await invoke<string>('download_video_to_cache', { url: downloadUrl, filename: localVideoName });
-            const assetUrl = convertFileSrc(localPath);
+            const normalizedPath = localPath.replace(/\\/g, '/');
+            const assetUrl = convertFileSrc(normalizedPath);
 
             if (!canceled) {
               urls[videoRef] = assetUrl;

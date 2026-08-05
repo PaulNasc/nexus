@@ -16,8 +16,8 @@
         default-src 'self' 'unsafe-inline' 'unsafe-eval';
         script-src 'self' 'unsafe-inline' 'unsafe-eval';
         style-src 'self' 'unsafe-inline';
-        img-src 'self' data: https: file: blob:;
-        media-src 'self' file: blob:;
+        img-src 'self' data: https: file: blob: asset: http://asset.localhost https://asset.localhost;
+        media-src 'self' file: blob: asset: http://asset.localhost https://asset.localhost http://localhost:*;
         frame-src 'self' file: blob: data: asset: http://asset.localhost http://localhost:* https:;
         font-src 'self';
         connect-src 'self' ws: wss: http: https:;
