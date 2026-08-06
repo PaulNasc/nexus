@@ -11,6 +11,7 @@ import { useSystemTags } from '../contexts/SystemTagsContext';
 import { useStorageMode } from '../hooks/useStorageMode';
 import { isModuleLocked } from '../config/featureFlags';
 import { desktopAdapter } from '../lib/desktopAdapter';
+import { resolveDroppedFilePaths } from '../lib/tauriDragDrop';
 
 
 import { Button } from './ui/Button';
@@ -626,7 +627,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       setIsFileDragActive(false);
 
       const files = Array.from(event.dataTransfer?.files || []);
-      const droppedPaths = files.map((file) => file.path).filter(Boolean) as string[];
+      const droppedPaths = resolveDroppedFilePaths(files);
       if (droppedPaths.length === 0) {
         closeImportExportModal();
         return;

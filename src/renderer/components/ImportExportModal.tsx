@@ -3,6 +3,7 @@ import { Button } from './ui/Button';
 import { Download, Upload } from 'lucide-react';
 import type { ImportResult, RestorePreview } from '../../shared/types/backup';
 import type { ElectronAPI, ImportSourceSelectionResult } from '../../main/preload';
+import { resolveDroppedFilePaths } from '../lib/tauriDragDrop';
 
 type ExportFormat = 'zip' | 'json' | 'csv';
 const SYNC_ITEMS_RENDER_LIMIT = 200;
@@ -393,7 +394,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
         return;
       }
 
-      const droppedPaths = files.map((f) => f.path).filter(Boolean) as string[];
+      const droppedPaths = resolveDroppedFilePaths(files);
       if (droppedPaths.length === 0) {
         setError('Não foi possível obter o caminho dos arquivos');
         return;
@@ -420,7 +421,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       }
 
       const file = files[0];
-      const filePath = file.path;
+      const filePath = droppedPaths[0] || file.path;
       
       if (!filePath) {
         setError('Não foi possível obter o caminho do arquivo');

@@ -1008,7 +1008,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                       </div>
                     </div>
                     <div style={{ width: '100%', flex: 1, background: '#0b0b0b', position: 'relative', minHeight: '50vh' }}>
-                      {(isDownloadingPdf || isIframeLoading) && (
+                      {(isDownloadingPdf || isIframeLoading || (!primaryPdfUrl && !pdfLoadError)) && (
                         <div style={{
                           position: 'absolute',
                           inset: 0,
@@ -1127,7 +1127,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                             </div>
                           </div>
                           <div style={{ position: 'relative', width: '100%', height: '52vh', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                            {isDownloading ? (
+                            {(isDownloading || (!videoUrl && !isMissing)) ? (
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, width: '100%', padding: '0 32px' }}>
                                 {/* Progress bar */}
                                 <div style={{ width: '100%', maxWidth: 320 }}>
