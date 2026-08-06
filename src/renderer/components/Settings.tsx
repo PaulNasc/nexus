@@ -656,10 +656,34 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       }
     };
 
+    const onTauriNativeDrop = (event: Event) => {
+      const customEv = event as CustomEvent<{ paths: string[] }>;
+      const paths = customEv.detail?.paths;
+      if (!paths || paths.length === 0) return;
+
+      dragDepthRef.current = 0;
+      externalDragSessionRef.current = false;
+      setIsFileDragActive(false);
+
+      const onlyPdfs = paths.every((p) => p.toLowerCase().endsWith('.pdf'));
+
+      if (paths.length > 1 && onlyPdfs) {
+        window.dispatchEvent(new CustomEvent('openImportIntent', {
+          detail: { intent: { kind: 'pdf-files', filePaths: paths }, source: 'external-dnd' },
+        }));
+        return;
+      }
+
+      window.dispatchEvent(new CustomEvent('openImportIntent', {
+        detail: { filePath: paths[0], source: 'external-dnd' },
+      }));
+    };
+
     window.addEventListener('dragenter', onDragEnter);
     window.addEventListener('dragover', onDragOver);
     window.addEventListener('dragleave', onDragLeave);
     window.addEventListener('drop', onDrop);
+    window.addEventListener('tauriNativeFileDrop', onTauriNativeDrop);
     window.addEventListener('blur', onWindowBlur);
 
     return () => {
@@ -667,6 +691,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       window.removeEventListener('dragover', onDragOver);
       window.removeEventListener('dragleave', onDragLeave);
       window.removeEventListener('drop', onDrop);
+      window.removeEventListener('tauriNativeFileDrop', onTauriNativeDrop);
       window.removeEventListener('blur', onWindowBlur);
     };
   }, [closeImportExportModal]);

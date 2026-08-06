@@ -44,7 +44,13 @@ if (typeof window !== 'undefined') {
       const appWindow = getCurrentWindow();
       await appWindow.onDragDropEvent((event) => {
         const payload = event.payload;
-        if (payload.type === 'drop' || payload.type === 'enter') {
+        if (payload.type === 'drop') {
+          if (payload.paths && payload.paths.length > 0) {
+            lastTauriDroppedPaths = payload.paths;
+            (window as unknown as { __TAURI_DROPPED_PATHS__?: string[] }).__TAURI_DROPPED_PATHS__ = payload.paths;
+            window.dispatchEvent(new CustomEvent('tauriNativeFileDrop', { detail: { paths: payload.paths } }));
+          }
+        } else if (payload.type === 'enter') {
           if (payload.paths && payload.paths.length > 0) {
             lastTauriDroppedPaths = payload.paths;
             (window as unknown as { __TAURI_DROPPED_PATHS__?: string[] }).__TAURI_DROPPED_PATHS__ = payload.paths;

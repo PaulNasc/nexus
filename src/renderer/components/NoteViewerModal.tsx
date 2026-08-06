@@ -895,6 +895,19 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     link.click();
   };
 
+  const handleDownloadVideo = (videoRef: string) => {
+    const videoUrl = videoUrls[videoRef];
+    if (!videoUrl) return;
+    const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
+    const cleanFileName = localVideoName.replace(/^\d+-/, '');
+    const link = document.createElement('a');
+    link.href = videoUrl;
+    link.download = cleanFileName;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.click();
+  };
+
   const handleRelinkVideo = async (videoRef: string) => {
     const electron = getElectron();
     if (!electron?.video) return;
@@ -1113,16 +1126,30 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                                 </button>
                               )}
                               <button
-                                onClick={() => handleCopyVideoPath(videoRef)}
-                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: copiedPath === videoRef ? 'var(--color-primary-teal)' : 'var(--color-bg-hover)', color: copiedPath === videoRef ? '#fff' : 'var(--color-text-secondary)', cursor: 'pointer' }}
+                                onClick={() => setVideoLightbox(videoRef)}
+                                disabled={!videoUrl}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: videoUrl ? 'pointer' : 'not-allowed', opacity: videoUrl ? 1 : 0.5 }}
                               >
-                                <Copy size={12} /> {copiedPath === videoRef ? 'Copiado!' : 'Caminho'}
+                                <ExternalLink size={12} /> Expandir
                               </button>
                               <button
                                 onClick={() => handleOpenVideoExternal(videoRef)}
                                 style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
                               >
-                                <ExternalLink size={12} /> Abrir Externo
+                                <Play size={12} /> Abrir
+                              </button>
+                              <button
+                                onClick={() => handleDownloadVideo(videoRef)}
+                                disabled={!videoUrl}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: videoUrl ? 'pointer' : 'not-allowed', opacity: videoUrl ? 1 : 0.5 }}
+                              >
+                                <Download size={12} /> Baixar
+                              </button>
+                              <button
+                                onClick={() => handleCopyVideoPath(videoRef)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: copiedPath === videoRef ? 'var(--color-primary-teal)' : 'var(--color-bg-hover)', color: copiedPath === videoRef ? '#fff' : 'var(--color-text-secondary)', cursor: 'pointer' }}
+                              >
+                                <Copy size={12} /> {copiedPath === videoRef ? 'Copiado!' : 'Caminho'}
                               </button>
                             </div>
                           </div>
