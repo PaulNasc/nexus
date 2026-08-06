@@ -107,19 +107,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
+export const purgeAllUserDataAndStorage = async () => {
+  try {
+    localStorage.clear();
+    sessionStorage.clear();
+  } catch (err) {
+    console.warn('Error clearing browser storage:', err);
+  }
+  if (desktopAdapter.isTauri()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('clear_video_cache');
+    } catch (err) {
+      console.warn('Error clearing Tauri video cache:', err);
+    }
+  }
+  window.dispatchEvent(new CustomEvent('nexus:auth-logout'));
+};
+
     initSession();
+
+    let previousUserId: string | null = null;
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, newSession) => {
+      async (event, newSession) => {
+        const nextUser = newSession?.user ?? null;
+        const nextUserId = nextUser?.id ?? null;
+
+        if (previousUserId && nextUserId && previousUserId !== nextUserId) {
+          // User switched without explicit signOut! Purge previous user's storage immediately.
+          await purgeAllUserDataAndStorage();
+        }
+
+        previousUserId = nextUserId;
         setSession(newSession);
-        setUser(newSession?.user ?? null);
+        setUser(nextUser);
 
         // Cache user data for offline access
-        if (newSession?.user) {
-          localStorage.setItem('nexus-cached-user', JSON.stringify(newSession.user));
+        if (nextUser) {
+          localStorage.setItem('nexus-cached-user', JSON.stringify(nextUser));
         } else {
-          localStorage.removeItem('nexus-cached-user');
           if (event === 'SIGNED_OUT' || !newSession) {
             clearPersistedAuthState();
           }
@@ -334,6 +362,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signOut = useCallback(async () => {
+    await purgeAllUserDataAndStorage();
     await supabase.auth.signOut();
     clearPersistedAuthState();
     sessionStorage.removeItem('nexus-offline-mode');

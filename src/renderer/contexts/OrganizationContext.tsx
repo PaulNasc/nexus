@@ -45,7 +45,7 @@ interface OrganizationContextType {
 
 const OrganizationContext = createContext<OrganizationContextType | null>(null);
 
-const ACTIVE_ORG_KEY = 'nexus-active-org-id';
+const getActiveOrgKey = (userId?: string | null) => `nexus-active-org-id:${userId || 'guest'}`;
 
 export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { showNotification } = useNotifications();
@@ -64,6 +64,22 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const currentUserEmail = user?.email || null;
   const initializedRef = useRef(false);
 
+  // Reset state when user changes or logs out
+  useEffect(() => {
+    setOrganizations([]);
+    setActiveOrgState(null);
+    setMembers([]);
+    setInvites([]);
+    setJoinRequests([]);
+    setMyInvites([]);
+    setMyRole(null);
+    if (!user) {
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+  }, [user?.id]);
+
   // Generate slug from name
   const generateSlug = (name: string): string => {
     const base = name
@@ -79,7 +95,17 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // Load all orgs the user belongs to
   const loadOrganizations = useCallback(async () => {
     try {
-      if (!user) { setLoading(false); return; }
+      if (!user) {
+        setOrganizations([]);
+        setActiveOrgState(null);
+        setMembers([]);
+        setInvites([]);
+        setJoinRequests([]);
+        setMyInvites([]);
+        setMyRole(null);
+        setLoading(false);
+        return;
+      }
 
       // Get org IDs where user is a member
       const { data: memberRows } = await supabase
@@ -89,6 +115,7 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       if (!memberRows || memberRows.length === 0) {
         setOrganizations([]);
+        setActiveOrgState(null);
         setLoading(false);
         return;
       }
@@ -102,8 +129,8 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       setOrganizations((orgs || []) as Organization[]);
 
-      // Restore active org from localStorage (only on first load)
-      const savedOrgId = localStorage.getItem(ACTIVE_ORG_KEY);
+      // Restore active org from localStorage (scoped per user)
+      const savedOrgId = localStorage.getItem(getActiveOrgKey(user.id));
       if (savedOrgId && orgs) {
         const saved = orgs.find((o: Organization) => o.id === savedOrgId);
         if (saved) {
@@ -523,14 +550,15 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     // Skip if already the same org (avoid unnecessary re-renders)
     setActiveOrgState(prev => {
       if (prev?.id === org?.id) return prev;
+      const key = getActiveOrgKey(user?.id);
       if (org) {
-        localStorage.setItem(ACTIVE_ORG_KEY, org.id);
+        localStorage.setItem(key, org.id);
       } else {
-        localStorage.removeItem(ACTIVE_ORG_KEY);
+        localStorage.removeItem(key);
       }
       return org;
     });
-  }, []);
+  }, [user?.id]);
 
   const refreshOrganizations = useCallback(async () => {
     await loadOrganizations();

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext, createContext, useRef } from 'r
 import { Language } from './useI18n';
 import { supabase } from '../lib/supabase';
 import { getEnforcedModuleVisibility, NOTES_ONLY_RELEASE } from '../config/featureFlags';
+import { useAuth } from '../contexts/AuthContext';
 
 export interface TaskStatusCard {
   id: string;
@@ -250,6 +251,9 @@ const DEFAULT_SETTINGS: UserSettings = {
   tabOrder: ['notes'],
 };
 
+const getSettingsKey = (userId?: string | null) => userId ? `nexus-user-settings:${userId}` : 'nexus-user-settings-guest';
+const getSettingsUpdatedKey = (userId?: string | null) => userId ? `nexus-settings-updated-at:${userId}` : 'nexus-settings-updated-at-guest';
+
 const SETTINGS_STORAGE_KEY = 'nexus-user-settings';
 const SYSTEM_INFO_STORAGE_KEY = 'nexus-system-info';
 const SESSION_INFO_STORAGE_KEY = 'nexus-session-info';
@@ -329,6 +333,7 @@ const areSettingsEqual = (a: UserSettings, b: UserSettings): boolean => {
 };
 
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [settingsVersion, setSettingsVersion] = useState(0);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
@@ -346,7 +351,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     
     syncTimeoutRef.current = setTimeout(async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
         const enforcedSettings = enforceModuleSettings(settingsToSync);
         await supabase.from('user_settings').upsert({
@@ -354,7 +358,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           settings: enforcedSettings,
           updated_at: timestamp,
         });
-        localStorage.setItem('nexus-settings-updated-at', timestamp);
+        localStorage.setItem(getSettingsUpdatedKey(user.id), timestamp);
       } catch (err) {
         console.warn('Failed to sync settings to Supabase:', err);
       }
@@ -363,7 +367,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const loadSettingsFromSupabase = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const profileName = user.user_metadata?.display_name
@@ -383,48 +386,41 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .eq('id', user.id)
         .maybeSingle();
 
-      const localUpdatedAtStr = localStorage.getItem('nexus-settings-updated-at');
+      const userSettingsKey = getSettingsKey(user.id);
+      const userUpdatedKey = getSettingsUpdatedKey(user.id);
+      const localUpdatedAtStr = localStorage.getItem(userUpdatedKey);
       const localUpdatedAt = localUpdatedAtStr ? new Date(localUpdatedAtStr).getTime() : 0;
       const remoteUpdatedAt = data?.updated_at ? new Date(data.updated_at).getTime() : 0;
 
       if (data?.settings && typeof data.settings === 'object') {
         const remoteSettings = data.settings as Partial<UserSettings>;
         
-        if (remoteUpdatedAt > localUpdatedAt) {
+        if (remoteUpdatedAt >= localUpdatedAt || !localUpdatedAtStr) {
           setSettings(prev => {
-            const merged = enforceModuleSettings({ ...prev, ...remoteSettings });
+            const merged = enforceModuleSettings({ ...DEFAULT_SETTINGS, ...remoteSettings });
             merged.quickActions = migrateQuickActions(merged.quickActions || []);
             if (profile?.display_name) {
               merged.userName = profile.display_name;
-            } else if (!merged.userName && profileName) {
+            } else if (profileName) {
               merged.userName = profileName;
             }
 
-            if (areSettingsEqual(prev, merged)) {
-              return prev;
-            }
-
-            localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged));
+            localStorage.setItem(userSettingsKey, JSON.stringify(merged));
             if (data.updated_at) {
-              localStorage.setItem('nexus-settings-updated-at', data.updated_at);
+              localStorage.setItem(userUpdatedKey, data.updated_at);
             }
             return merged;
           });
-        } else if (localUpdatedAt > remoteUpdatedAt) {
-          const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
-          if (stored) {
-            const currentLocal = JSON.parse(stored) as UserSettings;
-            syncSettingsToSupabase(currentLocal, localUpdatedAtStr || undefined);
-          }
         }
-      } else if (profileName) {
+      } else {
+        // First login for this user: initialize clean settings with their profile name
         setSettings(prev => {
-          if (!prev.userName) {
-            const updated = enforceModuleSettings({ ...prev, userName: profileName });
-            localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updated));
-            return updated;
-          }
-          return prev;
+          const updated = enforceModuleSettings({
+            ...DEFAULT_SETTINGS,
+            userName: profile?.display_name || profileName || 'Usuário'
+          });
+          localStorage.setItem(userSettingsKey, JSON.stringify(updated));
+          return updated;
         });
       }
     } catch (err) {
@@ -432,15 +428,17 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  // Load settings and system info on mount
+  // Reset & reload settings whenever authenticated user changes or logs out
   useEffect(() => {
-    loadSettings();
+    setSettings(DEFAULT_SETTINGS);
     loadSystemInfo();
     loadSessionInfo();
-    // After local load, try to merge from Supabase
-    loadSettingsFromSupabase();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (user?.id) {
+      loadSettingsFromSupabase();
+    } else {
+      setIsLoading(false);
+    }
+  }, [user?.id]);
 
   // Realtime sync: reflect user_settings updates from other devices immediately
   useEffect(() => {

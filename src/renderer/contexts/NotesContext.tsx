@@ -200,10 +200,18 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const useCloud = (storageMode === 'cloud' || storageMode === 'hybrid') && isAuthenticated;
   const useLocal = storageMode === 'local' || storageMode === 'hybrid' || !isAuthenticated;
 
+  const currentUserIdKey = user?.id ?? 'guest';
   const currentOrgIdKey = activeOrg?.id ?? 'personal';
-  const fetchKey = `${currentOrgIdKey}|cloud:${useCloud}|local:${useLocal}`;
+  const fetchKey = `${currentUserIdKey}|${currentOrgIdKey}|cloud:${useCloud}|local:${useLocal}`;
   const isOrgChanged = lastFetchKeyRef.current !== fetchKey;
   const computedIsLoading = !initialLoadDone.current || isOrgChanged || isLoading || orgLoading;
+
+  // Reset notes immediately when user or org changes to prevent data leak across sessions
+  useEffect(() => {
+    setNotes([]);
+    setTotalNotesCount(0);
+    initialLoadDone.current = false;
+  }, [user?.id, activeOrg?.id]);
 
   const dedupeVideoRefs = useCallback((videoRefs: string[] | undefined): string[] | undefined => {
     if (!videoRefs || videoRefs.length === 0) return videoRefs;
