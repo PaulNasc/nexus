@@ -503,7 +503,7 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                   .eq('id', newMemberRow.org_id)
                   .single();
                 if (orgData) {
-                  localStorage.setItem(ACTIVE_ORG_KEY, orgData.id);
+                  localStorage.setItem(getActiveOrgKey(currentUserId), orgData.id);
                   window.location.reload();
                 }
               } catch (err) {

@@ -323,7 +323,10 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
 
       if (desktopAdapter.isTauri()) {
         try {
-          const { open } = await import('@tauri-apps/plugin-dialog');
+          // @ts-ignore
+          const tauriDialog = await import(/* webpackIgnore: true */ '@tauri-apps/plugin-dialog').catch(() => null);
+          const open = tauriDialog?.open || ((window as any).__TAURI__?.dialog?.open);
+          if (!open) throw new Error('Tauri dialog unavailable');
           const selected = await open({
             title: 'Selecionar arquivo para importação',
             multiple: false,

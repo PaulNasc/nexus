@@ -79,7 +79,7 @@ const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
       let result: AuditLogEntry[] = auditLogger.getLogs({ level, category, search });
       const electronLogs = await getElectron()?.logging?.getLogs?.({ level: level || undefined, category: category || undefined, limit: 150 });
       if (Array.isArray(electronLogs) && electronLogs.length > 0) {
-        const converted: AuditLogEntry[] = electronLogs.map((el, i) => ({
+        const converted: AuditLogEntry[] = electronLogs.map((el: any, i: number) => ({
           id: `electron-${i}`,
           timestamp: el.timestamp || new Date().toISOString(),
           level: (el.level || 'info') as AuditLogEntry['level'],

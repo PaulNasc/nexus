@@ -635,7 +635,7 @@ const App: React.FC<AppProps> = () => {
       <React.Suspense fallback={<NexusLoadingScreen title="Nexus" subtitle="Carregando lista de tarefas..." />}>
         <div className="app-container" data-theme={theme.mode}>
           <FloatingActionToolbar
-            position={actionMenuPosition}
+            position={toolbarPosition}
             onTogglePosition={handleToggleMenuPosition}
             effectiveMode={effectiveMode}
             onToggleTheme={toggleMode}
