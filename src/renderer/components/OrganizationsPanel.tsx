@@ -23,6 +23,7 @@ import {
   UserPlus,
   Pencil,
   Flag,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface OrganizationsPanelProps {
@@ -70,6 +71,33 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
   const [foundOrg, setFoundOrg] = useState<{ id: string; name: string; slug: string } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+
+  const [reviewerMap, setReviewerMap] = useState<Record<string, boolean>>({});
+
+  const isReviewerMember = (userId: string) => {
+    try {
+      return localStorage.getItem(`nexus_reviewer_${userId}`) === 'true';
+    } catch {
+      return false;
+    }
+  };
+
+  const toggleReviewerMember = (userId: string) => {
+    const current = isReviewerMember(userId);
+    const next = !current;
+    try {
+      localStorage.setItem(`nexus_reviewer_${userId}`, String(next));
+      setReviewerMap((prev) => ({ ...prev, [userId]: next }));
+      setFeedback({
+        type: 'success',
+        msg: next
+          ? 'Permissão para visualizar Sugestões e Bugs concedida com sucesso!'
+          : 'Permissão para visualizar Sugestões e Bugs removida.',
+      });
+    } catch (e) {
+      console.error('Error toggling reviewer:', e);
+    }
+  };
 
   const [membersCollapsed, setMembersCollapsed] = useState(true);
   const [systemTagsCollapsed, setSystemTagsCollapsed] = useState(true);
@@ -721,52 +749,102 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '10px',
-                  borderRadius: '8px',
-                  backgroundColor: isDark ? '#111' : '#FFF',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  backgroundColor: isDark ? '#14141A' : '#FFF',
+                  border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6'}`,
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     {roleIcon(m.role)}
                     <div>
-                      <div style={{ fontWeight: 500, fontSize: '13px', color: isDark ? '#FFF' : '#111' }}>
+                      <div style={{ fontWeight: 600, fontSize: '13px', color: isDark ? '#FFF' : '#111', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {m.display_name || m.email}
-                        {m.user_id === user?.id && <span style={{ color: '#00D4AA', fontSize: '11px', marginLeft: '6px' }}>(você)</span>}
+                        {m.user_id === user?.id && <span style={{ color: '#00D4AA', fontSize: '11px', fontWeight: 700 }}>(você)</span>}
                       </div>
-                      <div style={{ fontSize: '11px', color: isDark ? '#666' : '#9CA3AF' }}>{m.email}</div>
+                      <div style={{ fontSize: '11px', color: isDark ? '#888' : '#9CA3AF' }}>{m.email}</div>
                     </div>
                   </div>
 
-                  {(myRole === 'owner' || myRole === 'admin') && m.user_id !== user?.id && m.role !== 'owner' && (
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      {myRole === 'owner' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {/* Yellow Tick toggle for Sugestões/Bugs permission */}
+                    {(myRole === 'owner' || myRole === 'admin') && (
+                      <button
+                        type="button"
+                        onClick={() => toggleReviewerMember(m.user_id)}
+                        title={
+                          isReviewerMember(m.user_id)
+                            ? 'Permissão ativa: Pode revisar Sugestões e Bugs'
+                            : 'Clique para permitir visualizar/revisar Sugestões e Bugs'
+                        }
+                        style={{
+                          width: '30px',
+                          height: '30px',
+                          borderRadius: '8px',
+                          border: isReviewerMember(m.user_id)
+                            ? '1px solid rgba(245, 158, 11, 0.6)'
+                            : `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB'}`,
+                          backgroundColor: isReviewerMember(m.user_id)
+                            ? 'rgba(245, 158, 11, 0.15)'
+                            : 'transparent',
+                          color: isReviewerMember(m.user_id) ? '#F59E0B' : (isDark ? '#555' : '#9CA3AF'),
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          boxShadow: isReviewerMember(m.user_id) ? '0 0 10px rgba(245, 158, 11, 0.25)' : 'none',
+                        }}
+                      >
+                        <CheckCircle2 size={16} />
+                      </button>
+                    )}
+
+                    {/* Styled Role Selector Dropdown */}
+                    {(myRole === 'owner' || myRole === 'admin') && m.user_id !== user?.id && m.role !== 'owner' ? (
+                      <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
                         <select
                           value={m.role}
                           onChange={(e) => {
                             void handleUpdateMemberRoleAction(m.id, e.target.value as 'admin' | 'member');
                           }}
                           style={{
-                            padding: '4px 8px',
-                            borderRadius: '6px',
-                            border: `1px solid ${isDark ? '#333' : '#D1D5DB'}`,
-                            backgroundColor: isDark ? '#1A1A1A' : '#FFF',
-                            color: isDark ? '#CCC' : '#374151',
+                            appearance: 'none',
+                            WebkitAppearance: 'none',
+                            padding: '6px 28px 6px 12px',
+                            borderRadius: '8px',
+                            border: `1px solid ${isDark ? 'rgba(255,255,255,0.15)' : '#D1D5DB'}`,
+                            backgroundColor: isDark ? '#1E1E26' : '#F9FAFB',
+                            color: isDark ? '#F1F5F9' : '#111827',
                             fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            outline: 'none',
                           }}
                           disabled={actionLoading}
                         >
-                          <option value="member">Membro</option>
-                          <option value="admin">Admin</option>
+                          <option value="member" style={{ backgroundColor: isDark ? '#1E1E26' : '#FFF', color: isDark ? '#FFF' : '#111' }}>Membro</option>
+                          <option value="admin" style={{ backgroundColor: isDark ? '#1E1E26' : '#FFF', color: isDark ? '#FFF' : '#111' }}>Admin</option>
                         </select>
-                      )}
+                        <ChevronDown size={14} style={{ position: 'absolute', right: '8px', pointerEvents: 'none', color: isDark ? '#AAA' : '#6B7280' }} />
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: isDark ? '#AAA' : '#6B7280', padding: '4px 8px' }}>
+                        {m.role === 'owner' ? 'Proprietário' : m.role === 'admin' ? 'Admin' : 'Membro'}
+                      </span>
+                    )}
+
+                    {/* Remove member button */}
+                    {(myRole === 'owner' || myRole === 'admin') && m.user_id !== user?.id && m.role !== 'owner' && (
                       <button
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px', borderRadius: '6px', color: '#EF4444', display: 'flex', alignItems: 'center' }}
                         onClick={() => void handleRemoveMemberAction(m.id, m.display_name || m.email || 'membro')}
                         disabled={actionLoading}
+                        title="Remover membro"
                       >
-                        <Trash2 size={14} color="#EF4444" />
+                        <Trash2 size={15} />
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               ))}
               </div>

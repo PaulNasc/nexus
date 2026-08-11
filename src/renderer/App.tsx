@@ -761,15 +761,17 @@ const App: React.FC<AppProps> = () => {
 
         <FeedbackButton onClick={() => setIsFeedbackOpen(true)} />
 
-        <ChangelogModal
-          isOpen={isChangelogOpen}
-          onClose={() => {
-            try {
-              localStorage.setItem('nexus_last_seen_version', '1.4.0');
-            } catch {}
-            setIsChangelogOpen(false);
-          }}
-        />
+        {user && isChangelogOpen && (
+          <ChangelogModal
+            isOpen={isChangelogOpen}
+            onClose={() => {
+              try {
+                localStorage.setItem('nexus_last_seen_version', '1.4.0');
+              } catch {}
+              setIsChangelogOpen(false);
+            }}
+          />
+        )}
 
         <FeedbackModal
           isOpen={isFeedbackOpen}

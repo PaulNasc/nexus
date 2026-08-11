@@ -72,7 +72,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
     myRole === 'admin' ||
     (myRole as string) === 'master' ||
     Boolean(user?.email?.includes('master')) ||
-    Boolean(user?.email?.includes('paulo'));
+    Boolean(user?.email?.includes('paulo')) ||
+    Boolean(user?.id && localStorage.getItem(`nexus_reviewer_${user.id}`) === 'true');
 
   const [activeTab, setActiveTab] = useState<'submit' | 'master'>(isMaster ? 'master' : 'submit');
   const [type, setType] = useState<'sugestao' | 'bug'>('sugestao');

@@ -120,6 +120,14 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose 
               </li>
               <li style={{ fontSize: '13px', color: 'var(--color-text-secondary, #CCC)', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
                 <span style={{ color: '#A855F7', marginTop: '2px' }}>•</span>
+                <span><strong>Abertura Silenciosa de Mídia:</strong> Removida a exibição de janelas de terminal CMD ao abrir arquivos externamente.</span>
+              </li>
+              <li style={{ fontSize: '13px', color: 'var(--color-text-secondary, #CCC)', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                <span style={{ color: '#A855F7', marginTop: '2px' }}>•</span>
+                <span><strong>Permissão de Revisão de Bugs em Membros:</strong> Ícone de ativação em amarelo para conceder permissão de revisar sugestões e bugs.</span>
+              </li>
+              <li style={{ fontSize: '13px', color: 'var(--color-text-secondary, #CCC)', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                <span style={{ color: '#A855F7', marginTop: '2px' }}>•</span>
                 <span><strong>Retenção de Métricas:</strong> Eventos de notas criadas continuam contabilizados no gráfico mesmo após exclusão da nota.</span>
               </li>
               <li style={{ fontSize: '13px', color: 'var(--color-text-secondary, #CCC)', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
