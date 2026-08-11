@@ -70,9 +70,9 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
   const isMaster =
     myRole === 'owner' ||
     myRole === 'admin' ||
-    myRole === 'master' ||
-    user?.email?.includes('master') ||
-    user?.email?.includes('paulo');
+    (myRole as string) === 'master' ||
+    Boolean(user?.email?.includes('master')) ||
+    Boolean(user?.email?.includes('paulo'));
 
   const [activeTab, setActiveTab] = useState<'submit' | 'master'>(isMaster ? 'master' : 'submit');
   const [type, setType] = useState<'sugestao' | 'bug'>('sugestao');
