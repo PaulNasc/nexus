@@ -29,6 +29,9 @@ import UpdateNotification from './components/UpdateNotification';
 import { NoOrganizationModal } from './components/NoOrganizationModal';
 import { NexusLoadingScreen } from './components/NexusLoadingScreen';
 import { desktopAdapter } from './lib/desktopAdapter';
+import { ChangelogModal } from './components/ChangelogModal';
+import { FeedbackButton } from './components/FeedbackButton';
+import { FeedbackModal } from './components/FeedbackModal';
 
 // Import styles
 import './styles/reset.css';
@@ -280,6 +283,15 @@ const App: React.FC<AppProps> = () => {
   const { theme, effectiveMode, toggleMode } = useTheme();
   useI18n();
   const { settings, updateSettings } = useSettings();
+
+  const [isChangelogOpen, setIsChangelogOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('nexus_last_seen_version') !== '1.4.0';
+    } catch {
+      return false;
+    }
+  });
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
   // Aplicar configurações de aparência
   useAppearance();
@@ -747,7 +759,22 @@ const App: React.FC<AppProps> = () => {
           onClose={handleCloseSettings}
         />
 
+        <FeedbackButton onClick={() => setIsFeedbackOpen(true)} />
 
+        <ChangelogModal
+          isOpen={isChangelogOpen}
+          onClose={() => {
+            try {
+              localStorage.setItem('nexus_last_seen_version', '1.4.0');
+            } catch {}
+            setIsChangelogOpen(false);
+          }}
+        />
+
+        <FeedbackModal
+          isOpen={isFeedbackOpen}
+          onClose={() => setIsFeedbackOpen(false)}
+        />
 
         <UpdateNotification isDark={true} />
       </div>

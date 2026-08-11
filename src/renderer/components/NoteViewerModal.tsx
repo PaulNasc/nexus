@@ -878,13 +878,65 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     }
   };
 
+  const handleOpenImageExternal = async (imgUrl: string, fileName?: string) => {
+    if (!imgUrl) return;
+    showToast('Abrindo imagem no visualizador do Windows...', 'info');
+
+    if (desktopAdapter.isTauri()) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        if (imgUrl.startsWith('file://')) {
+          const cleanPath = decodeURIComponent(imgUrl.replace('file://', ''));
+          await invoke('open_file_externally', { path: cleanPath });
+          showToast('Imagem aberta com sucesso!', 'success');
+          return;
+        }
+      } catch (err) {
+        console.warn('Tauri open_file_externally failed for image:', err);
+      }
+    }
+
+    try {
+      const link = document.createElement('a');
+      link.href = imgUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.click();
+      showToast('Imagem aberta no aplicativo do sistema!', 'success');
+    } catch (err) {
+      showToast('Não foi possível abrir a imagem externamente', 'error');
+    }
+  };
+
+  const handleDownloadImage = (imgUrl: string, fileName?: string) => {
+    if (!imgUrl) return;
+    showToast('Iniciando download da imagem...', 'info');
+    const cleanFileName = (fileName || 'imagem-nexus.png').replace(/[\\/:*?"<>|]/g, '_');
+
+    try {
+      const link = document.createElement('a');
+      link.href = imgUrl;
+      link.download = cleanFileName;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast(`✅ Imagem salva na pasta Downloads! (${cleanFileName})`, 'success');
+    } catch (err) {
+      console.error('Erro ao baixar imagem:', err);
+      showToast('Falha ao realizar o download da imagem', 'error');
+    }
+  };
+
   const handleOpenVideoExternal = async (videoRef: string) => {
+    showToast('Abrindo vídeo no player do Windows...', 'info');
     const localPath = videoPaths[videoRef];
     if (desktopAdapter.isTauri() && localPath) {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('open_file_externally', { path: localPath });
-        showToast('Abrindo vídeo no aplicativo padrão do sistema...', 'success');
+        showToast('Vídeo aberto com sucesso no player do sistema!', 'success');
         return;
       } catch (err) {
         console.warn('Tauri open_file_externally failed:', err);
@@ -894,15 +946,18 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     if (electron?.video) {
       const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
       await electron.video.openExternal(localVideoName);
+      showToast('Vídeo aberto no player externo!', 'success');
       return;
     }
     const videoUrl = videoUrls[videoRef];
     if (videoUrl) {
       window.open(videoUrl, '_blank');
+      showToast('Vídeo aberto em nova janela!', 'success');
     }
   };
 
   const handleSaveVideoAs = async (videoRef: string) => {
+    showToast('Iniciando salvamento do vídeo...', 'info');
     const electron = getElectron();
     if (!electron?.video) return;
     const existingUrl = videoUrls[videoRef] || '';
@@ -914,19 +969,22 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       link.click();
+      showToast('✅ Vídeo salvo na pasta Downloads!', 'success');
       return;
     }
     const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
     await electron.video.saveAs(localVideoName);
+    showToast('✅ Vídeo salvo com sucesso!', 'success');
   };
 
   const handleOpenPdfExternal = async (pdfUrl: string) => {
     if (!pdfUrl) return;
+    showToast('Abrindo documento PDF no leitor padrão...', 'info');
     if (desktopAdapter.isTauri() && primaryPdfPath) {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('open_file_externally', { path: primaryPdfPath });
-        showToast('Abrindo PDF no visualizador do sistema...', 'success');
+        showToast('Documento aberto no leitor do sistema!', 'success');
         return;
       } catch (err) {
         console.warn('Tauri open_file_externally failed:', err);
@@ -937,22 +995,26 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     link.click();
+    showToast('Documento aberto em nova janela!', 'success');
   };
 
   const handleDownloadPdf = (pdfUrl: string, fileName?: string) => {
     if (!pdfUrl) return;
+    showToast('Iniciando download do documento...', 'info');
+    const targetName = fileName || 'documento-nexus.pdf';
     const link = document.createElement('a');
     link.href = pdfUrl;
-    link.download = fileName || 'documento.pdf';
+    link.download = targetName;
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     link.click();
-    showToast('Download do PDF iniciado!', 'success');
+    showToast(`✅ Documento salvo em Downloads! (${targetName})`, 'success');
   };
 
   const handleDownloadVideo = (videoRef: string) => {
     const videoUrl = videoUrls[videoRef];
     if (!videoUrl) return;
+    showToast('Iniciando download do vídeo...', 'info');
     const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
     const cleanFileName = localVideoName.replace(/^\d+-/, '');
     const link = document.createElement('a');
@@ -961,7 +1023,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     link.click();
-    showToast('Download do vídeo iniciado!', 'success');
+    showToast(`✅ Vídeo salvo em Downloads! (${cleanFileName})`, 'success');
   };
 
   const handleRelinkVideo = async (videoRef: string) => {
