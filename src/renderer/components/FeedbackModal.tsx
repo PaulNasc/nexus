@@ -64,13 +64,13 @@ interface FeedbackModalProps {
 
 export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
   const { user } = useAuth();
-  const { activeOrg, activeOrgMember } = useOrganization();
+  const { activeOrg, myRole } = useOrganization();
   const { showToast } = useToast();
 
   const isMaster =
-    activeOrgMember?.role === 'owner' ||
-    activeOrgMember?.role === 'admin' ||
-    activeOrgMember?.role === 'master' ||
+    myRole === 'owner' ||
+    myRole === 'admin' ||
+    myRole === 'master' ||
     user?.email?.includes('master') ||
     user?.email?.includes('paulo');
 
@@ -144,7 +144,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
   // Capture logs when type switches to 'bug'
   useEffect(() => {
     if (type === 'bug') {
-      const logs = auditLogger.getLogs({ limit: 50 });
+      const logs = auditLogger.getLogs().slice(0, 50);
       setAttachedLogs(logs);
     } else {
       setAttachedLogs([]);

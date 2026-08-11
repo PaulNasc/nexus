@@ -189,20 +189,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     }
   };
 
-  const handleOpenImageExternal = (imageUrl: string) => {
-    if (!imageUrl) return;
-    window.open(imageUrl, '_blank', 'noopener,noreferrer');
-  };
 
-  const handleDownloadImage = (imageUrl: string, fileName?: string) => {
-    if (!imageUrl) return;
-    const link = document.createElement('a');
-    link.href = imageUrl;
-    link.download = fileName || 'imagem.png';
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.click();
-  };
 
   const handleCopyImagePath = async (path: string, key: string) => {
     try {
