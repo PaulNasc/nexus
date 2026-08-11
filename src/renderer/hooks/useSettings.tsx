@@ -76,6 +76,7 @@ export interface UserSettings {
   interfaceDensity?: 'compact' | 'normal' | 'comfortable';
   reduceAnimations?: boolean;
   cardOpacity?: number;
+  actionMenuPosition?: 'top' | 'right' | 'left';
 
   // Data Management
   dataPath?: string;
@@ -215,6 +216,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   showNotesMenu: true,
   showAppHeader: true,
   showQuickActions: true,
+  actionMenuPosition: 'right',
   highContrastMode: false,
   largeFontMode: false,
   showTaskCounters: true,

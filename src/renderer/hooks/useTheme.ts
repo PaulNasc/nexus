@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ThemeConfig, ThemeContextType, ThemeColors } from '../types/theme';
 
 const THEME_SYNC_EVENT = 'nexus-theme-sync';
@@ -173,10 +173,19 @@ export const useTheme = (storageKey = 'nexus-theme'): ThemeContextType => {
     };
   }, []);
 
-  // Apply effective theme to document
+  // Apply effective theme to document synchronously
   useEffect(() => {
     const root = document.documentElement;
+    const body = document.body;
     root.setAttribute('data-theme', effectiveMode);
+    body.setAttribute('data-theme', effectiveMode);
+
+    root.classList.remove('theme-light', 'theme-dark', 'light', 'dark');
+    body.classList.remove('theme-light', 'theme-dark', 'light', 'dark');
+
+    root.classList.add(`theme-${effectiveMode}`, effectiveMode);
+    body.classList.add(`theme-${effectiveMode}`, effectiveMode);
+
     root.style.colorScheme = effectiveMode;
   }, [effectiveMode]);
 

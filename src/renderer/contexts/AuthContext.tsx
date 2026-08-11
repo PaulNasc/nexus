@@ -25,6 +25,24 @@ const clearPersistedAuthState = () => {
   localStorage.removeItem('nexus-cached-user');
 };
 
+export const purgeAllUserDataAndStorage = async () => {
+  try {
+    localStorage.clear();
+    sessionStorage.clear();
+  } catch (err) {
+    console.warn('Error clearing browser storage:', err);
+  }
+  if (desktopAdapter.isTauri()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('clear_video_cache');
+    } catch (err) {
+      console.warn('Error clearing Tauri video cache:', err);
+    }
+  }
+  window.dispatchEvent(new CustomEvent('nexus:auth-logout'));
+};
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -107,24 +125,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-export const purgeAllUserDataAndStorage = async () => {
-  try {
-    localStorage.clear();
-    sessionStorage.clear();
-  } catch (err) {
-    console.warn('Error clearing browser storage:', err);
-  }
-  if (desktopAdapter.isTauri()) {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('clear_video_cache');
-    } catch (err) {
-      console.warn('Error clearing Tauri video cache:', err);
-    }
-  }
-  window.dispatchEvent(new CustomEvent('nexus:auth-logout'));
-};
-
     initSession();
 
     let previousUserId: string | null = null;
@@ -164,6 +164,11 @@ export const purgeAllUserDataAndStorage = async () => {
   useEffect(() => {
     const processOAuthUrl = async (url: string) => {
       try {
+        if (!url || (!url.startsWith('nexus://') && !url.startsWith('krigzis://'))) {
+          console.warn('OAuth Security: Rejecting invalid scheme URL:', url);
+          return;
+        }
+
         let paramsString = '';
         const hashIndex = url.indexOf('#');
         const queryIndex = url.indexOf('?');

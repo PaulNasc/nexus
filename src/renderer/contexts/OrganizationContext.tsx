@@ -131,14 +131,22 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       // Restore active org from localStorage (scoped per user)
       const savedOrgId = localStorage.getItem(getActiveOrgKey(user.id));
+      let activeToSet: Organization | null = null;
       if (savedOrgId && orgs) {
         const saved = orgs.find((o: Organization) => o.id === savedOrgId);
-        if (saved) {
-          setActiveOrgState(prev => {
-            if (prev?.id === saved.id) return prev;
-            return saved as Organization;
-          });
-        }
+        if (saved) activeToSet = saved as Organization;
+      }
+      // Always default to the first available organization if available in user's account
+      if (!activeToSet && orgs && orgs.length > 0) {
+        activeToSet = orgs[0] as Organization;
+        localStorage.setItem(getActiveOrgKey(user.id), orgs[0].id);
+      }
+
+      if (activeToSet) {
+        setActiveOrgState(prev => {
+          if (prev?.id === activeToSet!.id) return prev;
+          return activeToSet!;
+        });
       }
     } catch (err) {
       console.error('Failed to load organizations:', err);

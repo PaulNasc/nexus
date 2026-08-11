@@ -129,10 +129,10 @@
   
   /* === ANIMATIONS E TRANSIÇÕES PADRONIZADAS === */
   /* Transições Base */
-  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-theme: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast: 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-theme: 150ms cubic-bezier(0.4, 0, 0.2, 1);
   
   /* Transições Específicas */
   --transition-colors: color var(--transition-normal), background-color var(--transition-normal), border-color var(--transition-normal);
@@ -213,52 +213,63 @@
 }
 
 /* === LIGHT THEME OVERRIDES === */
-[data-theme="light"] {
-  --color-bg-primary: #F3F4F6;
-  --color-bg-secondary: #E5E7EB;
-  --color-bg-tertiary: #D1D5DB;
+[data-theme="light"],
+.theme-light,
+html[data-theme="light"],
+body[data-theme="light"] {
+  --color-bg-primary: #F4F6FA;
+  --color-bg-secondary: #FFFFFF;
+  --color-bg-tertiary: #EAEFF5;
   --color-bg-card: #FFFFFF;
   --color-bg-elevated: #FFFFFF;
-  --color-bg-hover: rgba(0, 0, 0, 0.035);
+  --color-bg-hover: rgba(0, 0, 0, 0.04);
 
-  --color-border-primary: rgba(0, 0, 0, 0.07);
-  --color-border-secondary: rgba(0, 0, 0, 0.12);
+  --color-border-primary: rgba(0, 0, 0, 0.08);
+  --color-border-secondary: rgba(0, 0, 0, 0.15);
   --color-border-hover: rgba(0, 0, 0, 0.25);
 
   --color-text-primary: #0F172A;
   --color-text-secondary: #334155;
-  --color-text-muted: #475569;
+  --color-text-muted: #64748B;
   --color-text-disabled: #94A3B8;
 
-  --gradient-card: rgba(255, 255, 255, var(--card-opacity, 0.95));
-  --gradient-card-hover: rgba(248, 250, 252, var(--card-opacity, 0.95));
-  --glass-bg: rgba(255, 255, 255, 0.75);
-  --glass-border: rgba(0, 0, 0, 0.06);
-}
-
-[data-theme="dark"] {
-  color-scheme: dark;
-}
-
-[data-theme="light"] {
+  --card-r1: 255;
+  --card-g1: 255;
+  --card-b1: 255;
+  --card-r2: 248;
+  --card-g2: 250;
+  --card-b2: 252;
+  --gradient-secondary: linear-gradient(135deg, rgba(0, 212, 170, 0.03) 0%, rgba(244, 246, 250, 1) 100%);
+  --gradient-card: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%);
+  --gradient-card-hover: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(0, 0, 0, 0.08);
   color-scheme: light;
 }
 
-/* === SMOOTH THEME TRANSITIONS === */
-/* Aplicar transições apenas em elementos específicos para melhor performance */
+[data-theme="dark"],
+.theme-dark,
+html[data-theme="dark"],
+body[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* === FAST SYNCHRONIZED THEME TRANSITIONS === */
+body,
 .app-container,
 .app-header,
 .app-main,
-.loading-screen,
-body,
+.note-card,
+.modal-content,
+.floating-action-toolbar,
 button,
 input,
 select,
 textarea {
-  transition: background-color var(--transition-theme), 
-              border-color var(--transition-theme), 
-              color var(--transition-theme),
-              box-shadow var(--transition-theme);
+  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), 
+              border-color 150ms cubic-bezier(0.4, 0, 0.2, 1), 
+              color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* === ANIMATION UTILITIES === */

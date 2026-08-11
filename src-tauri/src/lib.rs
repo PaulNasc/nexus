@@ -31,6 +31,8 @@ pub fn run() {
             #[cfg(desktop)]
             {
                 let _ = app.deep_link().register_all();
+                let _ = app.deep_link().register("nexus");
+                let _ = app.deep_link().register("krigzis");
             }
             Ok(())
         })
@@ -38,7 +40,9 @@ pub fn run() {
             commands::sysinfo::get_system_info,
             commands::logging::get_logs,
             commands::download::download_video_to_cache,
-            commands::download::read_file_bytes
+            commands::download::read_file_bytes,
+            commands::download::clear_video_cache,
+            commands::download::open_file_externally
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

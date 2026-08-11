@@ -10,6 +10,7 @@ import { base64ToUint8Array, buildCloudVideoRef, parseVideoRef } from '../utils/
 import { buildCloudPdfRef, parsePdfRef } from '../utils/pdfAttachment';
 import { NOTES_ONLY_RELEASE } from '../config/featureFlags';
 import { deleteVideoFromR2, uploadVideoBlobToR2Signed } from '../lib/r2Videos';
+import { auditLogger } from '../lib/auditLogger';
 
 // Helper to get electron IPC bridge
 const getElectron = (): ElectronAPI | null => {
@@ -175,7 +176,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [filterPinned, setFilterPinned] = useState(false);
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [filterSystemTagIds, setFilterSystemTagIds] = useState<number[]>([]);
-  const [sortBy, setSortBy] = useState<SortOption>('date_desc');
+  const [sortBy, setSortBy] = useState<SortOption>('id_desc');
 
   // Debounce search term changes
   useEffect(() => {
@@ -819,7 +820,8 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       created.linkedTaskIds = noteData.linkedTaskIds;
     }
 
-return created;
+      auditLogger.info('notes', `Nota criada: "${created.title}"`, { id: created.id, format: created.format });
+      return created;
 }, [activeOrg, syncAttachedVideosToCloud, syncPdfSourceToCloud]);
 
 // ── PUBLIC API ────────────────────────────────────────────────
@@ -866,8 +868,9 @@ return created;
     // No orgLoading guard here: we allow the initial fetch to proceed in parallel
     // with org detection. If the org changes later, the fetchKey changes and triggers
     // a new fetch automatically (via useEffect dependency on fetchNotes).
-    const orgId = activeOrg?.id ?? 'personal';
-    const fetchKey = `${orgId}|cloud:${useCloud}|local:${useLocal}`;
+    const currentUserIdKey = user?.id ?? 'guest';
+    const currentOrgIdKey = activeOrg?.id ?? 'personal';
+    const fetchKey = `${currentUserIdKey}|${currentOrgIdKey}|cloud:${useCloud}|local:${useLocal}`;
 
     if (fetchInFlightRef.current && lastFetchKeyRef.current === fetchKey) {
       return fetchInFlightRef.current;
@@ -921,7 +924,7 @@ return created;
         fetchInFlightRef.current = null;
       }
     }
-  }, [useCloud, useLocal, fetchNotesCloud, fetchNotesLocal, activeOrg?.id, repairPdfNotesInBackground]);
+  }, [useCloud, useLocal, fetchNotesCloud, fetchNotesLocal, user?.id, activeOrg?.id, repairPdfNotesInBackground]);
 
   /**
    * Load the next page of cloud notes and append to the current list.
@@ -1222,6 +1225,7 @@ const createNote = useCallback(async (noteData: CreateNoteData): Promise<Note | 
         return prev;
       });
       setTotalNotesCount(prev => Math.max(0, prev - 1));
+      auditLogger.warn('notes', `Nota excluída: #${id}`, { id });
       return true;
     } catch (err) {
       console.error('NotesContext.deleteNote error:', err);

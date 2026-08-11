@@ -429,26 +429,32 @@ export const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ isDark }
                   )}
                 </div>
                 {activeOrg ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
-                    <span style={{ fontSize: '12px', color: isDark ? '#888' : '#6B7280' }}>ID da Organização:</span>
-                    <code style={{
-                      fontSize: '12px',
-                      fontFamily: 'monospace',
-                      color: '#00D4AA',
-                      backgroundColor: isDark ? '#0A0A0A' : '#ECFDF5',
-                      padding: '3px 8px',
-                      borderRadius: '4px',
-                      userSelect: 'all' as const,
-                    }}>
-                      {activeOrg.slug}
-                    </code>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); copyToClipboard(activeOrg.slug); }}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: isDark ? '#888' : '#6B7280' }}
-                      title="Copiar ID"
-                    >
-                      <Copy size={14} />
-                    </button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '12px', color: isDark ? '#888' : '#6B7280' }}>ID da Organização:</span>
+                      <code style={{
+                        fontSize: '12px',
+                        fontFamily: 'monospace',
+                        color: '#00D4AA',
+                        backgroundColor: isDark ? '#0A0A0A' : '#ECFDF5',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        userSelect: 'all' as const,
+                      }}>
+                        {activeOrg.slug}
+                      </code>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); copyToClipboard(activeOrg.slug); }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: isDark ? '#888' : '#6B7280' }}
+                        title="Copiar ID"
+                      >
+                        <Copy size={14} />
+                      </button>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#00D4AA', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', fontWeight: 500 }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#00D4AA', display: 'inline-block' }}></span>
+                      Sincronização em Nuvem (Cloud Supabase)
+                    </div>
                   </div>
                 ) : (
                   <div style={{ fontSize: '12px', color: isDark ? '#888' : '#6B7280', marginTop: '4px' }}>
