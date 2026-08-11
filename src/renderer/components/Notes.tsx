@@ -21,7 +21,7 @@ import { Badge } from './ui/Badge';
 import { Input } from './ui/Input';
 import { NoteEditor } from './NoteEditor';
 import { LinkedTasksModal } from './LinkedTasksModal';
-import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, Pencil, CheckSquare, Square, Filter, X, ArrowUpDown, Users, FolderOpen, FileText, Upload, Download, FolderPlus, Folder, ArrowLeft, ChevronRight, Check, Loader2, ArrowUp, BellRing } from 'lucide-react';
+import { StickyNote, Search, Grid3X3, List, Plus, Pin, Trash2, Link, Pencil, CheckSquare, Square, Filter, X, ArrowUpDown, Users, FolderOpen, FileText, Upload, Download, FolderPlus, Folder, ArrowLeft, ChevronRight, Check, Loader2, ArrowUp, BellRing, AlertTriangle } from 'lucide-react';
 
 import { NoteViewerModal } from './NoteViewerModal';
 import { PingUserModal, PingUser } from './PingUserModal';
@@ -335,14 +335,40 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
     }
   };
 
-  const handleBatchDelete = useCallback(async () => {
+  const [deleteConfirmState, setDeleteConfirmState] = useState<{
+    isOpen: boolean;
+    noteIds: number[];
+    confirmInput: string;
+  }>({
+    isOpen: false,
+    noteIds: [],
+    confirmInput: '',
+  });
+
+  const handleBatchDelete = useCallback(() => {
     if (selectedIds.size === 0) return;
-    for (const id of selectedIds) {
+    setDeleteConfirmState({
+      isOpen: true,
+      noteIds: Array.from(selectedIds),
+      confirmInput: '',
+    });
+  }, [selectedIds]);
+
+  const executeBatchDelete = useCallback(async () => {
+    const { noteIds, confirmInput } = deleteConfirmState;
+    if (noteIds.length === 0) return;
+
+    if (noteIds.length >= 3 && confirmInput.trim().toLowerCase() !== 'confirmo') {
+      return;
+    }
+
+    for (const id of noteIds) {
       await deleteNote(id);
     }
     setSelectedIds(new Set());
     setSelectionMode(false);
-  }, [selectedIds, deleteNote]);
+    setDeleteConfirmState({ isOpen: false, noteIds: [], confirmInput: '' });
+  }, [deleteConfirmState, deleteNote]);
 
   const handleNoteClick = useCallback((note: Note) => {
     setViewer({ isOpen: true, note });
@@ -502,11 +528,11 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
       switch (sortBy) {
         case 'alpha_asc': return a.title.localeCompare(b.title, 'pt-BR');
         case 'alpha_desc': return b.title.localeCompare(a.title, 'pt-BR');
-        case 'id_asc': return (a.sequential_id ?? 0) - (b.sequential_id ?? 0);
-        case 'id_desc': return (b.sequential_id ?? 0) - (a.sequential_id ?? 0);
-        case 'date_asc': return new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
-        case 'date_desc':
-        default: return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+        case 'id_asc': return (a.sequential_id ?? a.id ?? 0) - (b.sequential_id ?? b.id ?? 0);
+        case 'date_asc': return new Date(a.created_at || a.updated_at).getTime() - new Date(b.created_at || b.updated_at).getTime();
+        case 'date_desc': return new Date(b.created_at || b.updated_at).getTime() - new Date(a.created_at || a.updated_at).getTime();
+        case 'id_desc':
+        default: return (b.sequential_id ?? b.id ?? 0) - (a.sequential_id ?? a.id ?? 0);
       }
     });
 
@@ -1782,6 +1808,141 @@ export const Notes: React.FC<NotesProps> = ({ initialNoteId }) => {
         note={pingModal.note}
         onSendPings={handleSendPings}
       />
+
+      {deleteConfirmState.isOpen && (
+        <div
+          className="modal-backdrop"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '16px',
+          }}
+          onClick={() => setDeleteConfirmState({ isOpen: false, noteIds: [], confirmInput: '' })}
+        >
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 400,
+              borderRadius: 14,
+              padding: '24px',
+              backgroundColor: 'var(--color-bg-secondary)',
+              border: '1px solid var(--color-border-primary)',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#EF4444',
+                flexShrink: 0,
+              }}>
+                <AlertTriangle size={20} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                  Confirmar Exclusão
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--color-text-secondary)' }}>
+                  {deleteConfirmState.noteIds.length === 1
+                    ? 'Deseja excluir 1 nota selecionada?'
+                    : `Deseja excluir ${deleteConfirmState.noteIds.length} notas selecionadas?`}
+                </p>
+              </div>
+            </div>
+
+            {deleteConfirmState.noteIds.length >= 3 ? (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{
+                  padding: '12px 14px',
+                  borderRadius: 8,
+                  backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  color: '#F87171',
+                  fontSize: 13,
+                  marginBottom: 14,
+                  lineHeight: '1.5',
+                }}>
+                  ⚠️ <strong>Atenção:</strong> Você está prestes a excluir <strong>{deleteConfirmState.noteIds.length} notas</strong> permanentemente. Para confirmar esta ação, digite <strong>confirmo</strong> no campo abaixo.
+                </div>
+                <input
+                  type="text"
+                  value={deleteConfirmState.confirmInput}
+                  onChange={(e) => setDeleteConfirmState(prev => ({ ...prev, confirmInput: e.target.value }))}
+                  placeholder="Digite 'confirmo' para liberar"
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    border: '1px solid var(--color-border-primary)',
+                    backgroundColor: 'var(--color-bg-primary)',
+                    color: 'var(--color-text-primary)',
+                    fontSize: 14,
+                    outline: 'none',
+                  }}
+                />
+              </div>
+            ) : (
+              <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 20 }}>
+                Esta ação é irreversível e as notas selecionadas serão removidas permanentemente.
+              </p>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => setDeleteConfirmState({ isOpen: false, noteIds: [], confirmInput: '' })}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  border: '1px solid var(--color-border-primary)',
+                  backgroundColor: 'var(--color-bg-hover)',
+                  color: 'var(--color-text-secondary)',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={executeBatchDelete}
+                disabled={deleteConfirmState.noteIds.length >= 3 && deleteConfirmState.confirmInput.trim().toLowerCase() !== 'confirmo'}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  border: 'none',
+                  backgroundColor: deleteConfirmState.noteIds.length >= 3 && deleteConfirmState.confirmInput.trim().toLowerCase() !== 'confirmo' ? 'rgba(239, 68, 68, 0.4)' : '#EF4444',
+                  color: '#FFF',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: deleteConfirmState.noteIds.length >= 3 && deleteConfirmState.confirmInput.trim().toLowerCase() !== 'confirmo' ? 'not-allowed' : 'pointer',
+                  transition: 'background-color 0.2s',
+                }}
+              >
+                {deleteConfirmState.noteIds.length === 1 ? 'Excluir Nota' : `Excluir ${deleteConfirmState.noteIds.length} Notas`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

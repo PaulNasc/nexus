@@ -112,6 +112,12 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [useCloud, loadCategoriesCloud, loadCategoriesLocal]);
 
+  // Reset categories when user or activeOrg changes
+  useEffect(() => {
+    setCategories([]);
+    initialLoadDone.current = false;
+  }, [user?.id, activeOrg?.id]);
+
   const createCategory = useCallback(async (data: Partial<Category>): Promise<Category | null> => {
     try {
       const now = new Date().toISOString();

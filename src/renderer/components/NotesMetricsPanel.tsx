@@ -4,6 +4,7 @@ import { useNotes } from '../contexts/NotesContext';
 import { useSystemTags } from '../contexts/SystemTagsContext';
 import { useTheme } from '../hooks/useTheme';
 import { useToast } from '../contexts/ToastContext';
+import { auditLogger } from '../lib/auditLogger';
 import {
   BarChart3,
   Eye,
@@ -134,7 +135,7 @@ export const NotesMetricsPanel: React.FC = () => {
     };
   }, [notes, systemTags, members]);
 
-  // Compute 7-day activity chart synchronously
+  // Compute 7-day activity chart synchronously (including created & deleted notes via audit logger)
   const chartData = useMemo(() => {
     const last7Days = Array.from({ length: 7 }).map((_, i) => {
       const d = new Date();
@@ -142,19 +143,43 @@ export const NotesMetricsPanel: React.FC = () => {
       return d.toISOString().split('T')[0];
     }).reverse();
 
-    const countsByDay = last7Days.reduce((acc, day) => {
-      acc[day] = 0;
-      return acc;
-    }, {} as Record<string, number>);
+    const createdNoteIdsByDay: Record<string, Set<string | number>> = {};
+    const countsByDay: Record<string, number> = {};
 
+    last7Days.forEach(day => {
+      createdNoteIdsByDay[day] = new Set();
+      countsByDay[day] = 0;
+    });
+
+    // 1. Account for current active notes
     notes.forEach(note => {
       if (note.created_at) {
         const day = note.created_at.split('T')[0];
         if (day in countsByDay) {
           countsByDay[day]++;
+          createdNoteIdsByDay[day].add(note.id);
         }
       }
     });
+
+    // 2. Account for created notes in audit logger even if later deleted
+    try {
+      const auditLogs = auditLogger.getLogs({ category: 'notes' });
+      auditLogs.forEach(entry => {
+        if (entry.message && entry.message.includes('Nota criada') && entry.timestamp) {
+          const day = entry.timestamp.split('T')[0];
+          if (day in countsByDay) {
+            const noteId = (entry.details?.note_id as string | number) || entry.id;
+            if (!createdNoteIdsByDay[day].has(noteId)) {
+              createdNoteIdsByDay[day].add(noteId);
+              countsByDay[day]++;
+            }
+          }
+        }
+      });
+    } catch {
+      // Fallback
+    }
 
     return last7Days.map(day => ({
       date: day,
@@ -405,9 +430,8 @@ export const NotesMetricsPanel: React.FC = () => {
             <div style={{
               height: '200px',
               display: 'flex',
-              alignItems: 'flex-end',
-              justifyContent: 'space-between',
-              padding: '24px 16px 12px',
+              alignItems: 'stretch',
+              padding: '16px 16px 12px',
               background: isDark ? 'rgba(10, 10, 10, 0.4)' : '#F9FAFB',
               border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
               borderRadius: '8px',
@@ -415,45 +439,74 @@ export const NotesMetricsPanel: React.FC = () => {
               position: 'relative',
               boxSizing: 'border-box'
             }}>
-              {chartData.map((d) => {
-                const heightPercent = (d.count / maxCount) * 80;
-                const formattedDate = new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' });
-                
-                return (
-                  <div key={d.date} style={{
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '8px',
-                    height: '100%',
-                    justifyContent: 'flex-end',
-                    position: 'relative',
-                  }}>
-                    <div
-                      className="chart-bar"
-                      style={{
-                        width: '100%',
-                        maxWidth: '32px',
-                        height: `${heightPercent}%`,
-                        background: 'linear-gradient(180deg, var(--color-primary-teal) 0%, var(--color-accent-purple) 100%)',
-                        borderRadius: '6px 6px 0 0',
-                        cursor: 'pointer',
-                        transition: 'height 0.3s ease',
-                      }}
-                    />
-                    <span style={{
-                      fontSize: '10px',
-                      color: isDark ? '#888' : '#6B7280',
-                      textAlign: 'center',
-                      textTransform: 'capitalize',
-                      fontWeight: 500,
+              {/* Eixo Y (Escala Numérica na Esquerda) */}
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                fontSize: '10px',
+                color: isDark ? '#888' : '#6B7280',
+                paddingBottom: '22px',
+                borderRight: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB'}`,
+                paddingRight: '10px',
+                fontWeight: 600,
+                userSelect: 'none',
+              }}>
+                <span>{maxCount}</span>
+                <span>{Math.round(maxCount / 2)}</span>
+                <span>0</span>
+              </div>
+
+              {/* Eixo X + Barras de Atividade */}
+              <div style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'flex-end',
+                justifyContent: 'space-between',
+                gap: '12px',
+                height: '100%',
+              }}>
+                {chartData.map((d) => {
+                  const heightPercent = maxCount > 0 ? (d.count / maxCount) * 78 : 0;
+                  const formattedDate = new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' });
+                  
+                  return (
+                    <div key={d.date} style={{
+                      flex: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '8px',
+                      height: '100%',
+                      justifyContent: 'flex-end',
+                      position: 'relative',
                     }}>
-                      {formattedDate.replace('.', '')}
-                    </span>
-                  </div>
-                );
-              })}
+                      <div
+                        className="chart-bar"
+                        title={`${d.count} nota(s) em ${d.date}`}
+                        style={{
+                          width: '100%',
+                          maxWidth: '32px',
+                          height: `${Math.max(heightPercent, 4)}%`,
+                          background: d.count > 0 ? 'linear-gradient(180deg, var(--color-primary-teal) 0%, var(--color-accent-purple) 100%)' : 'rgba(255,255,255,0.05)',
+                          borderRadius: '6px 6px 0 0',
+                          cursor: 'pointer',
+                          transition: 'height 0.3s ease',
+                        }}
+                      />
+                      <span style={{
+                        fontSize: '10px',
+                        color: isDark ? '#888' : '#6B7280',
+                        textAlign: 'center',
+                        textTransform: 'capitalize',
+                        fontWeight: 500,
+                      }}>
+                        {formattedDate.replace('.', '')}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>

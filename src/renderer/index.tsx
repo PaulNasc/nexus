@@ -10,6 +10,7 @@ import { CategoriesProvider } from './contexts/CategoriesContext';
 import { OrganizationProvider } from './contexts/OrganizationContext';
 import { SystemTagsProvider } from './contexts/SystemTagsContext';
 import AuthScreen from './components/AuthScreen';
+import { NexusLoadingScreen } from './components/NexusLoadingScreen';
 import { migrateLegacyStorageKeys } from './utils/migrateLegacyStorage';
 import { desktopAdapter } from './lib/desktopAdapter';
 
@@ -150,22 +151,9 @@ const RootApp: React.FC = () => {
     }
   }, [user, isOffline, loading]);
 
-  // Show loading spinner while checking auth state
+  // Show loading screen while checking auth state
   if (loading) {
-    return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh',
-        background: '#0a0a0f',
-        color: '#9ca3af',
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        fontSize: '14px',
-      }}>
-        Carregando Nexus...
-      </div>
-    );
+    return <NexusLoadingScreen title="Nexus" subtitle="Inicializando seu aplicativo..." />;
   }
 
   // If offline mode is active OR user is authenticated, show the app

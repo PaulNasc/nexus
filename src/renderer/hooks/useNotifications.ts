@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSettings } from './useSettings';
+import { desktopAdapter } from '../lib/desktopAdapter';
 
 export type NotificationPermission = 'default' | 'granted' | 'denied';
 
@@ -93,6 +94,14 @@ export const useNotifications = () => {
       return null;
     }
 
+    // Prefer native Tauri / Electron notifications
+    if (desktopAdapter.isTauri()) {
+      desktopAdapter.showNotification(options.title, options.body).catch((error) => {
+        console.error('Error showing Tauri native notification:', error);
+      });
+      return null;
+    }
+
     const electronAPI = (window as unknown as { electronAPI?: ElectronNotificationsApi }).electronAPI;
     
     // Prefer native Electron notifications
@@ -130,9 +139,15 @@ export const useNotifications = () => {
         };
       }
 
-      if (!options.requireInteraction) {
+      if (!options.requireInteraction && notification) {
         setTimeout(() => {
-          notification.close();
+          try {
+            if (typeof notification.close === 'function') {
+              notification.close();
+            }
+          } catch {
+            // Ignore close errors
+          }
         }, 5000);
       }
 

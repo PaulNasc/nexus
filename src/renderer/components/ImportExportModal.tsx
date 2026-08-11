@@ -3,6 +3,8 @@ import { Button } from './ui/Button';
 import { Download, Upload } from 'lucide-react';
 import type { ImportResult, RestorePreview } from '../../shared/types/backup';
 import type { ElectronAPI, ImportSourceSelectionResult } from '../../main/preload';
+import { resolveDroppedFilePaths } from '../lib/tauriDragDrop';
+import { desktopAdapter } from '../lib/desktopAdapter';
 
 type ExportFormat = 'zip' | 'json' | 'csv';
 const SYNC_ITEMS_RENDER_LIMIT = 200;
@@ -317,29 +319,63 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       setHasApplied(false);
       applyInFlightRef.current = false;
 
-      const electron = getElectron();
-      if (!electron?.system?.selectImportFile) {
-        setError('Seleção de arquivo indisponível');
-        return;
+      let selection: ImportSourceSelectionResult | null = null;
+
+      if (desktopAdapter.isTauri()) {
+        try {
+          const { open } = await import('@tauri-apps/plugin-dialog');
+          const selected = await open({
+            title: 'Selecionar arquivo para importação',
+            multiple: false,
+            filters: [
+              { name: 'Todos suportados', extensions: ['zip', 'rar', 'json', 'csv', 'enex', 'html', 'htm', 'txt', 'md', 'pdf', 'mp4'] },
+              { name: 'JSON', extensions: ['json'] },
+              { name: 'CSV', extensions: ['csv'] },
+              { name: 'Texto & Markdown', extensions: ['txt', 'md'] },
+              { name: 'PDF', extensions: ['pdf'] },
+              { name: 'HTML', extensions: ['html', 'htm'] },
+              { name: 'Vídeo MP4', extensions: ['mp4'] },
+            ],
+          });
+          if (!selected) return;
+          const filePath = Array.isArray(selected) ? selected[0] : selected;
+          if (!filePath) return;
+
+          const ext = filePath.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+          selection = {
+            canceled: false,
+            path: filePath,
+            kind: 'file',
+            name: filePath,
+            extension: ext,
+          };
+        } catch (err) {
+          console.warn('Tauri file dialog failed:', err);
+        }
       }
 
-      const selection = await electron.system.selectImportFile({
-        title: 'Selecionar arquivo para importação',
-        buttonLabel: 'Selecionar',
-        filters: [
-          { name: 'Todos suportados', extensions: ['zip', 'rar', 'json', 'csv', 'enex', 'html', 'htm', 'txt', 'md', 'pdf', 'mp4'] },
-          { name: 'Arquivos compactados', extensions: ['zip', 'rar'] },
-          { name: 'JSON', extensions: ['json'] },
-          { name: 'CSV', extensions: ['csv'] },
-          { name: 'Evernote (ENEX)', extensions: ['enex'] },
-          { name: 'HTML', extensions: ['html', 'htm'] },
-          { name: 'Texto', extensions: ['txt', 'md'] },
-          { name: 'Vídeo MP4', extensions: ['mp4'] },
-          { name: 'Todos os arquivos', extensions: ['*'] },
-        ],
-      });
+      if (!selection) {
+        const electron = getElectron();
+        if (electron?.system?.selectImportFile) {
+          selection = await electron.system.selectImportFile({
+            title: 'Selecionar arquivo para importação',
+            buttonLabel: 'Selecionar',
+            filters: [
+              { name: 'Todos suportados', extensions: ['zip', 'rar', 'json', 'csv', 'enex', 'html', 'htm', 'txt', 'md', 'pdf', 'mp4'] },
+              { name: 'Arquivos compactados', extensions: ['zip', 'rar'] },
+              { name: 'JSON', extensions: ['json'] },
+              { name: 'CSV', extensions: ['csv'] },
+              { name: 'Evernote (ENEX)', extensions: ['enex'] },
+              { name: 'HTML', extensions: ['html', 'htm'] },
+              { name: 'Texto', extensions: ['txt', 'md'] },
+              { name: 'Vídeo MP4', extensions: ['mp4'] },
+              { name: 'Todos os arquivos', extensions: ['*'] },
+            ],
+          });
+        }
+      }
 
-      if (selection.canceled || !selection.path) {
+      if (!selection || selection.canceled || !selection.path) {
         return;
       }
 
@@ -393,7 +429,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
         return;
       }
 
-      const droppedPaths = files.map((f) => f.path).filter(Boolean) as string[];
+      const droppedPaths = resolveDroppedFilePaths(files);
       if (droppedPaths.length === 0) {
         setError('Não foi possível obter o caminho dos arquivos');
         return;
@@ -420,7 +456,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       }
 
       const file = files[0];
-      const filePath = file.path;
+      const filePath = droppedPaths[0] || file.path;
       
       if (!filePath) {
         setError('Não foi possível obter o caminho do arquivo');

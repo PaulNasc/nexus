@@ -11,6 +11,9 @@ import { useSystemTags } from '../contexts/SystemTagsContext';
 import { useStorageMode } from '../hooks/useStorageMode';
 import { isModuleLocked } from '../config/featureFlags';
 import { desktopAdapter } from '../lib/desktopAdapter';
+import { resolveDroppedFilePaths } from '../lib/tauriDragDrop';
+import { generateTauriOrWebPreview, applyTauriOrWebImport } from '../lib/tauriImportHelper';
+import { auditLogger, AuditLogEntry } from '../lib/auditLogger';
 
 
 import { Button } from './ui/Button';
@@ -62,7 +65,7 @@ interface UpdaterStatus {
 }
 
 const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
-  const [logs, setLogs] = useState<SettingsLogEntry[]>([]);
+  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [level, setLevel] = useState<string>('');
   const [category, setCategory] = useState<string>('');
@@ -70,44 +73,38 @@ const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
 
   const getElectron = () => (window as unknown as { electronAPI?: import('../../main/preload').ElectronAPI }).electronAPI;
 
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await getElectron()?.logging?.getLogs?.({ level: level || undefined, category: category || undefined, limit: 300 });
-      setLogs(Array.isArray(result) ? (result as SettingsLogEntry[]) : []);
+      let result: AuditLogEntry[] = auditLogger.getLogs({ level, category, search });
+      const electronLogs = await getElectron()?.logging?.getLogs?.({ level: level || undefined, category: category || undefined, limit: 150 });
+      if (Array.isArray(electronLogs) && electronLogs.length > 0) {
+        const converted: AuditLogEntry[] = electronLogs.map((el, i) => ({
+          id: `electron-${i}`,
+          timestamp: el.timestamp || new Date().toISOString(),
+          level: (el.level || 'info') as AuditLogEntry['level'],
+          category: (el.category || 'system') as AuditLogEntry['category'],
+          message: el.message || '',
+          details: el.data,
+        }));
+        result = [...result, ...converted].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      }
+      setLogs(result);
     } catch (error) {
       console.error('Falha ao carregar logs:', error);
-      setLogs([]);
+      setLogs(auditLogger.getLogs({ level, category, search }));
     } finally {
       setLoading(false);
     }
-  };
+  }, [level, category, search]);
 
   useEffect(() => {
-    const run = async () => {
-      setLoading(true);
-      try {
-        const result = await getElectron()?.logging?.getLogs?.({ level: level || undefined, category: category || undefined, limit: 300 });
-        setLogs(Array.isArray(result) ? (result as SettingsLogEntry[]) : []);
-      } catch (error) {
-        console.error('Falha ao carregar logs:', error);
-        setLogs([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    void run();
-  }, [level, category]);
-
-  const filtered = logs.filter((log) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    const dataText = log.data ? JSON.stringify(log.data).toLowerCase() : '';
-    return log.message.toLowerCase().includes(q) || log.category.toLowerCase().includes(q) || dataText.includes(q);
-  });
+    void loadLogs();
+  }, [loadLogs]);
 
   const handleClear = async () => {
     try {
+      auditLogger.clearLogs();
       await getElectron()?.logging?.clearLogs?.();
       await loadLogs();
     } catch (error) {
@@ -115,98 +112,191 @@ const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
     }
   };
 
-  const handleExport = async () => {
+  const handleExport = () => {
     try {
-      await getElectron()?.logging?.exportLogs?.({ level: level || undefined, category: category || undefined });
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(logs, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `nexus-logs-${new Date().toISOString().slice(0, 10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
     } catch (error) {
       console.error('Falha ao exportar logs:', error);
     }
   };
 
-  const getLevelColor = (currentLevel: LogLevel) => {
-    if (currentLevel === 'error') return '#EF4444';
-    if (currentLevel === 'warn') return '#F59E0B';
-    if (currentLevel === 'info') return '#3B82F6';
-    return '#6B7280';
+  const getLevelBadge = (lvl: string) => {
+    switch (lvl) {
+      case 'error':
+        return { bg: 'rgba(239, 68, 68, 0.15)', color: '#EF4444', border: 'rgba(239, 68, 68, 0.3)' };
+      case 'warn':
+        return { bg: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B', border: 'rgba(245, 158, 11, 0.3)' };
+      case 'debug':
+        return { bg: 'rgba(168, 85, 247, 0.15)', color: '#A855F7', border: 'rgba(168, 85, 247, 0.3)' };
+      case 'info':
+      default:
+        return { bg: 'rgba(0, 212, 170, 0.15)', color: '#00D4AA', border: 'rgba(0, 212, 170, 0.3)' };
+    }
   };
 
   return (
-    <div style={{ display: 'grid', gap: '16px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* Search & Filter Bar */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
         gap: '10px',
         padding: '14px',
-        borderRadius: '10px',
-        border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-        backgroundColor: isDark ? '#0F0F0F' : '#F9FAFB',
+        borderRadius: '12px',
+        border: `1px solid ${isDark ? 'var(--color-border-primary)' : '#E5E7EB'}`,
+        backgroundColor: isDark ? 'var(--color-bg-secondary)' : '#F9FAFB',
       }}>
-        <select value={level} onChange={(e) => setLevel(e.target.value)} style={{ padding: '8px 10px', borderRadius: '8px' }}>
-          <option value="">Todos os níveis</option>
-          <option value="debug">Debug</option>
+        <select
+          value={level}
+          onChange={(e) => setLevel(e.target.value)}
+          style={{
+            padding: '8px 12px',
+            borderRadius: '8px',
+            border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#D1D5DB'}`,
+            backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : '#FFF',
+            color: isDark ? '#FFF' : '#111',
+            fontSize: '13px',
+          }}
+        >
+          <option value="">Todos os Níveis</option>
           <option value="info">Info</option>
-          <option value="warn">Warning</option>
-          <option value="error">Error</option>
+          <option value="warn">Aviso (Warn)</option>
+          <option value="error">Erro (Error)</option>
+          <option value="debug">Debug</option>
         </select>
-        <input
+
+        <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          placeholder="Categoria (ex: system)"
-          style={{ padding: '8px 10px', borderRadius: '8px' }}
-        />
+          style={{
+            padding: '8px 12px',
+            borderRadius: '8px',
+            border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#D1D5DB'}`,
+            backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : '#FFF',
+            color: isDark ? '#FFF' : '#111',
+            fontSize: '13px',
+          }}
+        >
+          <option value="">Todas as Categorias</option>
+          <option value="notes">Notas</option>
+          <option value="tasks">Tarefas</option>
+          <option value="org">Organizações</option>
+          <option value="settings">Configurações</option>
+          <option value="auth">Autenticação</option>
+          <option value="system">Sistema</option>
+        </select>
+
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar nos logs"
-          style={{ padding: '8px 10px', borderRadius: '8px' }}
+          placeholder="Buscar no histórico de logs..."
+          style={{
+            padding: '8px 12px',
+            borderRadius: '8px',
+            border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#D1D5DB'}`,
+            backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : '#FFF',
+            color: isDark ? '#FFF' : '#111',
+            fontSize: '13px',
+          }}
         />
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-          <Button onClick={() => { void loadLogs(); }} disabled={loading}>Atualizar</Button>
-          <Button onClick={handleExport} variant="secondary">Exportar</Button>
-          <Button onClick={handleClear} variant="danger">Limpar</Button>
+
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+          <Button onClick={() => { void loadLogs(); }} disabled={loading} size="sm">Atualizar</Button>
+          <Button onClick={handleExport} variant="secondary" size="sm">Exportar</Button>
+          <Button onClick={handleClear} variant="danger" size="sm">Limpar</Button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {loading && <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280' }}>Carregando logs...</div>}
-        {!loading && filtered.length === 0 && (
+      {/* Logs Feed */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {loading && <div style={{ fontSize: '13px', color: isDark ? '#A0A0A0' : '#6B7280', padding: '12px' }}>Carregando logs de operações...</div>}
+        {!loading && logs.length === 0 && (
           <div style={{
-            padding: '16px',
-            borderRadius: '10px',
-            border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-            backgroundColor: isDark ? '#0F0F0F' : '#FFFFFF',
-            color: isDark ? '#A0A0A0' : '#6B7280',
+            padding: '24px',
+            borderRadius: '12px',
+            border: `1px solid ${isDark ? 'var(--color-border-primary)' : '#E5E7EB'}`,
+            backgroundColor: isDark ? 'var(--color-bg-secondary)' : '#FFFFFF',
+            color: isDark ? 'var(--color-text-muted)' : '#6B7280',
             fontSize: '13px',
+            textAlign: 'center',
           }}>
-            Nenhum log encontrado.
+            Nenhum registro de log encontrado para os filtros selecionados.
           </div>
         )}
-        {filtered.map((log, index) => (
-          <div key={`${log.timestamp}-${index}`} style={{
-            padding: '12px 14px',
-            borderRadius: '10px',
-            border: `1px solid ${isDark ? '#2A2A2A' : '#E5E7EB'}`,
-            backgroundColor: isDark ? '#0F0F0F' : '#FFFFFF',
-          }}>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
-              <span style={{ fontSize: '11px', color: '#FFFFFF', backgroundColor: getLevelColor(log.level), borderRadius: '4px', padding: '2px 6px', textTransform: 'uppercase', fontWeight: 700 }}>{log.level}</span>
-              <span style={{ fontSize: '11px', color: isDark ? '#A0A0A0' : '#6B7280' }}>{log.category}</span>
-              <span style={{ fontSize: '11px', color: isDark ? '#777' : '#9CA3AF' }}>{new Date(log.timestamp).toLocaleString('pt-BR')}</span>
+        {logs.map((log, index) => {
+          const badge = getLevelBadge(log.level);
+          return (
+            <div key={`${log.id}-${index}`} style={{
+              padding: '12px 16px',
+              borderRadius: '10px',
+              border: `1px solid ${isDark ? 'var(--color-border-primary)' : '#E5E7EB'}`,
+              backgroundColor: isDark ? 'var(--color-bg-secondary)' : '#FFFFFF',
+              transition: 'background-color 0.2s',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{
+                    fontSize: '11px',
+                    color: badge.color,
+                    backgroundColor: badge.bg,
+                    border: `1px solid ${badge.border}`,
+                    borderRadius: '6px',
+                    padding: '2px 8px',
+                    textTransform: 'uppercase',
+                    fontWeight: 700,
+                    letterSpacing: '0.3px',
+                  }}>
+                    {log.level}
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#00D4AA', background: 'rgba(0,212,170,0.1)', padding: '2px 8px', borderRadius: '6px', fontWeight: 500 }}>
+                    {log.category}
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#A855F7', background: 'rgba(168,85,247,0.1)', padding: '2px 8px', borderRadius: '6px', fontWeight: 500 }}>
+                    👤 {log.user_name || 'Paulo'}
+                  </span>
+                </div>
+                <span style={{ fontSize: '11px', color: isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF', fontFamily: 'monospace' }}>
+                  {new Date(log.timestamp).toLocaleString('pt-BR')}
+                </span>
+              </div>
+              <div style={{ fontSize: '13px', color: isDark ? 'var(--color-text-primary)' : '#1F2937', fontWeight: 500 }}>
+                {log.message}
+              </div>
+              {Boolean(log.details) && Object.keys(log.details!).length > 0 && (
+                <details style={{ marginTop: '8px' }}>
+                  <summary style={{ cursor: 'pointer', fontSize: '12px', color: '#00D4AA', userSelect: 'none' }}>
+                    Detalhes da Operação
+                  </summary>
+                  <pre style={{
+                    marginTop: '6px',
+                    fontSize: '11px',
+                    fontFamily: 'monospace',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    backgroundColor: isDark ? '#0A0A0A' : '#F3F4F6',
+                    color: isDark ? '#A0A0A0' : '#4B5563',
+                    border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#E5E7EB'}`,
+                  }}>
+                    {JSON.stringify(log.details, null, 2)}
+                  </pre>
+                </details>
+              )}
             </div>
-            <div style={{ fontSize: '13px', color: isDark ? '#E5E7EB' : '#1F2937' }}>{log.message}</div>
-            {Boolean(log.data) && (
-              <details style={{ marginTop: '8px' }}>
-                <summary style={{ cursor: 'pointer', fontSize: '12px', color: 'var(--color-primary-teal)' }}>Dados adicionais</summary>
-                <pre style={{ marginTop: '6px', fontSize: '11px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: isDark ? '#A0A0A0' : '#4B5563' }}>{JSON.stringify(log.data, null, 2)}</pre>
-              </details>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 };
-const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
+const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
   const [status, setStatus] = useState<UpdaterStatus>({ state: 'idle' });
   const [autoDownload, setAutoDownload] = useState(false);
   const [currentVersion, setCurrentVersion] = useState('1.4.0');
@@ -626,7 +716,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       setIsFileDragActive(false);
 
       const files = Array.from(event.dataTransfer?.files || []);
-      const droppedPaths = files.map((file) => file.path).filter(Boolean) as string[];
+      const droppedPaths = resolveDroppedFilePaths(files);
       if (droppedPaths.length === 0) {
         closeImportExportModal();
         return;
@@ -655,10 +745,34 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       }
     };
 
+    const onTauriNativeDrop = (event: Event) => {
+      const customEv = event as CustomEvent<{ paths: string[] }>;
+      const paths = customEv.detail?.paths;
+      if (!paths || paths.length === 0) return;
+
+      dragDepthRef.current = 0;
+      externalDragSessionRef.current = false;
+      setIsFileDragActive(false);
+
+      const onlyPdfs = paths.every((p) => p.toLowerCase().endsWith('.pdf'));
+
+      if (paths.length > 1 && onlyPdfs) {
+        window.dispatchEvent(new CustomEvent('openImportIntent', {
+          detail: { intent: { kind: 'pdf-files', filePaths: paths }, source: 'external-dnd' },
+        }));
+        return;
+      }
+
+      window.dispatchEvent(new CustomEvent('openImportIntent', {
+        detail: { filePath: paths[0], source: 'external-dnd' },
+      }));
+    };
+
     window.addEventListener('dragenter', onDragEnter);
     window.addEventListener('dragover', onDragOver);
     window.addEventListener('dragleave', onDragLeave);
     window.addEventListener('drop', onDrop);
+    window.addEventListener('tauriNativeFileDrop', onTauriNativeDrop);
     window.addEventListener('blur', onWindowBlur);
 
     return () => {
@@ -666,6 +780,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       window.removeEventListener('dragover', onDragOver);
       window.removeEventListener('dragleave', onDragLeave);
       window.removeEventListener('drop', onDrop);
+      window.removeEventListener('tauriNativeFileDrop', onTauriNativeDrop);
       window.removeEventListener('blur', onWindowBlur);
     };
   }, [closeImportExportModal]);
@@ -784,9 +899,11 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   };
 
   const handleImportExportPreview = async (intent: ImportIntent): Promise<RestorePreview | null> => {
-
     try {
       const electron = getElectron();
+      if (!electron || !electron.backup) {
+        return await generateTauriOrWebPreview(intent);
+      }
       if (intent?.kind === 'zip') return await electron.backup.importZipPreview({ source: 'external', filePath: intent.filePath });
       if (intent?.kind === 'zip-backup') return await electron.backup.importZipPreview({ source: 'backupId', backupId: intent.backupId });
       if (intent?.kind === 'json') return await electron.backup.importJsonPreview({ filePath: intent.filePath });
@@ -798,11 +915,10 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
       if (intent?.kind === 'txt-file') return await electron.invoke('import:txt-preview', { filePath: intent.filePath }) as RestorePreview;
       if (intent?.kind === 'md-file') return await electron.invoke('import:md-preview', { filePath: intent.filePath }) as RestorePreview;
       if (intent?.kind === 'folder') return await electron.invoke('import:folder-preview', { folderPath: intent.folderPath }) as RestorePreview;
-      return null;
-
+      return await generateTauriOrWebPreview(intent);
     } catch (err) {
-      console.error('Erro ao gerar preview do import:', err);
-      return null;
+      console.warn('Erro ao gerar preview do import com Electron, usando fallback:', err);
+      return await generateTauriOrWebPreview(intent);
     }
   };
 
@@ -831,18 +947,33 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
         });
       };
 
-      if (intent?.kind === 'zip') result = await electron.backup.importZipApply({ source: 'external', filePath: intent.filePath });
-      else if (intent?.kind === 'zip-backup') result = await electron.backup.importZipApply({ source: 'backupId', backupId: intent.backupId });
-      else if (intent?.kind === 'json') result = await electron.backup.importJsonApply({ filePath: intent.filePath });
-      else if (intent?.kind === 'csv') result = await electron.backup.importCsvApply({ filePath: intent.filePath });
-      else if (intent?.kind === 'enex') result = await electron.backup.importEnexApply({ filePath: intent.filePath });
-      else if (intent?.kind === 'html-file') result = await electron.invoke('import:html-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
-      else if (intent?.kind === 'pdf-file') result = await electron.invoke('import:pdf-apply', { filePath: intent.filePath }) as ImportResult;
-      else if (intent?.kind === 'pdf-files') result = await electron.invoke('import:pdf-apply', { filePaths: intent.filePaths, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
-      else if (intent?.kind === 'txt-file') result = await electron.invoke('import:txt-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
-      else if (intent?.kind === 'md-file') result = await electron.invoke('import:md-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
-      else if (intent?.kind === 'mp4-file') result = await electron.invoke('import:mp4-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
-      else if (intent?.kind === 'folder') result = await electron.invoke('import:folder-apply', { folderPath: intent.folderPath }) as ImportResult;
+      if (!electron || !electron.backup) {
+        result = await applyTauriOrWebImport(intent, {
+          color: options?.color,
+          systemTagId: selectedSystemTag?.id,
+          systemTagName: selectedSystemTag?.name,
+        });
+      } else {
+        if (intent?.kind === 'zip') result = await electron.backup.importZipApply({ source: 'external', filePath: intent.filePath });
+        else if (intent?.kind === 'zip-backup') result = await electron.backup.importZipApply({ source: 'backupId', backupId: intent.backupId });
+        else if (intent?.kind === 'json') result = await electron.backup.importJsonApply({ filePath: intent.filePath });
+        else if (intent?.kind === 'csv') result = await electron.backup.importCsvApply({ filePath: intent.filePath });
+        else if (intent?.kind === 'enex') result = await electron.backup.importEnexApply({ filePath: intent.filePath });
+        else if (intent?.kind === 'html-file') result = await electron.invoke('import:html-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
+        else if (intent?.kind === 'pdf-file') result = await electron.invoke('import:pdf-apply', { filePath: intent.filePath }) as ImportResult;
+        else if (intent?.kind === 'pdf-files') result = await electron.invoke('import:pdf-apply', { filePaths: intent.filePaths, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
+        else if (intent?.kind === 'txt-file') result = await electron.invoke('import:txt-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
+        else if (intent?.kind === 'md-file') result = await electron.invoke('import:md-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
+        else if (intent?.kind === 'mp4-file') result = await electron.invoke('import:mp4-apply', { filePath: intent.filePath, systemTagId: selectedSystemTag?.id, systemTagName: selectedSystemTag?.name }) as ImportResult;
+        else if (intent?.kind === 'folder') result = await electron.invoke('import:folder-apply', { folderPath: intent.folderPath }) as ImportResult;
+        else {
+          result = await applyTauriOrWebImport(intent, {
+            color: options?.color,
+            systemTagId: selectedSystemTag?.id,
+            systemTagName: selectedSystemTag?.name,
+          });
+        }
+      }
 
       if (result?.importedNotes) {
         result.importedNotes = result.importedNotes.map(n => ({

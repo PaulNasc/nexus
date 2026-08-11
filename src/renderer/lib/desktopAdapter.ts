@@ -102,6 +102,26 @@ class DesktopAdapter implements IDesktopAdapter {
   }
 
   public async showNotification(title: string, body?: string): Promise<void> {
+    if (this.isTauri()) {
+      try {
+        const { sendNotification, isPermissionGranted, requestPermission } = await import('@tauri-apps/plugin-notification');
+        let permissionGranted = await isPermissionGranted();
+        if (!permissionGranted) {
+          const permission = await requestPermission();
+          permissionGranted = permission === 'granted';
+        }
+        if (permissionGranted) {
+          sendNotification({
+            title: title || 'Nexus',
+            body: body || '',
+          });
+          return;
+        }
+      } catch (err) {
+        console.warn('Tauri notification error:', err);
+      }
+    }
+
     if (this.isElectron()) {
       const electronAPI = (window as unknown as { electronAPI?: { notifications?: { show?: (t: string, b?: string) => Promise<void> } } }).electronAPI;
       if (electronAPI?.notifications?.show) {
@@ -110,18 +130,8 @@ class DesktopAdapter implements IDesktopAdapter {
       }
     }
 
-    if (this.isTauri()) {
-      try {
-        const { sendNotification } = await import('@tauri-apps/plugin-notification');
-        sendNotification({ title, body: body || '' });
-        return;
-      } catch {
-        // Fallback to browser Notification if plugin not active
-      }
-    }
-
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      new Notification(title, { body });
+      new Notification(title || 'Nexus', { body });
     }
   }
 
@@ -245,6 +255,23 @@ class DesktopAdapter implements IDesktopAdapter {
       throw new Error(`HTTP ${downloadResponse.status}`);
     }
     return await downloadResponse.blob();
+  }
+
+  public async clearVideoCache(): Promise<void> {
+    if (this.isTauri()) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('clear_video_cache');
+      } catch (err) {
+        console.warn('Tauri clear_video_cache error:', err);
+      }
+    }
+    if (this.isElectron()) {
+      const electronAPI = (window as unknown as { electronAPI?: { video?: { clearCache?: () => Promise<void> } } }).electronAPI;
+      if (electronAPI?.video?.clearCache) {
+        await electronAPI.video.clearCache();
+      }
+    }
   }
 }
 

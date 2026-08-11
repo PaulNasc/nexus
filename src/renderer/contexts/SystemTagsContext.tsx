@@ -80,12 +80,13 @@ export const SystemTagsProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const lastRefreshOrgRef = useRef<string>('');
 
   useEffect(() => {
+    setTags([]);
     if (!activeOrg?.id) {
       setUseLocalFallback(false);
       return;
     }
     setUseLocalFallback(isMissingOrgSystemTagsTableMarked(activeOrg.id));
-  }, [activeOrg?.id]);
+  }, [user?.id, activeOrg?.id]);
 
   const refresh = useCallback(async () => {
     if (!activeOrg?.id) {

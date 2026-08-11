@@ -8,6 +8,7 @@ import { parsePdfRef } from '../utils/pdfAttachment';
 import { requestVideoSignedUrl, downloadVideoBlobFromR2Signed } from '../lib/r2Videos';
 import { resolveImageUrl } from '../utils/image';
 import { desktopAdapter } from '../lib/desktopAdapter';
+import { useToast } from '../contexts/ToastContext';
 
 interface NoteViewerModalProps {
   isOpen: boolean;
@@ -41,7 +42,7 @@ function stripMarkdown(markdown: string): string {
   return output.trim();
 }
 
-function renderMarkdownToHtml(md: string): string {
+function renderMarkdownToHtml(md: string, attachedImages: string[] = []): string {
   if (!md) return '';
   let html = md;
   // Code blocks
@@ -49,9 +50,37 @@ function renderMarkdownToHtml(md: string): string {
     `<pre class="note-code-block" data-lang="${lang || ''}"><code>${code.replace(/</g, '&lt;').replace(/>/g, '&gt;').trim()}</code></pre>`);
   // Inline code
   html = html.replace(/`([^`]+)`/g, '<code class="note-inline-code">$1</code>');
-  // Images
+
+  // Short image tags: ![imagem-1], ![imagem-2]
+  html = html.replace(/!\[imagem-(\d+)\]/g, (_match, numStr) => {
+    const idx = parseInt(numStr, 10) - 1;
+    const imgPayload = attachedImages[idx];
+    if (imgPayload) {
+      const resolved = resolveImageUrl(imgPayload);
+      return `<div class="note-inline-image-card" style="margin: 14px 0; border-radius: 10px; border: 1px solid var(--color-border-primary); background-color: var(--color-bg-secondary); overflow: hidden;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--color-border-primary);">
+          <span style="font-size: 12px; color: var(--color-text-secondary); font-weight: 500;">🖼️ Imagem ${numStr}</span>
+        </div>
+        <div style="position: relative; width: 100%; max-height: 420px; background-color: #000; display: flex; align-items: center; justify-content: center;">
+          <img src="${resolved}" alt="Imagem ${numStr}" style="max-width: 100%; max-height: 420px; object-fit: contain;" />
+        </div>
+      </div>`;
+    }
+    return `<span style="color: var(--color-text-muted); font-size: 12px;">[Imagem ${numStr}]</span>`;
+  });
+
+  // Standard images: ![alt](src)
   html = html.replace(/!\[([^\]]*)\]\(([^\)]+)\)/g, (_match, alt, src) => {
-    return `<img src="${resolveImageUrl(src)}" alt="${alt}" class="note-md-img" />`;
+    const resolved = resolveImageUrl(src);
+    const safeAlt = alt || 'imagem';
+    return `<div class="note-inline-image-card" style="margin: 14px 0; border-radius: 10px; border: 1px solid var(--color-border-primary); background-color: var(--color-bg-secondary); overflow: hidden;">
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--color-border-primary);">
+        <span style="font-size: 12px; color: var(--color-text-secondary); font-weight: 500;">🖼️ ${safeAlt}</span>
+      </div>
+      <div style="position: relative; width: 100%; max-height: 420px; background-color: #000; display: flex; align-items: center; justify-content: center;">
+        <img src="${resolved}" alt="${safeAlt}" style="max-width: 100%; max-height: 420px; object-fit: contain;" />
+      </div>
+    </div>`;
   });
   // Links
   html = html.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, '<a href="$2" class="note-md-link">$1</a>');
@@ -116,6 +145,8 @@ const getElectron = (): ElectronAPI | null => {
 };
 
 export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, onClose, onTogglePin, ownerId, orgId }) => {
+  const { showToast } = useToast();
+  const [primaryPdfPath, setPrimaryPdfPath] = useState<string>('');
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [videoLightbox, setVideoLightbox] = useState<string | null>(null);
   const [pdfLightboxSrc, setPdfLightboxSrc] = useState<string | null>(null);
@@ -293,6 +324,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
             const { invoke } = await import('@tauri-apps/api/core');
             const pdfName = parsedPdf.localFileName || 'document.pdf';
             const localPath = await invoke<string>('download_video_to_cache', { url: primaryPdfSource, filename: pdfName });
+            if (!canceled) setPrimaryPdfPath(localPath);
             const fileBytes = await invoke<number[]>('read_file_bytes', { path: localPath });
             const byteArray = new Uint8Array(fileBytes);
             const pdfBlob = new Blob([byteArray], { type: 'application/pdf' });
@@ -361,6 +393,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
               const { invoke } = await import('@tauri-apps/api/core');
               const pdfName = parsedPdf.localFileName || 'document.pdf';
               const localPath = await invoke<string>('download_video_to_cache', { url: signed.signedUrl, filename: pdfName });
+            if (!canceled) setPrimaryPdfPath(localPath);
               const fileBytes = await invoke<number[]>('read_file_bytes', { path: localPath });
               const byteArray = new Uint8Array(fileBytes);
               const pdfBlob = new Blob([byteArray], { type: 'application/pdf' });
@@ -802,18 +835,13 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     return isPlaceholderContent(sanitizedNoteContent);
   }, [sanitizedNoteContent]);
 
-  const hasAttachments = hasVideos || hasImages;
+  const hasAttachments = hasVideos;
   const showAttachmentSidebar = useMemo(() => {
-    if (hasNoRealContent) {
-      if (hasPdfAttachment) {
-        return hasVideos || hasImages;
-      } else if (hasVideos) {
-        return hasImages;
-      }
-      return false;
+    if (hasVideos && !hasNoRealContent) {
+      return true;
     }
-    return hasVideos || (hasImages && !hasPdfAttachment);
-  }, [hasNoRealContent, hasPdfAttachment, hasVideos, hasImages]);
+    return false;
+  }, [hasNoRealContent, hasVideos]);
 
   if (!isOpen || !note) return null;
 
@@ -851,15 +879,27 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
   };
 
   const handleOpenVideoExternal = async (videoRef: string) => {
+    const localPath = videoPaths[videoRef];
+    if (desktopAdapter.isTauri() && localPath) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('open_file_externally', { path: localPath });
+        showToast('Abrindo vídeo no aplicativo padrão do sistema...', 'success');
+        return;
+      } catch (err) {
+        console.warn('Tauri open_file_externally failed:', err);
+      }
+    }
     const electron = getElectron();
-    if (!electron?.video) return;
-    const existingUrl = videoUrls[videoRef] || '';
-    if (existingUrl.startsWith('blob:')) {
-      window.open(existingUrl, '_blank', 'noopener,noreferrer');
+    if (electron?.video) {
+      const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
+      await electron.video.openExternal(localVideoName);
       return;
     }
-    const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
-    await electron.video.openExternal(localVideoName);
+    const videoUrl = videoUrls[videoRef];
+    if (videoUrl) {
+      window.open(videoUrl, '_blank');
+    }
   };
 
   const handleSaveVideoAs = async (videoRef: string) => {
@@ -880,9 +920,23 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     await electron.video.saveAs(localVideoName);
   };
 
-  const handleOpenPdfExternal = (pdfUrl: string) => {
+  const handleOpenPdfExternal = async (pdfUrl: string) => {
     if (!pdfUrl) return;
-    window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+    if (desktopAdapter.isTauri() && primaryPdfPath) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('open_file_externally', { path: primaryPdfPath });
+        showToast('Abrindo PDF no visualizador do sistema...', 'success');
+        return;
+      } catch (err) {
+        console.warn('Tauri open_file_externally failed:', err);
+      }
+    }
+    const link = document.createElement('a');
+    link.href = pdfUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.click();
   };
 
   const handleDownloadPdf = (pdfUrl: string, fileName?: string) => {
@@ -893,6 +947,21 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     link.click();
+    showToast('Download do PDF iniciado!', 'success');
+  };
+
+  const handleDownloadVideo = (videoRef: string) => {
+    const videoUrl = videoUrls[videoRef];
+    if (!videoUrl) return;
+    const localVideoName = parseVideoRef(videoRef).localFileName || videoRef;
+    const cleanFileName = localVideoName.replace(/^\d+-/, '');
+    const link = document.createElement('a');
+    link.href = videoUrl;
+    link.download = cleanFileName;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.click();
+    showToast('Download do vídeo iniciado!', 'success');
   };
 
   const handleRelinkVideo = async (videoRef: string) => {
@@ -1008,7 +1077,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                       </div>
                     </div>
                     <div style={{ width: '100%', flex: 1, background: '#0b0b0b', position: 'relative', minHeight: '50vh' }}>
-                      {(isDownloadingPdf || isIframeLoading) && (
+                      {(isDownloadingPdf || isIframeLoading || (!primaryPdfUrl && !pdfLoadError)) && (
                         <div style={{
                           position: 'absolute',
                           inset: 0,
@@ -1113,21 +1182,35 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                                 </button>
                               )}
                               <button
-                                onClick={() => handleCopyVideoPath(videoRef)}
-                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: copiedPath === videoRef ? 'var(--color-primary-teal)' : 'var(--color-bg-hover)', color: copiedPath === videoRef ? '#fff' : 'var(--color-text-secondary)', cursor: 'pointer' }}
+                                onClick={() => setVideoLightbox(videoRef)}
+                                disabled={!videoUrl}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: videoUrl ? 'pointer' : 'not-allowed', opacity: videoUrl ? 1 : 0.5 }}
                               >
-                                <Copy size={12} /> {copiedPath === videoRef ? 'Copiado!' : 'Caminho'}
+                                <ExternalLink size={12} /> Expandir
                               </button>
                               <button
                                 onClick={() => handleOpenVideoExternal(videoRef)}
                                 style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
                               >
-                                <ExternalLink size={12} /> Abrir Externo
+                                <Play size={12} /> Abrir
+                              </button>
+                              <button
+                                onClick={() => handleDownloadVideo(videoRef)}
+                                disabled={!videoUrl}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: videoUrl ? 'pointer' : 'not-allowed', opacity: videoUrl ? 1 : 0.5 }}
+                              >
+                                <Download size={12} /> Baixar
+                              </button>
+                              <button
+                                onClick={() => handleCopyVideoPath(videoRef)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: copiedPath === videoRef ? 'var(--color-primary-teal)' : 'var(--color-bg-hover)', color: copiedPath === videoRef ? '#fff' : 'var(--color-text-secondary)', cursor: 'pointer' }}
+                              >
+                                <Copy size={12} /> {copiedPath === videoRef ? 'Copiado!' : 'Caminho'}
                               </button>
                             </div>
                           </div>
                           <div style={{ position: 'relative', width: '100%', height: '52vh', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                            {isDownloading ? (
+                            {(isDownloading || (!videoUrl && !isMissing)) ? (
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, width: '100%', padding: '0 32px' }}>
                                 {/* Progress bar */}
                                 <div style={{ width: '100%', maxWidth: 320 }}>
@@ -1364,10 +1447,79 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
                     </div>
                   </div>
                 )}
-                {note.format === 'markdown' ? (
+                {hasImages && !sanitizedNoteContent.includes('![') && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 14 }}>
+                    {allImages.map((img, idx) => {
+                      const displayName = img.name || `Imagem ${idx + 1}`;
+                      const displayPath = img.url || '';
+                      const resolvedUrl = resolveImageUrl(img.url);
+                      return (
+                        <div key={`note-img-card-${idx}`} style={{
+                          borderRadius: 10,
+                          border: '1px solid var(--color-border-primary)',
+                          backgroundColor: 'var(--color-bg-secondary)',
+                          overflow: 'hidden',
+                          display: 'flex',
+                          flexDirection: 'column'
+                        }}>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '8px 12px',
+                            borderBottom: '1px solid var(--color-border-primary)'
+                          }}>
+                            <div
+                              style={{ fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'help', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                              title={displayPath}
+                            >
+                              🖼️ Imagem: {displayName}
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                onClick={() => setLightboxSrc(img.url)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                              >
+                                <ExternalLink size={12} /> Expandir
+                              </button>
+                              <button
+                                onClick={() => handleOpenImageExternal(resolvedUrl)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                              >
+                                <Play size={12} /> Abrir
+                              </button>
+                              <button
+                                onClick={() => handleDownloadImage(resolvedUrl, displayName)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                              >
+                                <Download size={12} /> Baixar
+                              </button>
+                            </div>
+                          </div>
+                          <div
+                            style={{ position: 'relative', width: '100%', maxHeight: '45vh', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                            onClick={() => setLightboxSrc(img.url)}
+                          >
+                            <img
+                              style={{ width: '100%', maxHeight: '45vh', objectFit: 'contain' }}
+                              src={resolvedUrl}
+                              alt={displayName}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {sanitizedNoteContent.includes('![') ? (
                   <div
                     className="note-viewer-markdown"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(sanitizedNoteContent) }}
+                    dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(sanitizedNoteContent, allImages.map(img => img.url)) }}
+                  />
+                ) : note.format === 'markdown' ? (
+                  <div
+                    className="note-viewer-markdown"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(sanitizedNoteContent, allImages.map(img => img.url)) }}
                   />
                 ) : (
                   <div className="note-viewer-plaintext">
@@ -1552,45 +1704,81 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
         {/* Video lightbox — expanded playback */}
         {videoLightbox && (
           <div
-            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, animation: 'fade-in 0.15s ease-out' }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(8px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 99999, animation: 'fade-in 0.15s ease-out' }}
             onClick={() => setVideoLightbox(null)}
           >
-            <button
-              onClick={() => setVideoLightbox(null)}
-              aria-label="Fechar"
-              style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 1101 }}
+            <div
+              style={{
+                position: 'fixed',
+                top: 20,
+                right: 24,
+                zIndex: 100001,
+              }}
             >
-              <X size={18} />
-            </button>
-            <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+              <button
+                onClick={() => setVideoLightbox(null)}
+                aria-label="Fechar"
+                style={{
+                  background: 'rgba(255,255,255,0.2)',
+                  color: '#fff',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  borderRadius: 8,
+                  padding: '8px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                }}
+              >
+                <X size={16} /> Fechar
+              </button>
+            </div>
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                maxWidth: '85vw',
+                maxHeight: '80vh',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginTop: 30,
+              }}
+            >
               <video
                 controls
                 autoPlay
                 preload="auto"
-                style={{ maxWidth: '90vw', maxHeight: '80vh', borderRadius: 8, backgroundColor: '#000', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}
+                style={{ maxWidth: '85vw', maxHeight: '75vh', borderRadius: 8, backgroundColor: '#000', boxShadow: '0 12px 40px rgba(0,0,0,0.7)' }}
                 src={videoUrls[videoLightbox] || ''}
               >
                 Seu navegador não suporta reprodução de vídeo.
               </video>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{(parseVideoRef(videoLightbox).localFileName || videoLightbox).replace(/^\d+-/, '')}</span>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>
+                  {(parseVideoRef(videoLightbox).localFileName || videoLightbox).replace(/^\d+-/, '')}
+                </span>
                 <button
                   onClick={() => handleCopyVideoPath(videoLightbox)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 11, border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, background: copiedPath === videoLightbox ? 'var(--color-primary-teal)' : 'rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', fontSize: 11, border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, background: copiedPath === videoLightbox ? 'var(--color-primary-teal)' : 'rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer' }}
                 >
                   <Copy size={12} /> {copiedPath === videoLightbox ? 'Copiado!' : 'Copiar caminho'}
                 </button>
                 <button
                   onClick={() => handleOpenVideoExternal(videoLightbox)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 11, border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, background: 'rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', fontSize: 11, border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, background: 'rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer' }}
                 >
-                  <ExternalLink size={12} /> Player do sistema
+                  <Play size={12} /> Player do sistema
                 </button>
                 <button
-                  onClick={() => handleSaveVideoAs(videoLightbox)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 11, border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, background: 'rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer' }}
+                  onClick={() => handleDownloadVideo(videoLightbox)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', fontSize: 11, border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, background: 'rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer' }}
                 >
-                  <Download size={12} /> Salvar como...
+                  <Download size={12} /> Baixar
                 </button>
               </div>
             </div>

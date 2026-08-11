@@ -74,6 +74,45 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
     });
   }, []);
 
+  const insertTextAtCursor = useCallback((textToInsert: string) => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart ?? content.length;
+      const end = textarea.selectionEnd ?? content.length;
+      const before = content.substring(0, start);
+      const after = content.substring(end);
+      const newContent = `${before}\n${textToInsert}\n${after}`;
+      setContent(newContent);
+
+      setTimeout(() => {
+        const newCursor = start + textToInsert.length + 2;
+        textarea.focus();
+        textarea.setSelectionRange(newCursor, newCursor);
+      }, 0);
+    } else {
+      setContent(prev => `${prev}\n${textToInsert}\n`);
+    }
+  }, [content]);
+
+  const [pasteConfirmState, setPasteConfirmState] = useState<{
+    isOpen: boolean;
+    pendingBase64: string;
+    pendingFileName: string;
+  }>({ isOpen: false, pendingBase64: '', pendingFileName: '' });
+
+  const processPastedImage = useCallback((base64: string, _fileName: string, _addToAttachments: boolean) => {
+    let nextIndex = 1;
+    setAttachedImages(prev => {
+      nextIndex = prev.length + 1;
+      return [...prev, base64];
+    });
+
+    // Inserir marca curta no cursor sem poluir o editor de texto
+    const cleanTag = `![imagem-${nextIndex}]`;
+    insertTextAtCursor(cleanTag);
+    setPasteConfirmState({ isOpen: false, pendingBase64: '', pendingFileName: '' });
+  }, [insertTextAtCursor]);
+
   // Função para lidar com upload de imagens
   const handleImageUpload = useCallback(async (files: FileList) => {
     const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
@@ -81,18 +120,16 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
     for (const file of imageFiles) {
       try {
         const base64 = await fileToBase64(file);
-        setAttachedImages(prev => [...prev, base64]);
-        
-        // Se estiver no modo markdown, adicionar a sintaxe da imagem
-        if (format === 'markdown') {
-          const imageMarkdown = `![${file.name}](${base64})\n`;
-          setContent(prev => prev + imageMarkdown);
-        }
+        setPasteConfirmState({
+          isOpen: true,
+          pendingBase64: base64,
+          pendingFileName: file.name || 'imagem',
+        });
       } catch (error) {
         console.error('Erro ao processar imagem:', error);
       }
     }
-  }, [format, fileToBase64]);
+  }, [fileToBase64]);
 
   const handleAddVideo = useCallback(async () => {
     const electron = getElectron();
@@ -624,6 +661,84 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
           )}
         </div>
       </div>
+
+      {pasteConfirmState.isOpen && (
+        <div
+          className="modal-backdrop"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '16px',
+          }}
+          onClick={() => setPasteConfirmState({ isOpen: false, pendingBase64: '', pendingFileName: '' })}
+        >
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 380,
+              borderRadius: 14,
+              padding: '20px 24px',
+              backgroundColor: 'var(--color-bg-secondary)',
+              border: '1px solid var(--color-border-primary)',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6)',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: 32, marginBottom: 10 }}>🖼️</div>
+            <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+              Confirmar Imagem
+            </h3>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: '1.4' }}>
+              Deseja fixar esta imagem também nos <strong>Anexos principais</strong> da nota?
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button
+                onClick={() => processPastedImage(pasteConfirmState.pendingBase64, pasteConfirmState.pendingFileName, false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  border: '1px solid var(--color-border-primary)',
+                  backgroundColor: 'var(--color-bg-hover)',
+                  color: 'var(--color-text-secondary)',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  flex: 1,
+                }}
+              >
+                Apenas no Texto
+              </button>
+              <button
+                onClick={() => processPastedImage(pasteConfirmState.pendingBase64, pasteConfirmState.pendingFileName, true)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  border: 'none',
+                  backgroundColor: '#00D4AA',
+                  color: '#000',
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  flex: 1,
+                }}
+              >
+                Sim, Anexar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

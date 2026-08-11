@@ -22,11 +22,12 @@ import { useAppearance } from './hooks/useAppearance';
 import { Task, TaskStatus } from '../shared/types/task';
 import { Screen } from '../shared/types/navigation';
 import { UserSettings } from './hooks/useSettings';
-import { Settings as SettingsIcon, LogOut, StickyNote, Sun, Moon, ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
+import { Settings as SettingsIcon, LogOut, StickyNote, Sun, Moon, ChevronUp, ChevronDown, Loader2, LayoutDashboard, PanelRight, PanelLeft, PanelTop, PanelBottom, ArrowLeft } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { useOrganization } from './contexts/OrganizationContext';
 import UpdateNotification from './components/UpdateNotification';
 import { NoOrganizationModal } from './components/NoOrganizationModal';
+import { NexusLoadingScreen } from './components/NexusLoadingScreen';
 import { desktopAdapter } from './lib/desktopAdapter';
 
 // Import styles
@@ -48,132 +49,206 @@ interface AppNavigationState {
 
 interface AppProps { }
 
-interface TabItem {
-  key: string;
-  label: string;
-  onClick: () => void;
-}
-
-interface AppHeaderProps {
-  settings: UserSettings;
-  navigation: AppNavigationState;
-  systemInfo: { platform: string; version: string; };
-  goToDashboard: () => void;
-  openTimer: () => void;
-  openReports: () => void;
-  openNotes: () => void;
-  openMetrics: () => void;
-  canViewMetrics: boolean;
+interface FloatingActionToolbarProps {
+  position: 'bottom' | 'right' | 'left';
+  onTogglePosition: () => void;
   effectiveMode: 'light' | 'dark';
   onToggleTheme: () => void;
   handleOpenSettings: () => void;
-  handleOpenNoteModal: () => void;
   onSignOut: () => void;
+  openMetrics: () => void;
+  openNotes: () => void;
+  handleOpenNoteModal: () => void;
+  currentScreen: string;
 }
 
-const AppHeader: React.FC<AppHeaderProps> = React.memo(({
-  settings,
-  navigation,
-  systemInfo,
-  goToDashboard,
-  openTimer,
-  openReports,
-  openNotes,
-  openMetrics,
-  canViewMetrics,
+const FloatingActionToolbar: React.FC<FloatingActionToolbarProps> = React.memo(({
+  position,
+  onTogglePosition,
   effectiveMode,
   onToggleTheme,
   handleOpenSettings,
+  onSignOut,
+  openMetrics,
+  openNotes,
   handleOpenNoteModal,
-  onSignOut
+  currentScreen,
 }) => {
-  const safeVersion = typeof systemInfo?.version === 'string'
-    ? systemInfo.version
-    : (systemInfo?.version ? String(systemInfo.version) : '');
+  const isVertical = position === 'right' || position === 'left';
+  const isMetricsScreen = currentScreen === 'metrics';
 
-  const tabs = [
-    { key: 'notes', label: 'Notas', onClick: openNotes },
-    { key: 'metrics', label: 'Dashboard', onClick: openMetrics },
-    ...(settings.showDashboard ? [{ key: 'dashboard', label: 'Tarefas', onClick: goToDashboard }] : []),
-    ...(settings.showTimer ? [{ key: 'timer', label: 'Timer', onClick: openTimer }] : []),
-    ...(settings.showReports ? [{ key: 'reports', label: 'Relatórios', onClick: openReports }] : [])
-  ];
+  const containerStyle: React.CSSProperties = isVertical
+    ? {
+        position: 'fixed',
+        top: '50%',
+        transform: 'translateY(-50%)',
+        [position]: '16px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        alignItems: 'center',
+        zIndex: 9999,
+        background: 'transparent',
+        border: 'none',
+        padding: '0',
+        userSelect: 'none',
+      }
+    : {
+        position: 'fixed',
+        bottom: '20px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        flexDirection: 'row',
+        gap: '10px',
+        alignItems: 'center',
+        zIndex: 9999,
+        background: 'transparent',
+        border: 'none',
+        padding: '0',
+        userSelect: 'none',
+      };
+
+  const btnStyle = (bg: string, border: string, color: string): React.CSSProperties => ({
+    width: '38px',
+    height: '38px',
+    borderRadius: '10px',
+    backgroundColor: bg,
+    border: `1px solid ${border}`,
+    backdropFilter: 'blur(8px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: color,
+    cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+    transition: 'all 0.2s ease',
+  });
+
+  const baseBg = effectiveMode === 'dark' ? 'rgba(255,255,255,0.06)' : 'var(--color-bg-secondary)';
+  const baseBorder = 'var(--color-border-primary)';
+  const baseColor = 'var(--color-text-primary)';
 
   return (
-    <header className="app-header">
-      <div className="header-content">
-        <div className="header-left">
-          <h1 className="app-title">Nexus</h1>
-          <span className="app-version">v{safeVersion || '1.0.0'}</span>
-        </div>
-        <div className="header-center">
-          <nav className="navigation">
-            {tabs.map((tab: TabItem) => (
-              <button
-                key={tab.key}
-                className={`nav-button ${navigation.currentScreen === tab.key ? 'active' : ''}`}
-                onClick={tab.onClick}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-        <div className="header-right">
-          <div className="header-icon-group">
-            <button
-              className="header-icon-btn"
-              onClick={onToggleTheme}
-              title={effectiveMode === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
-            >
-              {effectiveMode === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-              <span className="header-tooltip">
-                {effectiveMode === 'dark' ? 'Modo claro' : 'Modo escuro'}
-              </span>
-            </button>
-            <button
-              className="header-icon-btn"
-              onClick={handleOpenSettings}
-              title="Configurações"
-            >
-              <SettingsIcon size={17} />
-              <span className="header-tooltip">Configurações</span>
-            </button>
-            <button
-              className="header-icon-btn"
-              onClick={onSignOut}
-              title="Sair"
-            >
-              <LogOut size={16} />
-              <span className="header-tooltip">Sair</span>
-            </button>
-          </div>
-          <div className="header-action-group">
-            <button
-              className="header-action-btn header-action-btn--note"
-              onClick={handleOpenNoteModal}
-              title="Nota rápida"
-            >
-              <StickyNote size={16} />
-              <span className="header-tooltip">Nota rápida</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </header>
+    <div className={`floating-action-toolbar floating-action-toolbar--${position}`} style={containerStyle}>
+      {/* Botão Toggle de Posição (Menor, sutil e com mais distância) */}
+      <button
+        className="header-icon-btn header-position-toggle"
+        onClick={onTogglePosition}
+        title={
+          position === 'bottom'
+            ? 'Mover para a Direita'
+            : position === 'right'
+            ? 'Mover para a Esquerda'
+            : 'Mover para o Rodapé'
+        }
+        style={{
+          width: '32px',
+          height: '32px',
+          borderRadius: '8px',
+          backgroundColor: baseBg,
+          border: '1px solid rgba(0, 212, 170, 0.25)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#00D4AA',
+          cursor: 'pointer',
+          opacity: 0.75,
+          marginBottom: isVertical ? '14px' : '0',
+          marginRight: !isVertical ? '14px' : '0',
+          transition: 'all 0.2s ease',
+        }}
+      >
+        {position === 'bottom' && <PanelRight size={15} />}
+        {position === 'right' && <PanelLeft size={15} />}
+        {position === 'left' && <PanelBottom size={15} />}
+      </button>
+
+      {/* 1: Sticky Note (Nota Rápida) */}
+      <button
+        className="header-action-btn header-action-btn--note"
+        onClick={handleOpenNoteModal}
+        title="Nota rápida"
+        style={{
+          ...btnStyle('rgba(123, 63, 242, 0.15)', 'rgba(123, 63, 242, 0.3)', '#A855F7'),
+          boxShadow: '0 4px 12px rgba(123, 63, 242, 0.2)',
+        }}
+      >
+        <StickyNote size={17} />
+      </button>
+
+      {/* 2: Dashboard Button com Transição para Ícone de Voltar */}
+      <button
+        className={`header-action-btn ${isMetricsScreen ? 'active' : ''}`}
+        onClick={isMetricsScreen ? openNotes : openMetrics}
+        title={isMetricsScreen ? 'Voltar para Notas' : 'Dashboard'}
+        style={{
+          ...btnStyle('transparent', 'rgba(0, 212, 170, 0.4)', '#00D4AA'),
+          background: 'linear-gradient(135deg, rgba(0, 212, 170, 0.25) 0%, rgba(123, 63, 242, 0.25) 50%, rgba(236, 72, 153, 0.25) 100%)',
+          boxShadow: '0 4px 12px rgba(0, 212, 170, 0.25)',
+        }}
+      >
+        {isMetricsScreen ? (
+          <ArrowLeft size={18} style={{ color: '#00D4AA' }} />
+        ) : (
+          <LayoutDashboard size={18} style={{ color: '#00D4AA' }} />
+        )}
+      </button>
+
+      {/* 3: Theme Toggle Button */}
+      <button
+        className="header-icon-btn"
+        onClick={onToggleTheme}
+        title={effectiveMode === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
+        style={btnStyle(baseBg, baseBorder, baseColor)}
+      >
+        {effectiveMode === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+      </button>
+
+      {/* 4: Settings Button */}
+      <button
+        className="header-icon-btn"
+        onClick={handleOpenSettings}
+        title="Configurações"
+        style={btnStyle(baseBg, baseBorder, baseColor)}
+      >
+        <SettingsIcon size={17} />
+      </button>
+
+      {/* 5: SignOut Button */}
+      <button
+        className="header-icon-btn"
+        onClick={onSignOut}
+        title="Sair"
+        style={btnStyle(baseBg, baseBorder, baseColor)}
+      >
+        <LogOut size={16} />
+      </button>
+    </div>
   );
-}, (prevProps, nextProps) => {
+});
+
+const SystemWatermark: React.FC<{ version: string; mode: 'light' | 'dark' }> = React.memo(({ version, mode }) => {
   return (
-    prevProps.effectiveMode === nextProps.effectiveMode &&
-    prevProps.canViewMetrics === nextProps.canViewMetrics &&
-    prevProps.navigation.currentScreen === nextProps.navigation.currentScreen &&
-    prevProps.navigation.selectedList === nextProps.navigation.selectedList &&
-    prevProps.navigation.selectedNoteId === nextProps.navigation.selectedNoteId &&
-    prevProps.systemInfo.platform === nextProps.systemInfo.platform &&
-    prevProps.systemInfo.version === nextProps.systemInfo.version &&
-    prevProps.settings.showDashboard === nextProps.settings.showDashboard &&
-    prevProps.settings.showTimer === nextProps.settings.showTimer &&
-    prevProps.settings.showReports === nextProps.settings.showReports
+    <div
+      className="system-watermark"
+      style={{
+        position: 'fixed',
+        bottom: '12px',
+        right: '16px',
+        fontSize: '12px',
+        color: mode === 'dark' ? 'rgba(255, 255, 255, 0.35)' : 'rgba(0, 0, 0, 0.35)',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        fontWeight: 500,
+        pointerEvents: 'none',
+        userSelect: 'none',
+        zIndex: 9000,
+        letterSpacing: '0.2px',
+      }}
+    >
+      Nexus <span style={{ opacity: 0.7, fontSize: '11px', marginLeft: '2px' }}>v{version || '1.4.0'}</span>
+    </div>
   );
 });
 
@@ -231,6 +306,11 @@ const App: React.FC<AppProps> = () => {
 
   // Use daily goal from settings
   const DAILY_GOAL = settings.dailyGoal;
+
+  // Purge disk cache on application startup
+  useEffect(() => {
+    desktopAdapter.clearVideoCache().catch((err) => console.warn('Cache cleanup error:', err));
+  }, []);
 
   // Listen for openSettings event from quick actions
   useEffect(() => {
@@ -480,91 +560,31 @@ const App: React.FC<AppProps> = () => {
     return () => window.removeEventListener('keydown', handleKey);
   }, [electronAPI]);
 
-  const headerToggleButtonStyle: React.CSSProperties = settings.showAppHeader
-    ? {
-      position: 'fixed',
-      top: 56,
-      left: '50%',
-      transform: 'translateX(-50%)',
-      zIndex: 1200,
-      minWidth: 28,
-      height: 22,
-      borderRadius: 999,
-      padding: '0 8px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backdropFilter: 'blur(6px)',
-      backgroundColor: effectiveMode === 'dark' ? 'rgba(20,20,20,0.92)' : 'rgba(255,255,255,0.92)',
-      border: effectiveMode === 'dark' ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(15,23,42,0.12)',
-      color: effectiveMode === 'dark' ? '#A0A0A0' : '#475569',
-    }
-    : {
-      position: 'fixed',
-      top: 10,
-      left: '50%',
-      transform: 'translateX(-50%)',
-      zIndex: 1200,
-      minWidth: 28,
-      height: 22,
-      borderRadius: 999,
-      padding: '0 8px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backdropFilter: 'blur(6px)',
-      backgroundColor: effectiveMode === 'dark' ? 'rgba(20,20,20,0.92)' : 'rgba(255,255,255,0.92)',
-      border: effectiveMode === 'dark' ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(15,23,42,0.12)',
-      color: effectiveMode === 'dark' ? '#A0A0A0' : '#475569',
-    };
+  const [toolbarPosition, setToolbarPosition] = useState<'bottom' | 'right' | 'left'>(() => {
+    try {
+      const saved = localStorage.getItem('nexus_toolbar_position');
+      if (saved === 'right' || saved === 'left' || saved === 'bottom') return saved;
+    } catch {}
+    return 'bottom';
+  });
 
-  const renderAppHeader = () => {
-    if (!settings.showAppHeader) return null;
+  const handleToggleMenuPosition = useCallback(() => {
+    setToolbarPosition((prev) => {
+      let nextPos: 'bottom' | 'right' | 'left' = 'right';
+      if (prev === 'bottom') nextPos = 'right';
+      else if (prev === 'right') nextPos = 'left';
+      else nextPos = 'bottom';
 
-    return (
-      <AppHeader
-        settings={settings}
-        navigation={navigation}
-        systemInfo={systemInfo}
-        goToDashboard={goToDashboard}
-        openTimer={openTimer}
-        openReports={openReports}
-        openNotes={openNotes}
-        openMetrics={openMetrics}
-        canViewMetrics={canViewMetrics}
-        effectiveMode={effectiveMode}
-        onToggleTheme={toggleMode}
-        handleOpenSettings={handleOpenSettings}
-        handleOpenNoteModal={() => setIsNoteModalOpen(true)}
-        onSignOut={signOut}
-      />
-    );
-  };
-
-  const renderHeaderVisibilityToggle = () => (
-    <button
-      className="header-icon-btn"
-      onClick={toggleHeaderVisibility}
-      title={settings.showAppHeader ? 'Ocultar menu superior' : 'Mostrar menu superior'}
-      style={headerToggleButtonStyle}
-    >
-      {settings.showAppHeader ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-      <span className="header-tooltip">
-        {settings.showAppHeader ? 'Ocultar menu superior' : 'Mostrar menu superior'}
-      </span>
-    </button>
-  );
+      try {
+        localStorage.setItem('nexus_toolbar_position', nextPos);
+      } catch {}
+      updateSettings({ actionMenuPosition: nextPos as any });
+      return nextPos;
+    });
+  }, [updateSettings]);
 
   if (isLoading || tasksLoading || notesLoading || orgsLoading) {
-    return (
-      <div className="loading-screen">
-        <div className="loading-content">
-          <Loader2 className="notes-loading-spinner" />
-          <h2 className="loading-title">Carregando Nexus...</h2>
-          <p className="loading-subtitle">Preparando seu ambiente de produtividade</p>
-        </div>
-      </div>
-    );
+    return <NexusLoadingScreen title="Nexus" subtitle="Carregando ambiente de trabalho..." />;
   }
 
   // Se o usuário estiver online mas não possuir nenhuma organização
@@ -612,17 +632,21 @@ const App: React.FC<AppProps> = () => {
     }
 
     return (
-      <React.Suspense fallback={
-        <div className="loading-screen">
-          <div className="loading-content">
-            <Loader2 className="notes-loading-spinner" />
-            <h2 className="loading-title">Carregando...</h2>
-          </div>
-        </div>
-      }>
+      <React.Suspense fallback={<NexusLoadingScreen title="Nexus" subtitle="Carregando lista de tarefas..." />}>
         <div className="app-container" data-theme={theme.mode}>
-          {renderAppHeader()}
-          {renderHeaderVisibilityToggle()}
+          <FloatingActionToolbar
+            position={actionMenuPosition}
+            onTogglePosition={handleToggleMenuPosition}
+            effectiveMode={effectiveMode}
+            onToggleTheme={toggleMode}
+            handleOpenSettings={handleOpenSettings}
+            onSignOut={signOut}
+            openMetrics={openMetrics}
+            openNotes={openNotes}
+            handleOpenNoteModal={() => setIsNoteModalOpen(true)}
+            currentScreen={navigation.currentScreen}
+          />
+          <SystemWatermark version={systemInfo?.version || '1.4.0'} mode={effectiveMode} />
           <main className="app-main">
             <TaskList
               title={getListTitle(navigation.selectedList)}
@@ -647,8 +671,6 @@ const App: React.FC<AppProps> = () => {
             isOpen={isSettingsOpen}
             onClose={handleCloseSettings}
           />
-
-
         </div>
       </React.Suspense>
     );
@@ -656,17 +678,21 @@ const App: React.FC<AppProps> = () => {
 
   // Dashboard principal com abas para Timer e Reports
   return (
-    <React.Suspense fallback={
-      <div className="loading-screen">
-        <div className="loading-content">
-          <Loader2 className="notes-loading-spinner" />
-          <h2 className="loading-title">Carregando...</h2>
-        </div>
-      </div>
-    }>
+    <React.Suspense fallback={<NexusLoadingScreen title="Nexus" subtitle="Carregando aplicativo..." />}>
       <div className="app-container" data-theme={theme.mode}>
-        {renderAppHeader()}
-        {renderHeaderVisibilityToggle()}
+        <FloatingActionToolbar
+          position={toolbarPosition}
+          onTogglePosition={handleToggleMenuPosition}
+          effectiveMode={effectiveMode}
+          onToggleTheme={toggleMode}
+          handleOpenSettings={handleOpenSettings}
+          onSignOut={signOut}
+          openMetrics={openMetrics}
+          openNotes={openNotes}
+          handleOpenNoteModal={() => setIsNoteModalOpen(true)}
+          currentScreen={navigation.currentScreen}
+        />
+        <SystemWatermark version={systemInfo?.version || '1.4.0'} mode={effectiveMode} />
         <main className="app-main">
           {navigation.currentScreen === 'dashboard' && (
             <div className="animate-screen">
