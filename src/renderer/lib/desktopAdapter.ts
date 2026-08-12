@@ -4,6 +4,19 @@
  * Provides runtime detection: Tauri v2 -> Electron -> Web Fallback.
  */
 
+function isNewerSemver(current: string, latest: string): boolean {
+  const parse = (v: string) => v.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const c = parse(current);
+  const l = parse(latest);
+  for (let i = 0; i < Math.max(c.length, l.length); i++) {
+    const cv = c[i] || 0;
+    const lv = l[i] || 0;
+    if (lv > cv) return true;
+    if (lv < cv) return false;
+  }
+  return false;
+}
+
 export interface SystemInfo {
   version: string;
   os: string;
@@ -158,6 +171,7 @@ class DesktopAdapter implements IDesktopAdapter {
   }
 
   private tauriUpdateObj: unknown = null;
+  private latestDownloadUrl: string | null = null;
   private updateStatusListeners: Array<(status: UpdateStatus) => void> = [];
 
   public onUpdateStatus(listener: (status: UpdateStatus) => void): () => void {
@@ -186,8 +200,10 @@ class DesktopAdapter implements IDesktopAdapter {
     }
 
     if (this.isTauri()) {
+      this.notifyUpdateStatus({ state: 'checking' });
+
+      // Step 1: Try native Tauri v2 plugin check
       try {
-        this.notifyUpdateStatus({ state: 'checking' });
         const { check } = await import('@tauri-apps/plugin-updater');
         const update = await check();
         if (update && update.available) {
@@ -199,21 +215,63 @@ class DesktopAdapter implements IDesktopAdapter {
           };
           this.notifyUpdateStatus(status);
           return status;
-        } else {
-          this.tauriUpdateObj = null;
-          const status: UpdateStatus = { state: 'not-available' };
-          this.notifyUpdateStatus(status);
-          return status;
         }
       } catch (err) {
-        console.warn('Falha na verificação de atualização via Tauri:', err);
-        const status: UpdateStatus = {
-          state: 'error',
-          error: err instanceof Error ? err.message : 'Falha ao verificar atualização.',
-        };
-        this.notifyUpdateStatus(status);
-        return status;
+        console.warn('Busca nativa de atualização via plugin Tauri pendente de assinatura, executando fallback...', err);
       }
+
+      // Step 2: Fallback check against latest.json / GitHub Releases API
+      try {
+        const sysInfo = await this.getSystemInfo();
+        const currentVer = sysInfo.version || '1.4.1';
+
+        const res = await fetch('https://github.com/PaulNasc/nexus/releases/latest/download/latest.json', { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          const latestVer = data.version;
+          if (latestVer && isNewerSemver(currentVer, latestVer)) {
+            const status: UpdateStatus = {
+              state: 'available',
+              version: latestVer,
+              releaseNotes: data.notes || `Nova versão v${latestVer} do Nexus disponível.`,
+            };
+            this.latestDownloadUrl = data.platforms?.['windows-x86_64']?.url || `https://github.com/PaulNasc/nexus/releases/download/v${latestVer}/Nexus_${latestVer}_x64-setup.exe`;
+            this.notifyUpdateStatus(status);
+            return status;
+          }
+        }
+      } catch (err) {
+        console.warn('Fallback latest.json indisponível, consultando GitHub API...', err);
+      }
+
+      // Step 3: Fallback check directly via GitHub API
+      try {
+        const sysInfo = await this.getSystemInfo();
+        const currentVer = sysInfo.version || '1.4.1';
+        const res = await fetch('https://api.github.com/repos/PaulNasc/nexus/releases/latest', { headers: { Accept: 'application/vnd.github.v3+json' } });
+        if (res.ok) {
+          const data = await res.json();
+          const tagVer = (data.tag_name || '').replace(/^v/, '');
+          if (tagVer && isNewerSemver(currentVer, tagVer)) {
+            const status: UpdateStatus = {
+              state: 'available',
+              version: tagVer,
+              releaseNotes: data.body || `Nova versão v${tagVer} do Nexus disponível.`,
+            };
+            this.latestDownloadUrl = sysInfo.isPortable
+              ? `https://github.com/PaulNasc/nexus/releases/download/v${tagVer}/Nexus-${tagVer}-x64.exe`
+              : `https://github.com/PaulNasc/nexus/releases/download/v${tagVer}/Nexus_${tagVer}_x64-setup.exe`;
+            this.notifyUpdateStatus(status);
+            return status;
+          }
+        }
+      } catch {
+        // Fallback failed
+      }
+
+      const status: UpdateStatus = { state: 'not-available' };
+      this.notifyUpdateStatus(status);
+      return status;
     }
   }
 
@@ -225,24 +283,26 @@ class DesktopAdapter implements IDesktopAdapter {
       }
     }
 
-    if (this.isTauri() && this.tauriUpdateObj) {
-      try {
-        this.notifyUpdateStatus({ state: 'downloading' });
-        const update = this.tauriUpdateObj as { downloadAndInstall: (cb?: (p: unknown) => void) => Promise<void> };
-        await update.downloadAndInstall();
-        this.notifyUpdateStatus({ state: 'downloaded' });
+    if (this.isTauri()) {
+      if (this.tauriUpdateObj) {
         try {
+          this.notifyUpdateStatus({ state: 'downloading' });
+          const update = this.tauriUpdateObj as { downloadAndInstall: (cb?: (p: unknown) => void) => Promise<void> };
+          await update.downloadAndInstall();
+          this.notifyUpdateStatus({ state: 'downloaded' });
           window.location.reload();
-        } catch {
-          window.location.reload();
+          return;
+        } catch (err) {
+          console.warn('Falha ao instalar via Tauri plugin, abrindo pacote direto:', err);
         }
-      } catch (err) {
-        console.error('Falha ao instalar atualização via Tauri:', err);
-        this.notifyUpdateStatus({
-          state: 'error',
-          error: err instanceof Error ? err.message : 'Erro ao instalar atualização.',
-        });
       }
+
+      if (this.latestDownloadUrl) {
+        await this.openExternal(this.latestDownloadUrl);
+        return;
+      }
+
+      await this.openExternal('https://github.com/PaulNasc/nexus/releases/latest');
     }
   }
 
