@@ -17,6 +17,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.4.2',
+    date: '2026-08-12',
+    highlights: [
+      { category: 'feature', text: 'Atualizador automático com suporte completo a instalações e versões portáteis via Tauri v2' },
+      { category: 'feature', text: 'Notificações de solicitações de entrada na organização em tempo real para Administradores e Master' },
+      { category: 'improvement', text: 'Modo Zen atualizado com pré-visualização WYSIWYG de imagens redimensionáveis' },
+      { category: 'fix', text: 'Correção na verificação de atualizações no painel de configurações' },
+    ],
+  },
+  {
     version: '1.4.1',
     date: '2026-08-02',
     highlights: [

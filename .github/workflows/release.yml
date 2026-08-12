@@ -52,6 +52,7 @@ jobs:
           files: |
             releases/release-assets/*
           draft: false
+          make_latest: true
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

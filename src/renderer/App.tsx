@@ -255,7 +255,7 @@ const SystemWatermark: React.FC<{ version: string; mode: 'light' | 'dark' }> = R
         letterSpacing: '0.2px',
       }}
     >
-      Nexus <span style={{ opacity: 0.7, fontSize: '11px', marginLeft: '2px' }}>v{version || '1.4.1'}</span>
+      Nexus <span style={{ opacity: 0.7, fontSize: '11px', marginLeft: '2px' }}>v{version || '1.4.2'}</span>
     </div>
   );
 });
@@ -292,7 +292,7 @@ const App: React.FC<AppProps> = () => {
 
   const [isChangelogOpen, setIsChangelogOpen] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('nexus_last_seen_version') !== '1.4.1';
+      return localStorage.getItem('nexus_last_seen_version') !== '1.4.2';
     } catch {
       return false;
     }
@@ -413,17 +413,17 @@ const App: React.FC<AppProps> = () => {
           const sysInfo = await desktopAdapter.getSystemInfo();
           setSystemInfo({
             platform: sysInfo.platform || 'win32',
-            version: sysInfo.version || '1.4.1'
+            version: sysInfo.version || '1.4.2'
           });
         } catch {
           if (electronAPI) {
-            const ver = await electronAPI.updater?.getVersion?.() || electronAPI.system?.version || '1.4.1';
+            const ver = await electronAPI.updater?.getVersion?.() || electronAPI.system?.version || '1.4.2';
             setSystemInfo({
               platform: electronAPI.system?.platform || 'win32',
               version: typeof ver === 'string' ? ver : String(ver)
             });
           } else {
-            setSystemInfo({ platform: 'win32', version: '1.4.1' });
+            setSystemInfo({ platform: 'win32', version: '1.4.2' });
           }
         }
 
@@ -660,7 +660,7 @@ const App: React.FC<AppProps> = () => {
             handleOpenNoteModal={() => setIsNoteModalOpen(true)}
             currentScreen={navigation.currentScreen}
           />
-          <SystemWatermark version={systemInfo?.version || '1.4.1'} mode={effectiveMode} />
+          <SystemWatermark version={systemInfo?.version || '1.4.2'} mode={effectiveMode} />
           <main className="app-main">
             <TaskList
               title={getListTitle(navigation.selectedList)}
@@ -709,7 +709,7 @@ const App: React.FC<AppProps> = () => {
             currentScreen={navigation.currentScreen}
           />
         )}
-        {!isZen && <SystemWatermark version={systemInfo?.version || '1.4.1'} mode={effectiveMode} />}
+        {!isZen && <SystemWatermark version={systemInfo?.version || '1.4.2'} mode={effectiveMode} />}
         <main className="app-main">
           {navigation.currentScreen === 'notes' && (
             <div className="animate-screen" style={{ height: '100%' }}>

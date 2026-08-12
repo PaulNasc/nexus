@@ -549,7 +549,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const loadSystemInfo = async () => {
     // Fetch real version from platform APIs
-    let appVersion = '1.4.1';
+    let appVersion = '1.4.2';
     let hwMachineId = '';
 
     const electron = (window as unknown as {

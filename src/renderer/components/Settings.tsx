@@ -315,7 +315,7 @@ const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
 const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
   const [status, setStatus] = useState<UpdaterStatus>({ state: 'idle' });
   const [autoDownload, setAutoDownload] = useState(false);
-  const [currentVersion, setCurrentVersion] = useState('1.4.1');
+  const [currentVersion, setCurrentVersion] = useState('1.4.2');
   const [platformInfo, setPlatformInfo] = useState('Windows (Tauri)');
   const [isChecking, setIsChecking] = useState(false);
 
