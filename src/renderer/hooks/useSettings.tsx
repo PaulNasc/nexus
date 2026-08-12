@@ -107,6 +107,9 @@ export interface UserSettings {
 
   // Tab ordering
   tabOrder: string[];
+
+  // Interface Mode
+  interfaceMode: 'simplified' | 'zen';
 }
 
 export interface SystemInfo {
@@ -251,6 +254,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   taskCards: DEFAULT_TASK_CARDS,
   quickActions: DEFAULT_QUICK_ACTIONS,
   tabOrder: ['notes'],
+  interfaceMode: 'simplified',
 };
 
 const getSettingsKey = (userId?: string | null) => userId ? `nexus-user-settings:${userId}` : 'nexus-user-settings-guest';

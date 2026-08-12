@@ -1807,6 +1807,63 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
+                {/* Interface Mode */}
+                <div>
+                  <h4 style={{
+                    margin: '0 0 12px 0',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: 'var(--color-text-primary)',
+                  }}>
+                    Modo de Interface
+                  </h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    {(['simplified', 'zen'] as const).map((m) => {
+                      const isActive = (settings.interfaceMode ?? 'simplified') === m;
+                      const label = m === 'simplified' ? 'Simplificado' : 'Zen';
+                      const desc = m === 'simplified'
+                        ? 'Toolbar flutuante, grid de notas e modais de edição'
+                        : 'Layout 3 colunas, lista lateral e editor inline';
+                      return (
+                        <button
+                          key={m}
+                          onClick={() => updateSettings({ interfaceMode: m })}
+                          style={{
+                            padding: '14px 16px',
+                            borderRadius: '10px',
+                            border: `1.5px solid ${isActive ? 'rgba(20,184,166,0.6)' : (isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB')}`,
+                            background: isActive
+                              ? (isDark ? 'rgba(20,184,166,0.1)' : 'rgba(20,184,166,0.06)')
+                              : (isDark ? 'rgba(255,255,255,0.02)' : '#FAFAFA'),
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <div style={{
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            color: isActive ? '#14b8a6' : 'var(--color-text-primary)',
+                            marginBottom: 4,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                          }}>
+                            {isActive && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#14b8a6', display: 'inline-block' }} />}
+                            {label}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>
+                            {desc}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: 8 }}>
+                    Aplica imediatamente. Salvo por usuário no Supabase.
+                  </p>
+                </div>
+
                 <div>
                   <h4 style={{
                     margin: '0 0 12px 0',

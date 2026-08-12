@@ -32,6 +32,8 @@ import { desktopAdapter } from './lib/desktopAdapter';
 import { ChangelogModal } from './components/ChangelogModal';
 import { FeedbackButton } from './components/FeedbackButton';
 import { FeedbackModal } from './components/FeedbackModal';
+import { ZenLayout } from './components/zen/ZenLayout';
+import { useInterfaceMode } from './hooks/useInterfaceMode';
 
 // Import styles
 import './styles/reset.css';
@@ -41,6 +43,7 @@ import './styles/global.css';
 import './styles/components.css';
 import './styles/animations.css';
 import './styles/navigation-title.css';
+import './styles/zen.css';
 
 type AppScreen = Screen | 'timer' | 'reports' | 'notes' | 'metrics';
 
@@ -283,6 +286,7 @@ const App: React.FC<AppProps> = () => {
   const { theme, effectiveMode, toggleMode } = useTheme();
   useI18n();
   const { settings, updateSettings } = useSettings();
+  const { isZen } = useInterfaceMode();
 
   const [isChangelogOpen, setIsChangelogOpen] = useState<boolean>(() => {
     try {
@@ -692,29 +696,69 @@ const App: React.FC<AppProps> = () => {
   return (
     <React.Suspense fallback={<NexusLoadingScreen title="Nexus" subtitle="Carregando aplicativo..." />}>
       <div className="app-container" data-theme={theme.mode}>
-        <FloatingActionToolbar
-          position={toolbarPosition}
-          onTogglePosition={handleToggleMenuPosition}
-          effectiveMode={effectiveMode}
-          onToggleTheme={toggleMode}
-          handleOpenSettings={handleOpenSettings}
-          onSignOut={signOut}
-          openMetrics={openMetrics}
-          openNotes={openNotes}
-          handleOpenNoteModal={() => setIsNoteModalOpen(true)}
-          currentScreen={navigation.currentScreen}
-        />
+        {/* Floating toolbar: hidden in Zen mode */}
+        {!isZen && (
+          <FloatingActionToolbar
+            position={toolbarPosition}
+            onTogglePosition={handleToggleMenuPosition}
+            effectiveMode={effectiveMode}
+            onToggleTheme={toggleMode}
+            handleOpenSettings={handleOpenSettings}
+            onSignOut={signOut}
+            openMetrics={openMetrics}
+            openNotes={openNotes}
+            handleOpenNoteModal={() => setIsNoteModalOpen(true)}
+            currentScreen={navigation.currentScreen}
+          />
+        )}
         <SystemWatermark version={systemInfo?.version || '1.4.0'} mode={effectiveMode} />
         <main className="app-main">
+          {navigation.currentScreen === 'notes' && (
+            <div className="animate-screen" style={{ height: '100%' }}>
+              {isZen ? (
+                <ZenLayout
+                  showDashboard={false}
+                  onOpenNoteModal={() => setIsNoteModalOpen(true)}
+                  onOpenSettings={handleOpenSettings}
+                  onOpenFeedback={() => setIsFeedbackOpen(true)}
+                  onNavigateDashboard={goToDashboard}
+                  onNavigateNotes={openNotes}
+                  onViewTaskList={viewTaskList}
+                  onOpenTimer={settings.showTimer ? openTimer : undefined}
+                  onOpenReports={settings.showReports ? openReports : undefined}
+                  showQuickActions={settings.showQuickActions}
+                  showTaskCounters={settings.showTaskCounters}
+                />
+              ) : (
+                <Notes initialNoteId={navigation.selectedNoteId} />
+              )}
+            </div>
+          )}
           {navigation.currentScreen === 'dashboard' && (
-            <div className="animate-screen">
-              <Dashboard
-                onViewTaskList={viewTaskList}
-                onOpenTimer={settings.showTimer ? openTimer : undefined}
-                onOpenReports={settings.showReports ? openReports : undefined}
-                showQuickActions={settings.showQuickActions}
-                showTaskCounters={settings.showTaskCounters}
-              />
+            <div className="animate-screen" style={{ height: '100%' }}>
+              {isZen ? (
+                <ZenLayout
+                  showDashboard={true}
+                  onOpenNoteModal={() => setIsNoteModalOpen(true)}
+                  onOpenSettings={handleOpenSettings}
+                  onOpenFeedback={() => setIsFeedbackOpen(true)}
+                  onNavigateDashboard={goToDashboard}
+                  onNavigateNotes={openNotes}
+                  onViewTaskList={viewTaskList}
+                  onOpenTimer={settings.showTimer ? openTimer : undefined}
+                  onOpenReports={settings.showReports ? openReports : undefined}
+                  showQuickActions={settings.showQuickActions}
+                  showTaskCounters={settings.showTaskCounters}
+                />
+              ) : (
+                <Dashboard
+                  onViewTaskList={viewTaskList}
+                  onOpenTimer={settings.showTimer ? openTimer : undefined}
+                  onOpenReports={settings.showReports ? openReports : undefined}
+                  showQuickActions={settings.showQuickActions}
+                  showTaskCounters={settings.showTaskCounters}
+                />
+              )}
             </div>
           )}
           {navigation.currentScreen === 'timer' && settings.showTimer && (
@@ -725,11 +769,6 @@ const App: React.FC<AppProps> = () => {
           {navigation.currentScreen === 'reports' && settings.showReports && (
             <div className="animate-screen" style={{ padding: '24px' }}>
               <Reports onClose={goToDashboard} onBack={goToDashboard} />
-            </div>
-          )}
-          {navigation.currentScreen === 'notes' && (
-            <div className="animate-screen" style={{ height: '100%' }}>
-              <Notes initialNoteId={navigation.selectedNoteId} />
             </div>
           )}
           {navigation.currentScreen === 'metrics' && (
@@ -759,7 +798,8 @@ const App: React.FC<AppProps> = () => {
           onClose={handleCloseSettings}
         />
 
-        <FeedbackButton onClick={() => setIsFeedbackOpen(true)} />
+        {/* FeedbackButton: hidden in Zen mode (rendered inside ZenLayout) */}
+        {!isZen && <FeedbackButton onClick={() => setIsFeedbackOpen(true)} />}
 
         {user && isChangelogOpen && (
           <ChangelogModal
