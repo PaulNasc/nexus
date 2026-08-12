@@ -1,5 +1,5 @@
 import React from 'react';
-import { StickyNote, LayoutDashboard, Sun, Moon, Settings, LogOut, Zap } from 'lucide-react';
+import { StickyNote, LayoutDashboard, Sun, Moon, Settings, LogOut, FilePlus } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -36,14 +36,14 @@ export const ZenSidebar: React.FC<ZenSidebarProps> = ({
   return (
     <aside className="zen-sidebar">
       <nav className="zen-sidebar__nav">
-        {/* Nova nota rápida */}
+        {/* Nova nota rápida (Ícone de documento com mais) */}
         <button
           className="zen-sidebar__btn zen-sidebar__btn--new"
           onClick={onNewNote}
           data-tooltip="Nova Nota"
           aria-label="Nova Nota"
         >
-          <Zap size={15} />
+          <FilePlus size={18} />
         </button>
 
         <div className="zen-sidebar__divider" />
@@ -55,7 +55,7 @@ export const ZenSidebar: React.FC<ZenSidebarProps> = ({
           data-tooltip="Notas"
           aria-label="Notas"
         >
-          <StickyNote size={16} />
+          <StickyNote size={18} />
         </button>
 
         {/* Dashboard */}
@@ -65,7 +65,7 @@ export const ZenSidebar: React.FC<ZenSidebarProps> = ({
           data-tooltip="Dashboard"
           aria-label="Dashboard"
         >
-          <LayoutDashboard size={16} />
+          <LayoutDashboard size={18} />
         </button>
 
         {/* Tema */}
@@ -75,7 +75,7 @@ export const ZenSidebar: React.FC<ZenSidebarProps> = ({
           data-tooltip={isDark ? 'Tema Claro' : 'Tema Escuro'}
           aria-label="Alternar Tema"
         >
-          {isDark ? <Sun size={16} /> : <Moon size={16} />}
+          {isDark ? <Sun size={18} /> : <Moon size={18} />}
         </button>
 
         {/* Configurações */}
@@ -85,7 +85,7 @@ export const ZenSidebar: React.FC<ZenSidebarProps> = ({
           data-tooltip="Configurações"
           aria-label="Configurações"
         >
-          <Settings size={16} />
+          <Settings size={18} />
         </button>
 
         <div className="zen-sidebar__divider" />
@@ -97,12 +97,12 @@ export const ZenSidebar: React.FC<ZenSidebarProps> = ({
           data-tooltip="Sair"
           aria-label="Sair"
         >
-          <LogOut size={15} />
+          <LogOut size={17} />
         </button>
       </nav>
 
       <footer className="zen-sidebar__footer">
-        <span className="zen-sidebar__footer-name">Nexus</span>
+        <span className="zen-sidebar__footer-name">NEXUS</span>
         <span className="zen-sidebar__footer-version">v{APP_VERSION}</span>
       </footer>
     </aside>

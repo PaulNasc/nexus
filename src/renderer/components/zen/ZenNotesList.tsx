@@ -1,22 +1,29 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Search, Pin, ArrowUpDown, StickyNote, Loader2, X, Tag } from 'lucide-react';
+import { Search, Pin, ArrowUpDown, StickyNote, Loader2, X, Tag, BellRing, Pencil, Trash2 } from 'lucide-react';
 import { useNotes, SortOption } from '../../contexts/NotesContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrganization } from '../../contexts/OrganizationContext';
 import { useSettings } from '../../hooks/useSettings';
 import { useSystemTags } from '../../contexts/SystemTagsContext';
+import { useI18n } from '../../hooks/useI18n';
 import type { Note } from '../../../shared/types/note';
 
 interface ZenNotesListProps {
   selectedNoteId: number | null;
-  onSelectNote: (note: Note) => void;
+  onSelectNote: (note: Note, editMode?: boolean) => void;
   onNewNote: () => void;
+  onOpenPingModal: (note: Note) => void;
+  onDeleteNote: (note: Note) => void;
+  onTogglePinNote: (note: Note) => void;
 }
 
 export const ZenNotesList: React.FC<ZenNotesListProps> = ({
   selectedNoteId,
   onSelectNote,
   onNewNote,
+  onOpenPingModal,
+  onDeleteNote,
+  onTogglePinNote,
 }) => {
   const {
     notes,
@@ -38,15 +45,18 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
   const { user } = useAuth();
   const { activeOrg } = useOrganization();
   const { settings, getGreeting } = useSettings();
-  const { tags: systemTags } = useSystemTags();
+  const { tags: systemTags, systemTagById, systemTagByName } = useSystemTags();
+  const { t } = useI18n();
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showTagFilter, setShowTagFilter] = useState(false);
 
-  const greeting = getGreeting();
-  const userName = settings.userName || user?.email?.split('@')[0] || 'você';
+  // Greeting translated cleanly ("Boa noite, Paulo!")
+  const greetingKey = getGreeting();
+  const greetingTranslated = t(greetingKey);
+  const userName = settings.userName?.trim() || user?.email?.split('@')[0] || 'você';
 
   // Infinite scroll via IntersectionObserver
   useEffect(() => {
@@ -85,6 +95,7 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
   };
 
   const formatDate = (dateStr: string) => {
+    if (!dateStr) return '';
     const date = new Date(dateStr);
     const now = new Date();
     const diffDays = Math.floor((now.getTime() - date.getTime()) / 86400000);
@@ -94,15 +105,50 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   };
 
-  const getPreviewText = (note: Note): string => {
-    if (!note.content) return '';
-    const plain = note.content
-      .replace(/!\[.*?\]\(.*?\)/g, '[imagem]')
+  /** Calculate note color / accent bar */
+  const getNoteAccentColor = useCallback(
+    (note: Note): string => {
+      if (note.system_tag_id !== undefined) {
+        const sysTag = systemTagById.get(note.system_tag_id);
+        if (sysTag?.color) return sysTag.color;
+      }
+
+      if (note.tags && note.tags.length > 0) {
+        for (const tag of note.tags) {
+          const sysTag = systemTagByName.get(tag.toLowerCase());
+          if (sysTag?.color) return sysTag.color;
+        }
+      }
+
+      if (note.color) {
+        return note.color;
+      }
+
+      return '#14b8a6'; // default accent
+    },
+    [systemTagById, systemTagByName]
+  );
+
+  /** Clean up raw markdown and PDF/Video tags for card preview text */
+  const getCleanPreviewText = (note: Note): string => {
+    if (!note.content) return 'Nota vazia';
+    const raw = note.content.trim();
+
+    if (raw.startsWith('[PDF_SOURCE]') || raw.includes('[PDF_SOURCE]')) {
+      return '📄 Documento PDF importado. Abra a nota para ver os detalhes.';
+    }
+    if (raw.startsWith('[VIDEO_SOURCE]') || raw.includes('[VIDEO_SOURCE]')) {
+      return '🎥 Vídeo em anexo. Abra a nota para ver os detalhes.';
+    }
+
+    const plain = raw
+      .replace(/!\[.*?\]\(.*?\)/g, '')
       .replace(/\[.*?\]\(.*?\)/g, '')
       .replace(/[#*_`~>]/g, '')
       .replace(/\s+/g, ' ')
       .trim();
-    return plain.slice(0, 80);
+
+    return plain.slice(0, 90) || 'Nota sem texto';
   };
 
   return (
@@ -110,7 +156,7 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
       {/* Header */}
       <header className="zen-notes-list__header">
         <h1 className="zen-notes-list__title">Notas</h1>
-        <p className="zen-notes-list__greeting">{greeting}, {userName}!</p>
+        <p className="zen-notes-list__greeting">{greetingTranslated}, {userName}!</p>
         <div className="zen-notes-list__meta">
           {activeOrg && (
             <>
@@ -130,7 +176,7 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
           <Search size={12} className="zen-notes-list__search-icon" />
           <input
             className="zen-notes-list__search-input"
-            placeholder="Pesquisar notas..."
+            placeholder="Pesquisar por #ID, título, conteúdo..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -140,7 +186,7 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, display: 'flex' }}
               aria-label="Limpar busca"
             >
-              <X size={11} style={{ color: 'rgba(255,255,255,0.3)' }} />
+              <X size={11} style={{ color: 'rgba(255,255,255,0.4)' }} />
             </button>
           )}
         </div>
@@ -152,7 +198,7 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
             onClick={() => setFilterPinned(!filterPinned)}
             aria-label="Filtrar fixadas"
           >
-            <Pin size={9} />
+            <Pin size={10} />
             Fixadas
           </button>
 
@@ -163,7 +209,7 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
               onClick={() => setShowTagFilter((v) => !v)}
               aria-label="Filtrar por tag"
             >
-              <Tag size={9} />
+              <Tag size={10} />
               Tags {filterSystemTagIds.length > 0 && `(${filterSystemTagIds.length})`}
             </button>
           )}
@@ -175,7 +221,7 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
               onClick={() => setShowSortMenu((v) => !v)}
               aria-label="Ordenar"
             >
-              <ArrowUpDown size={9} />
+              <ArrowUpDown size={10} />
               {sortLabels[sortBy]}
             </button>
             {showSortMenu && (
@@ -186,11 +232,12 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
                   top: '100%',
                   marginTop: 4,
                   background: 'var(--bg-secondary, #1e1e1e)',
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.1)',
                   borderRadius: 8,
                   padding: 4,
                   zIndex: 50,
-                  minWidth: 100,
+                  minWidth: 120,
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.5)',
                 }}
               >
                 {(Object.keys(sortLabels) as SortOption[]).map((opt) => (
@@ -201,9 +248,9 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
                       display: 'block',
                       width: '100%',
                       textAlign: 'left',
-                      padding: '5px 9px',
-                      background: sortBy === opt ? 'rgba(20,184,166,0.1)' : 'transparent',
-                      color: sortBy === opt ? '#14b8a6' : 'rgba(255,255,255,0.7)',
+                      padding: '6px 10px',
+                      background: sortBy === opt ? 'rgba(20,184,166,0.12)' : 'transparent',
+                      color: sortBy === opt ? '#14b8a6' : 'rgba(255,255,255,0.8)',
                       border: 'none',
                       borderRadius: 6,
                       cursor: 'pointer',
@@ -227,6 +274,10 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
                 key={tag.id}
                 className={`zen-filter-btn ${filterSystemTagIds.includes(tag.id) ? 'zen-filter-btn--active' : ''}`}
                 onClick={() => toggleSystemTag(tag.id)}
+                style={{
+                  borderColor: filterSystemTagIds.includes(tag.id) ? tag.color : undefined,
+                  color: filterSystemTagIds.includes(tag.id) ? tag.color : undefined,
+                }}
               >
                 {tag.name}
               </button>
@@ -239,22 +290,22 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
       <div className="zen-notes-list__scroll" ref={scrollRef}>
         {isLoading && notes.length === 0 && (
           <div className="zen-notes-list__loading">
-            <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
+            <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
           </div>
         )}
 
         {!isLoading && notes.length === 0 && (
           <div className="zen-notes-list__empty">
-            <StickyNote size={28} />
+            <StickyNote size={32} />
             <span>Nenhuma nota encontrada</span>
             <button
               onClick={onNewNote}
               style={{
-                marginTop: 4,
+                marginTop: 6,
                 padding: '6px 14px',
-                borderRadius: 7,
-                border: '1px solid rgba(20,184,166,0.3)',
-                background: 'rgba(20,184,166,0.07)',
+                borderRadius: 8,
+                border: '1px solid rgba(20,184,166,0.35)',
+                background: 'rgba(20,184,166,0.1)',
                 color: '#14b8a6',
                 fontSize: 11,
                 fontWeight: 600,
@@ -266,55 +317,125 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
           </div>
         )}
 
-        {notes.map((note) => (
-          <div
-            key={note.id}
-            className={[
-              'zen-note-card',
-              selectedNoteId === note.id ? 'zen-note-card--active' : '',
-              note.is_pinned ? 'zen-note-card--pinned' : '',
-            ].join(' ')}
-            onClick={() => onSelectNote(note)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && onSelectNote(note)}
-            aria-label={`Nota: ${note.title}`}
-          >
-            <div className="zen-note-card__title">
-              {note.sequential_id && (
-                <span style={{ fontWeight: 400, opacity: 0.4, marginRight: 4, fontSize: 10 }}>
-                  #{note.sequential_id}
-                </span>
-              )}
-              {note.title || 'Sem título'}
-            </div>
+        {notes.map((note) => {
+          const accentColor = getNoteAccentColor(note);
+          const isSelected = selectedNoteId === note.id;
 
-            <div className="zen-note-card__preview">
-              {getPreviewText(note) || 'Nota vazia'}
-            </div>
+          return (
+            <div
+              key={note.id}
+              className={[
+                'zen-note-card',
+                isSelected ? 'zen-note-card--active' : '',
+              ].join(' ')}
+              onClick={() => onSelectNote(note, false)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && onSelectNote(note, false)}
+              aria-label={`Nota: ${note.title}`}
+            >
+              {/* Color Accent Bar */}
+              <div
+                className="zen-note-card__accent-bar"
+                style={{ backgroundColor: accentColor }}
+              />
 
-            {note.tags && note.tags.length > 0 && (
-              <div className="zen-note-card__tags">
-                {note.tags.slice(0, 3).map((tag, i) => (
-                  <span key={i} className="zen-note-card__tag">{tag}</span>
-                ))}
-                {note.tags.length > 3 && (
-                  <span className="zen-note-card__tag">+{note.tags.length - 3}</span>
-                )}
+              {/* Hover Quick Actions Bar */}
+              <div className="zen-note-card__hover-actions">
+                <button
+                  className="zen-card-action-btn"
+                  title="Enviar Ping / Notificar"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenPingModal(note);
+                  }}
+                >
+                  <BellRing size={12} />
+                </button>
+
+                <button
+                  className="zen-card-action-btn"
+                  title="Editar Nota"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectNote(note, true);
+                  }}
+                >
+                  <Pencil size={12} />
+                </button>
+
+                <button
+                  className={`zen-card-action-btn ${note.is_pinned ? 'zen-card-action-btn--pinned' : ''}`}
+                  title={note.is_pinned ? 'Desafixar' : 'Fixar'}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTogglePinNote(note);
+                  }}
+                >
+                  <Pin size={12} />
+                </button>
+
+                <button
+                  className="zen-card-action-btn zen-card-action-btn--danger"
+                  title="Deletar Nota"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteNote(note);
+                  }}
+                >
+                  <Trash2 size={12} />
+                </button>
               </div>
-            )}
 
-            <div className="zen-note-card__footer">
-              <span className="zen-note-card__author">
-                {note.is_pinned && <Pin size={8} style={{ color: '#f59e0b' }} />}
-                {note.creator_display_name || 'Você'}
-              </span>
-              <span className="zen-note-card__date">
-                {formatDate(note.updated_at || note.created_at)}
-              </span>
+              {/* Title */}
+              <div className="zen-note-card__title">
+                {note.sequential_id != null && (
+                  <span style={{ color: accentColor, fontWeight: 600, marginRight: 4, fontSize: 11 }}>
+                    #{note.sequential_id}
+                  </span>
+                )}
+                {note.title || 'Sem título'}
+              </div>
+
+              {/* Clean Preview */}
+              <div className="zen-note-card__preview">
+                {getCleanPreviewText(note)}
+              </div>
+
+              {/* Tag badges */}
+              {note.tags && note.tags.length > 0 && (
+                <div className="zen-note-card__tags">
+                  {note.tags.slice(0, 3).map((tag, i) => {
+                    const sysTag = systemTagByName.get(tag.toLowerCase());
+                    return (
+                      <span
+                        key={i}
+                        className="zen-note-card__tag"
+                        style={sysTag?.color ? { color: sysTag.color, borderColor: sysTag.color } : undefined}
+                      >
+                        {tag}
+                      </span>
+                    );
+                  })}
+                  {note.tags.length > 3 && (
+                    <span className="zen-note-card__tag">+{note.tags.length - 3}</span>
+                  )}
+                </div>
+              )}
+
+              {/* Footer (Author & Date) */}
+              <div className="zen-note-card__footer">
+                <span className="zen-note-card__author">
+                  {note.is_pinned && <Pin size={9} style={{ color: '#f59e0b', marginRight: 2 }} />}
+                  {note.creator_display_name ? `por ${note.creator_display_name}` : 'Você'}
+                </span>
+                <span className="zen-note-card__date">
+                  {formatDate(note.updated_at || note.created_at)}
+                </span>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Infinite scroll sentinel */}
         <div ref={sentinelRef} style={{ height: 1 }} />
