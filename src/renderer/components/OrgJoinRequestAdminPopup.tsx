@@ -15,8 +15,9 @@ export const OrgJoinRequestAdminPopup: React.FC = () => {
   }
 
   const currentReq = pendingRequests[0];
-  const candidateName = currentReq.profiles?.display_name || currentReq.profiles?.email || 'Novo Usuário';
-  const candidateEmail = currentReq.profiles?.email || '';
+  const reqProfiles = (currentReq as any).profiles;
+  const candidateName = reqProfiles?.display_name || reqProfiles?.email || 'Novo Usuário';
+  const candidateEmail = reqProfiles?.email || '';
 
   const handleApprove = async () => {
     setProcessingId(currentReq.id);

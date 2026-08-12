@@ -130,12 +130,11 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
       const note = pingModal.note;
       const userNames = targetUsers.map((u) => u.name).join(', ');
 
-      auditLogger.log({
-        level: 'info',
-        category: 'notes',
-        message: `Notificação/Ping enviado para ${userNames} referente à nota #${note.id} "${note.title}"`,
-        user_name: user?.email?.split('@')[0] || 'Paulo',
-      });
+      auditLogger.log(
+        'info',
+        'notes',
+        `Notificação/Ping enviado para ${userNames} referente à nota #${note.id} "${note.title}"`
+      );
 
       showToast(`Ping enviado para ${userNames}`, 'success');
       setPingModal({ isOpen: false, note: null });
