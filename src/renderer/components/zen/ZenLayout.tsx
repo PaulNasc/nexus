@@ -86,7 +86,7 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
         showToast('Erro ao alterar fixação da nota', 'error');
       }
     },
-    [note, updateNote, selectedNote?.id, showToast]
+    [updateNote, selectedNote?.id, showToast]
   );
 
   const handleDeleteNote = useCallback(
