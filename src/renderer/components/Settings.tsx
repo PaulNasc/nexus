@@ -315,7 +315,7 @@ const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
 const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
   const [status, setStatus] = useState<UpdaterStatus>({ state: 'idle' });
   const [autoDownload, setAutoDownload] = useState(false);
-  const [currentVersion, setCurrentVersion] = useState('1.4.2');
+  const [currentVersion, setCurrentVersion] = useState('1.4.1');
   const [platformInfo, setPlatformInfo] = useState('Windows (Tauri)');
   const [isChecking, setIsChecking] = useState(false);
 
@@ -367,22 +367,41 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
     }
   };
 
+  const [downloadedPath, setDownloadedPath] = useState<string | null>(null);
+
   const downloadUpdate = async () => {
     try {
       if (desktopAdapter.isTauri()) {
-        await desktopAdapter.applyUpdate();
+        const targetVer = status.version || '1.4.2';
+        setStatus({ state: 'downloading', percent: 0, transferredMb: '0.00', totalMb: '...' });
+        const tempPath = await desktopAdapter.downloadUpdateWithProgress(targetVer, (p, trans, tot) => {
+          setStatus({
+            state: 'downloading',
+            percent: p,
+            transferredMb: trans,
+            totalMb: tot,
+            version: targetVer,
+          });
+        });
+        setDownloadedPath(tempPath);
+        setStatus({ state: 'downloaded', version: targetVer });
       } else {
         await getElectron()?.updater?.downloadUpdate?.();
       }
     } catch (error) {
       console.error('Falha ao baixar atualização:', error);
+      setStatus({ state: 'error', error: 'Falha ao baixar pacote de atualização.' });
     }
   };
 
   const installUpdate = async () => {
     try {
       if (desktopAdapter.isTauri()) {
-        await desktopAdapter.applyUpdate();
+        if (downloadedPath) {
+          await desktopAdapter.installDownloadedUpdate(downloadedPath);
+        } else {
+          await desktopAdapter.applyUpdate();
+        }
       } else {
         await getElectron()?.updater?.quitAndInstall?.();
       }

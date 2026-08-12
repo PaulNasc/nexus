@@ -42,7 +42,10 @@ pub fn run() {
             commands::download::download_video_to_cache,
             commands::download::read_file_bytes,
             commands::download::clear_video_cache,
-            commands::download::open_file_externally
+            commands::download::open_file_externally,
+            commands::download::save_temp_binary,
+            commands::download::apply_portable_update,
+            commands::download::download_update_binary
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

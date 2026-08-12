@@ -29,7 +29,7 @@ import { useCategories } from '../../contexts/CategoriesContext';
 import { useI18n } from '../../hooks/useI18n';
 import type { Note } from '../../../shared/types/note';
 
-const APP_VERSION = '1.4.2';
+const APP_VERSION = '1.4.1';
 
 interface ZenNotesListProps {
   selectedNoteId: number | null;

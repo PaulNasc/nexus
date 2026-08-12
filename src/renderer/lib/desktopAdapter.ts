@@ -92,7 +92,7 @@ class DesktopAdapter implements IDesktopAdapter {
         return info;
       } catch {
         info = {
-          version: '1.4.2',
+          version: '1.4.1',
           os: 'Windows (Tauri)',
           platform: 'win32',
           arch: 'x64',
@@ -104,7 +104,7 @@ class DesktopAdapter implements IDesktopAdapter {
     }
 
     info = {
-      version: '1.4.2',
+      version: '1.4.1',
       os: 'Web Browser',
       platform: 'web',
       arch: 'unknown',
@@ -272,6 +272,61 @@ class DesktopAdapter implements IDesktopAdapter {
       const status: UpdateStatus = { state: 'not-available' };
       this.notifyUpdateStatus(status);
       return status;
+    }
+  }
+
+  public async downloadUpdateWithProgress(
+    targetVersion: string,
+    onProgress: (percent: number, transferredMb: string, totalMb: string) => void
+  ): Promise<string> {
+    const sysInfo = await this.getSystemInfo();
+    let url = this.latestDownloadUrl;
+    if (!url) {
+      url = sysInfo.isPortable
+        ? `https://github.com/PaulNasc/nexus/releases/download/v${targetVersion}/Nexus-${targetVersion}-x64.exe`
+        : `https://github.com/PaulNasc/nexus/releases/download/v${targetVersion}/Nexus_${targetVersion}_x64-setup.exe`;
+    }
+
+    if (this.isTauri()) {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const { listen } = await import('@tauri-apps/api/event');
+
+      const unlisten = await listen<{ percent: number; transferredMb: string; totalMb: string }>(
+        'update-download-progress',
+        (event) => {
+          onProgress(event.payload.percent, event.payload.transferredMb, event.payload.totalMb);
+        }
+      );
+
+      const filename = sysInfo.isPortable ? `Nexus_${targetVersion}_portable.exe` : `Nexus_${targetVersion}_setup.exe`;
+
+      try {
+        const tempPath = await invoke<string>('download_update_binary', { url, filename });
+        unlisten();
+        return tempPath;
+      } catch (err) {
+        unlisten();
+        throw err;
+      }
+    }
+
+    throw new Error('Ambiente não suportado.');
+  }
+
+  public async installDownloadedUpdate(tempPath: string): Promise<void> {
+    const sysInfo = await this.getSystemInfo();
+    if (this.isTauri()) {
+      const { invoke } = await import('@tauri-apps/api/core');
+      if (sysInfo.isPortable) {
+        await invoke('apply_portable_update', { newExePath: tempPath });
+      } else {
+        await invoke('open_file_externally', { path: tempPath });
+        try {
+          window.close();
+        } catch {
+          window.close();
+        }
+      }
     }
   }
 

@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Download, X, RefreshCw, CheckCircle, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { desktopAdapter } from '../lib/desktopAdapter';
 
 interface UpdateStatus {
   state: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
@@ -35,94 +36,106 @@ function stripHtml(text: string): string {
 const UpdateNotification: React.FC<UpdateNotificationProps> = ({ isDark }) => {
   const [status, setStatus] = useState<UpdateStatus>({ state: 'idle' });
   const [dismissed, setDismissed] = useState(false);
-  const [autoDownload, setAutoDownload] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [tempFilePath, setTempFilePath] = useState<string | null>(null);
 
-  const getElectron = useCallback(() => (window as any).electronAPI, []);
-
-  // Load auto-download preference
+  // Subscribe to updater events + periodic check via desktopAdapter
   useEffect(() => {
-    const electron = getElectron();
-    if (!electron?.invoke) return;
-    electron.invoke('settings:get', 'autoDownloadUpdates').then((val: unknown) => {
-      if (typeof val === 'boolean') setAutoDownload(val);
-    }).catch(() => {});
-  }, [getElectron]);
+    // Initial check after 2 seconds
+    const initialTimer = setTimeout(() => {
+      desktopAdapter.checkForUpdates().then((s) => {
+        if (s && s.state === 'available') {
+          setStatus(s as UpdateStatus);
+          setDismissed(false);
+        }
+      }).catch(() => {});
+    }, 2000);
 
-  // Save auto-download preference
-  const toggleAutoDownload = useCallback(() => {
-    const next = !autoDownload;
-    setAutoDownload(next);
-    const electron = getElectron();
-    electron?.invoke?.('settings:set', 'autoDownloadUpdates', next)?.catch(() => {});
-  }, [autoDownload, getElectron]);
-
-  // Subscribe to updater events + periodic check
-  useEffect(() => {
-    const electron = getElectron();
-    if (!electron?.updater) return;
-
-    // Get initial status
-    electron.updater.getStatus().then((s: UpdateStatus) => {
-      setStatus(s);
-      if (s.state === 'available' || s.state === 'downloaded') {
-        setDismissed(false);
-      }
-    }).catch(() => {});
-
-    // Trigger initial check (complements the 30s check in main process)
-    electron.updater.checkForUpdates().catch(() => {});
-
-    // Subscribe to real-time status updates
-    const unsub = electron.updater.onStatus((s: UpdateStatus) => {
-      setStatus(s);
+    // Listener for desktopAdapter status changes
+    const unsub = desktopAdapter.onUpdateStatus((s) => {
+      setStatus(s as UpdateStatus);
       if (s.state === 'available' || s.state === 'downloaded') {
         setDismissed(false);
       }
     });
 
-    // Periodic re-check
+    // Periodic check
     const interval = setInterval(() => {
-      electron.updater.checkForUpdates().catch(() => {});
+      desktopAdapter.checkForUpdates().catch(() => {});
     }, CHECK_INTERVAL_MS);
 
     return () => {
+      clearTimeout(initialTimer);
       unsub?.();
       clearInterval(interval);
     };
-  }, [getElectron]);
+  }, []);
 
-  // Auto-download when update is available and preference is enabled
-  useEffect(() => {
-    if (autoDownload && status.state === 'available') {
-      const electron = getElectron();
-      electron?.updater?.downloadUpdate?.();
+  const handleDownload = async () => {
+    try {
+      const targetVer = status.version || '1.4.2';
+      setStatus(prev => ({
+        ...prev,
+        state: 'downloading',
+        progress: { percent: 0, bytesPerSecond: 0, transferred: 0, total: 0 },
+      }));
+
+      const tempPath = await desktopAdapter.downloadUpdateWithProgress(
+        targetVer,
+        (percent, transferredMb, totalMb) => {
+          setStatus(prev => ({
+            ...prev,
+            state: 'downloading',
+            progress: {
+              percent,
+              bytesPerSecond: 1024 * 1024,
+              transferred: parseFloat(transferredMb) * 1024 * 1024,
+              total: parseFloat(totalMb) * 1024 * 1024,
+            },
+          }));
+        }
+      );
+
+      setTempFilePath(tempPath);
+      setStatus(prev => ({
+        ...prev,
+        state: 'downloaded',
+      }));
+    } catch (err) {
+      console.error('Erro ao baixar atualização:', err);
+      setStatus(prev => ({
+        ...prev,
+        state: 'error',
+        error: 'Falha ao realizar download.',
+      }));
     }
-  }, [autoDownload, status.state, getElectron]);
-
-  const handleDownload = () => {
-    const electron = getElectron();
-    electron?.updater?.downloadUpdate?.();
   };
 
-  const handleInstall = () => {
-    const electron = getElectron();
-    electron?.updater?.quitAndInstall?.();
+  const handleInstall = async () => {
+    try {
+      if (tempFilePath) {
+        await desktopAdapter.installDownloadedUpdate(tempFilePath);
+      } else {
+        await desktopAdapter.applyUpdate();
+      }
+    } catch (err) {
+      console.error('Erro ao instalar atualização:', err);
+    }
   };
 
-  // Parse release notes for display (strip HTML as fallback)
+  // Parse release notes for display
   const cleanNotes = stripHtml(status.releaseNotes || '');
   const changelogLines = cleanNotes.split('\n').filter(l => l.trim());
 
   // Only show for actionable states
-  const showable = status.state === 'available' || status.state === 'downloading' || status.state === 'downloaded';
+  const showable = status.state === 'available' || status.state === 'downloading' || status.state === 'downloaded' || status.state === 'error';
   if (!showable || dismissed) return null;
 
-  const bg = isDark ? '#131313' : '#FFFFFF';
-  const border = isDark ? '#222' : '#E5E7EB';
+  const bg = isDark ? '#131318' : '#FFFFFF';
+  const border = isDark ? 'rgba(16, 185, 129, 0.3)' : '#E5E7EB';
   const textPrimary = isDark ? '#FFFFFF' : '#1F2937';
-  const textSecondary = isDark ? '#888' : '#6B7280';
-  const textMuted = isDark ? '#555' : '#9CA3AF';
+  const textSecondary = isDark ? '#9CA3AF' : '#6B7280';
+  const textMuted = isDark ? '#6B7280' : '#9CA3AF';
 
   return (
     <div style={{
@@ -130,16 +143,25 @@ const UpdateNotification: React.FC<UpdateNotificationProps> = ({ isDark }) => {
       bottom: '24px',
       right: '24px',
       width: '380px',
+      maxWidth: 'calc(100vw - 3rem)',
       backgroundColor: bg,
-      border: `1px solid ${border}`,
-      borderRadius: '8px',
+      border: `1px solid ${status.state === 'error' ? 'rgba(239, 68, 68, 0.4)' : border}`,
+      borderRadius: '12px',
       boxShadow: isDark
-        ? '0 8px 32px rgba(0, 0, 0, 0.6)'
+        ? '0 12px 32px rgba(0, 0, 0, 0.8), 0 0 20px rgba(16, 185, 129, 0.15)'
         : '0 8px 32px rgba(0, 0, 0, 0.12)',
-      zIndex: 10000,
+      zIndex: 100000,
       overflow: 'hidden',
       animation: 'slideInRight 0.3s ease-out',
     }}>
+      {/* Top accent bar */}
+      <div style={{
+        height: '3px',
+        background: status.state === 'error'
+          ? '#EF4444'
+          : 'linear-gradient(90deg, #10B981 0%, #3B82F6 100%)',
+      }} />
+
       {/* Header */}
       <div style={{
         padding: '12px 14px',
@@ -150,38 +172,41 @@ const UpdateNotification: React.FC<UpdateNotificationProps> = ({ isDark }) => {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {status.state === 'downloaded' ? (
-            <CheckCircle size={16} color="#00D4AA" />
+            <CheckCircle size={16} color="#10B981" />
           ) : status.state === 'downloading' ? (
-            <RefreshCw size={16} color="#7B3FF2" className="spin" />
+            <RefreshCw size={16} color="#3B82F6" className="animate-spin" />
+          ) : status.state === 'error' ? (
+            <Download size={16} color="#EF4444" />
           ) : (
-            <Download size={16} color="#00D4AA" />
+            <Download size={16} color="#10B981" />
           )}
           <span style={{ fontSize: '13px', fontWeight: 600, color: textPrimary }}>
             {status.state === 'available' && `Nexus v${status.version} disponível`}
             {status.state === 'downloading' && 'Baixando atualização...'}
-            {status.state === 'downloaded' && `v${status.version} pronta para ${status.isPortable ? 'atualizar' : 'instalar'}`}
+            {status.state === 'downloaded' && `v${status.version} pronta para atualizar`}
+            {status.state === 'error' && 'Erro no download'}
           </span>
-          {status.isPortable && (
-            <span style={{
-              fontSize: '9px', fontWeight: 500, color: '#7B3FF2',
-              background: 'rgba(123, 63, 242, 0.1)', border: '1px solid rgba(123, 63, 242, 0.2)',
-              borderRadius: '4px', padding: '1px 5px', marginLeft: '4px',
-            }}>Portátil</span>
-          )}
         </div>
         <button
           onClick={() => setDismissed(true)}
           style={{
-            background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
-            color: textMuted, lineHeight: 0,
+            background: 'none', border: 'none', cursor: 'pointer', padding: '4px',
+            color: textMuted, lineHeight: 0, borderRadius: '4px',
           }}
+          title="Fechar"
         >
-          <X size={14} />
+          <X size={15} />
         </button>
       </div>
 
       {/* Body */}
       <div style={{ padding: '12px 14px' }}>
+        {status.state === 'error' && (
+          <p style={{ fontSize: '12px', color: '#FCA5A5', marginBottom: '10px' }}>
+            {status.error || 'Falha ao realizar o download da atualização.'}
+          </p>
+        )}
+
         {/* Changelog toggle */}
         {status.state === 'available' && changelogLines.length > 0 && (
           <div style={{ marginBottom: '10px' }}>
@@ -190,7 +215,7 @@ const UpdateNotification: React.FC<UpdateNotificationProps> = ({ isDark }) => {
               style={{
                 display: 'flex', alignItems: 'center', gap: '6px',
                 background: 'none', border: 'none', cursor: 'pointer',
-                color: '#7B3FF2', fontSize: '12px', fontWeight: 500, padding: 0,
+                color: '#10B981', fontSize: '12px', fontWeight: 500, padding: 0,
               }}
             >
               <FileText size={13} />
@@ -201,10 +226,10 @@ const UpdateNotification: React.FC<UpdateNotificationProps> = ({ isDark }) => {
               <div style={{
                 marginTop: '8px',
                 padding: '10px 12px',
-                backgroundColor: isDark ? '#1A1A1A' : '#F9FAFB',
+                backgroundColor: isDark ? '#181920' : '#F9FAFB',
                 border: `1px solid ${border}`,
-                borderRadius: '6px',
-                maxHeight: '180px',
+                borderRadius: '8px',
+                maxHeight: '160px',
                 overflowY: 'auto',
                 fontSize: '12px',
                 lineHeight: '1.6',
@@ -222,7 +247,7 @@ const UpdateNotification: React.FC<UpdateNotificationProps> = ({ isDark }) => {
                   if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
                     return (
                       <div key={i} style={{ paddingLeft: '12px', position: 'relative' }}>
-                        <span style={{ position: 'absolute', left: 0, color: '#00D4AA' }}>•</span>
+                        <span style={{ position: 'absolute', left: 0, color: '#10B981' }}>•</span>
                         {trimmed.slice(2)}
                       </div>
                     );
@@ -235,73 +260,69 @@ const UpdateNotification: React.FC<UpdateNotificationProps> = ({ isDark }) => {
         )}
 
         {/* Download progress bar */}
-        {status.state === 'downloading' && status.progress && (
+        {status.state === 'downloading' && (
           <div style={{ marginBottom: '10px' }}>
             <div style={{
-              width: '100%', height: '3px', borderRadius: '2px',
+              width: '100%', height: '4px', borderRadius: '2px',
               backgroundColor: isDark ? '#2A2A2A' : '#E5E7EB',
               overflow: 'hidden',
             }}>
               <div style={{
-                width: `${status.progress.percent}%`, height: '100%',
-                background: 'linear-gradient(90deg, #00D4AA, #7B3FF2)',
-                transition: 'width 0.3s ease',
+                width: `${status.progress?.percent || 0}%`, height: '100%',
+                background: 'linear-gradient(90deg, #10B981, #3B82F6)',
+                transition: 'width 0.2s ease',
               }} />
             </div>
             <div style={{
-              display: 'flex', justifyContent: 'space-between', marginTop: '4px',
-              fontSize: '10px', color: textMuted,
+              display: 'flex', justifyContent: 'space-between', marginTop: '6px',
+              fontSize: '11px', color: textMuted,
             }}>
-              <span>{status.progress.percent}%</span>
-              <span>{(status.progress.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s</span>
+              <span>Progresso: {status.progress?.percent || 0}%</span>
+              <span>
+                {status.progress?.transferred ? (status.progress.transferred / 1024 / 1024).toFixed(1) : '0'} MB
+                {status.progress?.total ? ` / ${(status.progress.total / 1024 / 1024).toFixed(1)} MB` : ''}
+              </span>
             </div>
           </div>
         )}
 
-        {/* Auto-download checkbox */}
-        {(status.state === 'available' || status.state === 'downloaded') && (
-          <label style={{
-            display: 'flex', alignItems: 'center', gap: '6px',
-            fontSize: '11px', color: textSecondary, cursor: 'pointer',
-            marginBottom: '10px', userSelect: 'none',
-          }}>
-            <input
-              type="checkbox"
-              checked={autoDownload}
-              onChange={toggleAutoDownload}
-              style={{ accentColor: '#00D4AA', width: '13px', height: '13px', cursor: 'pointer' }}
-            />
-            Baixar atualizações automaticamente
-          </label>
-        )}
-
         {/* Actions */}
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '6px' }}>
           {status.state === 'available' && (
             <>
               <button onClick={() => setDismissed(true)} style={{
-                padding: '5px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer',
-                border: `1px solid ${border}`,
-                backgroundColor: 'transparent',
+                padding: '6px 14px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
                 color: textSecondary,
               }}>
                 Depois
               </button>
               <button onClick={handleDownload} style={{
-                padding: '5px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer',
-                border: 'none', backgroundColor: '#00D4AA', color: '#000', fontWeight: 500,
+                padding: '6px 14px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer',
+                border: 'none', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                color: '#000', fontWeight: 600, boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
               }}>
                 Baixar agora
               </button>
             </>
           )}
+          {status.state === 'error' && (
+            <button onClick={handleDownload} style={{
+              padding: '6px 14px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer',
+              border: 'none', background: '#EF4444', color: '#FFF', fontWeight: 600,
+            }}>
+              Tentar Novamente
+            </button>
+          )}
           {status.state === 'downloaded' && (
             <button onClick={handleInstall} style={{
-              padding: '5px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer',
-              border: 'none', fontWeight: 500, color: '#fff',
-              background: 'linear-gradient(135deg, #00D4AA, #7B3FF2)',
+              padding: '6px 14px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer',
+              border: 'none', fontWeight: 600, color: '#000',
+              background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
             }}>
-              {status.isPortable ? 'Reiniciar e Atualizar' : 'Reiniciar e Instalar'}
+              Reiniciar e Atualizar
             </button>
           )}
         </div>
