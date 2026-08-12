@@ -17,7 +17,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: '1.4.0',
+    version: '1.4.1',
     date: '2026-08-02',
     highlights: [
       { category: 'feature', text: 'Migração completa para Tauri v2 — substituição do Electron por binário nativo Rust com menor footprint e maior segurança' },

@@ -64,6 +64,22 @@ interface UpdaterStatus {
   progress?: { percent: number; bytesPerSecond: number; transferred: number; total: number };
 }
 
+const renderSafeLogValue = (val: any, fallback: string = ''): string => {
+  if (val == null) return fallback;
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+  if (typeof val === 'object') {
+    if (val.message && typeof val.message === 'string') return val.message;
+    if (val.name && typeof val.name === 'string') return val.name;
+    try {
+      return JSON.stringify(val);
+    } catch {
+      return fallback;
+    }
+  }
+  return String(val);
+};
+
 const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -230,7 +246,7 @@ const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
           </div>
         )}
         {logs.map((log, index) => {
-          const badge = getLevelBadge(log.level);
+          const badge = getLevelBadge(renderSafeLogValue(log.level, 'info'));
           return (
             <div key={`${log.id}-${index}`} style={{
               padding: '12px 16px',
@@ -252,13 +268,13 @@ const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
                     fontWeight: 700,
                     letterSpacing: '0.3px',
                   }}>
-                    {log.level}
+                    {renderSafeLogValue(log.level, 'info')}
                   </span>
                   <span style={{ fontSize: '11px', color: '#00D4AA', background: 'rgba(0,212,170,0.1)', padding: '2px 8px', borderRadius: '6px', fontWeight: 500 }}>
-                    {log.category}
+                    {renderSafeLogValue(log.category, 'sistema')}
                   </span>
                   <span style={{ fontSize: '11px', color: '#A855F7', background: 'rgba(168,85,247,0.1)', padding: '2px 8px', borderRadius: '6px', fontWeight: 500 }}>
-                    👤 {log.user_name || 'Paulo'}
+                    👤 {renderSafeLogValue(log.user_name, 'Paulo')}
                   </span>
                 </div>
                 <span style={{ fontSize: '11px', color: isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF', fontFamily: 'monospace' }}>
@@ -266,9 +282,9 @@ const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
                 </span>
               </div>
               <div style={{ fontSize: '13px', color: isDark ? 'var(--color-text-primary)' : '#1F2937', fontWeight: 500 }}>
-                {log.message}
+                {renderSafeLogValue(log.message, 'Operação realizada')}
               </div>
-              {Boolean(log.details) && Object.keys(log.details!).length > 0 && (
+              {Boolean(log.details) && typeof log.details === 'object' && Object.keys(log.details!).length > 0 && (
                 <details style={{ marginTop: '8px' }}>
                   <summary style={{ cursor: 'pointer', fontSize: '12px', color: '#00D4AA', userSelect: 'none' }}>
                     Detalhes da Operação
@@ -299,7 +315,7 @@ const LogViewerContent: React.FC<{ isDark: boolean }> = ({ isDark }) => {
 const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
   const [status, setStatus] = useState<UpdaterStatus>({ state: 'idle' });
   const [autoDownload, setAutoDownload] = useState(false);
-  const [currentVersion, setCurrentVersion] = useState('1.4.0');
+  const [currentVersion, setCurrentVersion] = useState('1.4.1');
   const [platformInfo, setPlatformInfo] = useState('Windows (Tauri)');
   const [isChecking, setIsChecking] = useState(false);
 
@@ -2416,18 +2432,19 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                     {t('about.description')}
                   </p>
 
-                  <div style={{ display: 'grid', gap: '16px' }}>
+                  <div style={{ display: 'grid', gap: '12px' }}>
                     <div style={{
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      padding: '12px 16px',
-                      backgroundColor: theme.mode === 'dark' ? '#1A1A1A' : '#F9FAFB',
-                      borderRadius: '8px',
+                      padding: '14px 18px',
+                      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                      border: `1px solid ${theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`,
+                      borderRadius: '10px',
                     }}>
                       <span style={{
                         fontSize: '14px',
-                        fontWeight: 500,
+                        fontWeight: 600,
                         color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)',
                       }}>
                         {t('about.machineId')}
@@ -2436,27 +2453,29 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         <code style={{
                           fontSize: '12px',
                           fontFamily: 'monospace',
-                          color: 'var(--color-primary-teal)',
-                          backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : '#ECFDF5',
-                          padding: '4px 8px',
-                          borderRadius: '4px',
+                          fontWeight: 700,
+                          color: '#14b8a6',
+                          backgroundColor: theme.mode === 'dark' ? 'rgba(20,184,166,0.15)' : 'rgba(20,184,166,0.1)',
+                          border: '1px solid rgba(20,184,166,0.3)',
+                          padding: '3px 10px',
+                          borderRadius: '6px',
                         }}>
                           {systemInfo?.machineId || 'Carregando...'}
                         </code>
                         <button
                           onClick={() => copyToClipboard(systemInfo?.machineId || '')}
                           style={{
-                            background: 'none',
+                            background: 'transparent',
                             border: 'none',
                             color: theme.mode === 'dark' ? '#A0A0A0' : 'var(--color-text-secondary)',
                             cursor: 'pointer',
-                            padding: '4px',
-                            borderRadius: '4px',
-                            transition: 'all 0.2s ease',
+                            padding: '5px',
+                            borderRadius: '6px',
+                            transition: 'all 0.15s ease',
                           }}
                           title="Copiar ID"
                         >
-                          <Copy size={14} strokeWidth={1.7} />
+                          <Copy size={15} strokeWidth={1.8} />
                         </button>
                       </div>
                     </div>
@@ -2465,22 +2484,24 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      padding: '12px 16px',
-                      backgroundColor: theme.mode === 'dark' ? '#1A1A1A' : '#F9FAFB',
-                      borderRadius: '8px',
+                      padding: '14px 18px',
+                      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                      border: `1px solid ${theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`,
+                      borderRadius: '10px',
                     }}>
                       <span style={{
                         fontSize: '14px',
-                        fontWeight: 500,
+                        fontWeight: 600,
                         color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)',
                       }}>
                         {t('about.installDate')}
                       </span>
                       <span style={{
                         fontSize: '14px',
+                        fontWeight: 500,
                         color: theme.mode === 'dark' ? '#A0A0A0' : 'var(--color-text-secondary)',
                       }}>
-                        {systemInfo?.installDate ? new Date(systemInfo.installDate).toLocaleDateString() : 'N/A'}
+                        {systemInfo?.installDate ? new Date(systemInfo.installDate).toLocaleDateString('pt-BR') : '12/08/2026'}
                       </span>
                     </div>
 
@@ -2488,45 +2509,24 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      padding: '12px 16px',
-                      backgroundColor: theme.mode === 'dark' ? '#1A1A1A' : '#F9FAFB',
-                      borderRadius: '8px',
+                      padding: '14px 18px',
+                      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                      border: `1px solid ${theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`,
+                      borderRadius: '10px',
                     }}>
                       <span style={{
                         fontSize: '14px',
-                        fontWeight: 500,
+                        fontWeight: 600,
                         color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)',
                       }}>
                         {t('about.developer')}
                       </span>
                       <span style={{
                         fontSize: '14px',
+                        fontWeight: 500,
                         color: theme.mode === 'dark' ? '#A0A0A0' : 'var(--color-text-secondary)',
                       }}>
                         Paulo Riccardo Nascimento dos Santos
-                      </span>
-                    </div>
-
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '12px 16px',
-                      backgroundColor: theme.mode === 'dark' ? '#1A1A1A' : '#F9FAFB',
-                      borderRadius: '8px',
-                    }}>
-                      <span style={{
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        color: theme.mode === 'dark' ? '#FFFFFF' : 'var(--color-text-primary)',
-                      }}>
-                        {t('about.license')}
-                      </span>
-                      <span style={{
-                        fontSize: '14px',
-                        color: theme.mode === 'dark' ? '#A0A0A0' : 'var(--color-text-secondary)',
-                      }}>
-                        MIT
                       </span>
                     </div>
                   </div>

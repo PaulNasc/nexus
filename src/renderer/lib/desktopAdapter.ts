@@ -79,7 +79,7 @@ class DesktopAdapter implements IDesktopAdapter {
         return info;
       } catch {
         info = {
-          version: '1.4.0',
+          version: '1.4.1',
           os: 'Windows (Tauri)',
           platform: 'win32',
           arch: 'x64',
@@ -91,7 +91,7 @@ class DesktopAdapter implements IDesktopAdapter {
     }
 
     info = {
-      version: '1.4.0',
+      version: '1.4.1',
       os: 'Web Browser',
       platform: 'web',
       arch: 'unknown',

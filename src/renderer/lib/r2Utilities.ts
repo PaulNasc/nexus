@@ -8,7 +8,7 @@ interface R2SignedUrlResponse {
   expiresIn: number;
 }
 
-interface R2ListItem {
+export interface R2ListItem {
   objectKey: string;
   size: number;
   lastModified: string | null;
@@ -118,7 +118,7 @@ const callR2Function = async (
       try {
         return await callR2FunctionViaFetch(payload, accessToken);
       } catch {
-        // fallback failed; continue with refresh/retry flow below
+        // fallback failed
       }
     }
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from './ui/Button';
-import { X, Image as ImageIcon, FileText, FileCode2, Pin, Video, Download, Copy, Play, ExternalLink, Loader2, ArrowUp, Check } from 'lucide-react';
+import { X, Image as ImageIcon, FileText, FileCode2, Pin, Video, Download, Copy, Play, ExternalLink, Loader2, ArrowUp, Check, BellRing, Pencil, Trash2 } from 'lucide-react';
 import type { ElectronAPI } from '../../main/preload';
 import { Note, NoteAttachment } from '../../shared/types/note';
 import { parseVideoRef } from '../utils/videoAttachment';
@@ -241,6 +241,8 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({
     return String(note?.content || '')
       .replace(/\n?\s*\[PDF_SOURCE\][\s\S]*?\[\/PDF_SOURCE\]\s*\n?/gi, '\n')
       .replace(/\[PDF importado\]\s*\n?\s*Não foi possível extrair texto automaticamente de .*?\.pdf\.?/gi, '')
+      .replace(/<img[^>]*>/gi, '')
+      .replace(/data:image\/[a-zA-Z0-9+.]+;base64,[a-zA-Z0-9+/=]+/gi, '')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
   }, [note?.content]);
@@ -1054,7 +1056,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({
     <div
       className={isEmbedded ? 'note-viewer-embedded' : 'note-viewer-modal'}
       onClick={(e) => e.stopPropagation()}
-      style={isEmbedded ? { display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' } : { maxWidth: hasAttachments ? 1100 : 900 }}
+      style={isEmbedded ? { display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', margin: 0, padding: 0, border: 'none', borderRadius: 0, maxWidth: 'none' } : { maxWidth: hasAttachments ? 1100 : 900 }}
     >
         {/* Header */}
         <div className="note-viewer-header">
@@ -1084,17 +1086,17 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({
             </Button>
           {isEmbedded && onOpenPingModal && (
             <Button variant="ghost" size="sm" onClick={() => onOpenPingModal(note)} title="Notificar usuário">
-              <span style={{ fontSize: 11 }}>🔔</span>
+              <BellRing size={15} />
             </Button>
           )}
           {isEmbedded && onDeleteNote && (
             <Button variant="ghost" size="sm" onClick={() => onDeleteNote(note)} title="Deletar nota" style={{ color: 'rgba(239,68,68,0.7)' }}>
-              <X size={14} />
+              <Trash2 size={15} />
             </Button>
           )}
           {isEmbedded && onEditNote ? (
             <Button variant="secondary" size="sm" onClick={onEditNote} title="Editar nota">
-              ✏️ Editar
+              <Pencil size={14} style={{ marginRight: 4 }} /> Editar
             </Button>
           ) : !isEmbedded && (
             <Button variant="ghost" size="sm" onClick={onClose} aria-label="Fechar">
@@ -1124,7 +1126,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({
                     display: 'flex',
                     flexDirection: 'column',
                     flex: 1,
-                    height: '62vh'
+                    height: isEmbedded ? '100%' : '62vh'
                   }}>
                     <div style={{
                       display: 'flex',
@@ -1135,10 +1137,10 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({
                       borderBottom: '1px solid var(--color-border-primary)',
                     }}>
                       <div
-                        style={{ fontSize: 12, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'help' }}
+                        style={{ fontSize: 12, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'help', display: 'flex', alignItems: 'center', gap: 4 }}
                         title={primaryPdfSource}
                       >
-                        📄 PDF Anexado (Passe o mouse para ver o caminho)
+                        <FileText size={14} style={{ color: '#14b8a6' }} /> PDF Anexado (Passe o mouse para ver o caminho)
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button
@@ -1358,65 +1360,79 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({
                       const displayPath = img.url || '';
                       const resolvedUrl = resolveImageUrl(img.url);
                       return (
-                        <div key={`main-image-${idx}`} style={{
-                          borderRadius: 10,
-                          border: '1px solid var(--color-border-primary)',
-                          backgroundColor: 'var(--color-bg-secondary)',
-                          overflow: 'hidden',
-                          display: 'flex',
-                          flexDirection: 'column'
-                        }}>
-                          <div style={{
+                        <div
+                          key={`main-image-${idx}`}
+                          style={{
+                            position: 'relative',
+                            borderRadius: 10,
+                            border: '1px solid var(--color-border-primary)',
+                            backgroundColor: 'var(--color-bg-secondary)',
+                            overflow: 'hidden',
                             display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            padding: '8px 12px',
-                            borderBottom: '1px solid var(--color-border-primary)'
-                          }}>
+                            flexDirection: 'column',
+                            margin: '8px 0',
+                          }}
+                        >
+                          <div
+                            style={{
+                              position: 'relative',
+                              width: '100%',
+                              maxHeight: '52vh',
+                              backgroundColor: 'rgba(0,0,0,0.2)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                            }}
+                            onClick={() => setLightboxSrc(img.url)}
+                          >
+                            <img
+                              style={{ width: '100%', maxHeight: '52vh', objectFit: 'contain' }}
+                              src={resolvedUrl}
+                              alt={displayName}
+                            />
+
+                            {/* Hover Overlay with Action Buttons */}
                             <div
-                              style={{ fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'help', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                              title={displayPath}
+                              className="image-hover-actions"
+                              style={{
+                                position: 'absolute',
+                                top: 10,
+                                right: 10,
+                                display: 'flex',
+                                gap: 6,
+                                background: 'rgba(18, 18, 20, 0.88)',
+                                backdropFilter: 'blur(8px)',
+                                border: '1px solid rgba(255, 255, 255, 0.15)',
+                                borderRadius: 8,
+                                padding: '4px 8px',
+                                zIndex: 10,
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                                opacity: 0,
+                                transition: 'opacity 0.18s ease',
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+                              onMouseLeave={(e) => (e.currentTarget.style.opacity = '0')}
                             >
-                              🖼️ Imagem: {displayName} (Passe o mouse para ver o caminho)
-                            </div>
-                            <div style={{ display: 'flex', gap: 6 }}>
                               <button
-                                onClick={() => setLightboxSrc(img.url)}
-                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                                onClick={(e) => { e.stopPropagation(); setLightboxSrc(img.url); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: 'none', borderRadius: 4, background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer' }}
                               >
                                 <ExternalLink size={12} /> Expandir
                               </button>
-                              {displayPath.startsWith('file://') && (
-                                <button
-                                  onClick={() => handleCopyImagePath(displayPath, `img-${idx}`)}
-                                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: copiedPath === `img-${idx}` ? 'var(--color-primary-teal)' : 'var(--color-bg-hover)', color: copiedPath === `img-${idx}` ? '#fff' : 'var(--color-text-secondary)', cursor: 'pointer' }}
-                                >
-                                  <Copy size={12} /> {copiedPath === `img-${idx}` ? 'Copiado!' : 'Caminho'}
-                                </button>
-                              )}
                               <button
-                                onClick={() => handleOpenImageExternal(resolvedUrl)}
-                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                                onClick={(e) => { e.stopPropagation(); handleOpenImageExternal(resolvedUrl); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: 'none', borderRadius: 4, background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer' }}
                               >
                                 <Play size={12} /> Abrir
                               </button>
                               <button
-                                onClick={() => handleDownloadImage(resolvedUrl, displayName)}
-                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                                onClick={(e) => { e.stopPropagation(); handleDownloadImage(resolvedUrl, displayName); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: 'none', borderRadius: 4, background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer' }}
                               >
                                 <Download size={12} /> Baixar
                               </button>
                             </div>
-                          </div>
-                          <div
-                            style={{ position: 'relative', width: '100%', height: '52vh', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                            onClick={() => setLightboxSrc(img.url)}
-                          >
-                            <img
-                              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                              src={resolvedUrl}
-                              alt={displayName}
-                            />
                           </div>
                         </div>
                       );
@@ -1539,60 +1555,87 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 14 }}>
                     {allImages.map((img, idx) => {
                       const displayName = img.name || `Imagem ${idx + 1}`;
-                      const displayPath = img.url || '';
                       const resolvedUrl = resolveImageUrl(img.url);
                       return (
-                        <div key={`note-img-card-${idx}`} style={{
-                          borderRadius: 10,
-                          border: '1px solid var(--color-border-primary)',
-                          backgroundColor: 'var(--color-bg-secondary)',
-                          overflow: 'hidden',
-                          display: 'flex',
-                          flexDirection: 'column'
-                        }}>
-                          <div style={{
+                        <div
+                          key={`note-img-card-${idx}`}
+                          style={{
+                            position: 'relative',
+                            borderRadius: 10,
+                            border: '1px solid var(--color-border-primary)',
+                            backgroundColor: 'var(--color-bg-secondary)',
+                            overflow: 'hidden',
                             display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            padding: '8px 12px',
-                            borderBottom: '1px solid var(--color-border-primary)'
-                          }}>
+                            flexDirection: 'column',
+                            margin: '8px 0',
+                          }}
+                        >
+                          <div
+                            style={{
+                              position: 'relative',
+                              width: '100%',
+                              maxHeight: '52vh',
+                              backgroundColor: 'rgba(0,0,0,0.2)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                            }}
+                            onClick={() => setLightboxSrc(img.url)}
+                            onMouseEnter={(e) => {
+                              const overlay = e.currentTarget.querySelector('.image-overlay-actions') as HTMLElement;
+                              if (overlay) overlay.style.opacity = '1';
+                            }}
+                            onMouseLeave={(e) => {
+                              const overlay = e.currentTarget.querySelector('.image-overlay-actions') as HTMLElement;
+                              if (overlay) overlay.style.opacity = '0';
+                            }}
+                          >
+                            <img
+                              style={{ width: '100%', maxHeight: '52vh', objectFit: 'contain', display: 'block' }}
+                              src={resolvedUrl}
+                              alt={displayName}
+                            />
+
+                            {/* Overlaid Action Buttons on Top Right of Image */}
                             <div
-                              style={{ fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'help', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                              title={displayPath}
+                              className="image-overlay-actions"
+                              style={{
+                                position: 'absolute',
+                                top: 10,
+                                right: 10,
+                                display: 'flex',
+                                gap: 6,
+                                background: 'rgba(15, 15, 18, 0.85)',
+                                backdropFilter: 'blur(8px)',
+                                border: '1px solid rgba(255, 255, 255, 0.18)',
+                                borderRadius: 8,
+                                padding: '4px 8px',
+                                zIndex: 10,
+                                boxShadow: '0 4px 14px rgba(0,0,0,0.5)',
+                                opacity: 0,
+                                transition: 'opacity 0.18s ease',
+                              }}
                             >
-                              🖼️ Imagem: {displayName}
-                            </div>
-                            <div style={{ display: 'flex', gap: 6 }}>
                               <button
-                                onClick={() => setLightboxSrc(img.url)}
-                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                                onClick={(e) => { e.stopPropagation(); setLightboxSrc(img.url); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: 'none', borderRadius: 4, background: 'rgba(255,255,255,0.15)', color: '#fff', cursor: 'pointer' }}
                               >
                                 <ExternalLink size={12} /> Expandir
                               </button>
                               <button
-                                onClick={() => handleOpenImageExternal(resolvedUrl)}
-                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                                onClick={(e) => { e.stopPropagation(); handleOpenImageExternal(resolvedUrl); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: 'none', borderRadius: 4, background: 'rgba(255,255,255,0.15)', color: '#fff', cursor: 'pointer' }}
                               >
                                 <Play size={12} /> Abrir
                               </button>
                               <button
-                                onClick={() => handleDownloadImage(resolvedUrl, displayName)}
-                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: '1px solid var(--color-border-primary)', borderRadius: 6, background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                                onClick={(e) => { e.stopPropagation(); handleDownloadImage(resolvedUrl, displayName); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, border: 'none', borderRadius: 4, background: 'rgba(255,255,255,0.15)', color: '#fff', cursor: 'pointer' }}
                               >
                                 <Download size={12} /> Baixar
                               </button>
                             </div>
-                          </div>
-                          <div
-                            style={{ position: 'relative', width: '100%', maxHeight: '45vh', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                            onClick={() => setLightboxSrc(img.url)}
-                          >
-                            <img
-                              style={{ width: '100%', maxHeight: '45vh', objectFit: 'contain' }}
-                              src={resolvedUrl}
-                              alt={displayName}
-                            />
                           </div>
                         </div>
                       );

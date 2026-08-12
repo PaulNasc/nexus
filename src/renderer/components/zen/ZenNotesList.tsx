@@ -13,6 +13,8 @@ import {
   LayoutGrid,
   List as ListIcon,
   Folder,
+  FolderOpen,
+  Building2,
   Filter,
   CheckSquare,
   Square,
@@ -27,7 +29,7 @@ import { useCategories } from '../../contexts/CategoriesContext';
 import { useI18n } from '../../hooks/useI18n';
 import type { Note } from '../../../shared/types/note';
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 
 interface ZenNotesListProps {
   selectedNoteId: number | null;
@@ -36,6 +38,7 @@ interface ZenNotesListProps {
   onOpenPingModal: (note: Note) => void;
   onDeleteNote: (note: Note) => void;
   onTogglePinNote: (note: Note) => void;
+  onOpenUtilities?: () => void;
 }
 
 export const ZenNotesList: React.FC<ZenNotesListProps> = ({
@@ -45,6 +48,7 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
   onOpenPingModal,
   onDeleteNote,
   onTogglePinNote,
+  onOpenUtilities,
 }) => {
   const {
     notes,
@@ -61,8 +65,6 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
     setFilterSystemTagIds,
     sortBy,
     setSortBy,
-    selectedCategoryId,
-    setSelectedCategoryId,
   } = useNotes();
 
   const { user } = useAuth();
@@ -188,6 +190,8 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
     }
 
     const plain = raw
+      .replace(/<img[^>]*>/gi, '')
+      .replace(/data:image\/[a-zA-Z0-9+.]+;base64,[a-zA-Z0-9+/=]+/gi, '')
       .replace(/!\[.*?\]\(.*?\)/g, '')
       .replace(/\[.*?\]\(.*?\)/g, '')
       .replace(/[#*_`~>]/g, '')
@@ -206,7 +210,7 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
         <div className="zen-notes-list__meta">
           {activeOrg && (
             <>
-              <span className="zen-notes-list__meta-org">🏢 {activeOrg.name}</span>
+              <span className="zen-notes-list__meta-org"><Building2 size={11} style={{ marginRight: 3, color: '#14b8a6' }} /> {activeOrg.name}</span>
               <span className="zen-notes-list__meta-dot" />
             </>
           )}
@@ -258,59 +262,14 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
             </button>
           </div>
 
-          {/* Folder / Category dropdown */}
-          <div style={{ position: 'relative' }}>
-            <button
-              className={`zen-filter-btn ${selectedCategoryId ? 'zen-filter-btn--active' : ''}`}
-              onClick={() => setShowCategoryMenu((v) => !v)}
-              title="Filtrar por Categoria"
-            >
-              <Folder size={12} />
-            </button>
-            {showCategoryMenu && (
-              <div
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  top: '100%',
-                  marginTop: 4,
-                  background: 'var(--bg-secondary, #1e1e1e)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: 8,
-                  padding: 4,
-                  zIndex: 50,
-                  minWidth: 150,
-                  boxShadow: '0 4px 14px rgba(0,0,0,0.5)',
-                }}
-              >
-                <button
-                  onClick={() => { setSelectedCategoryId(null); setShowCategoryMenu(false); }}
-                  style={{
-                    display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px',
-                    background: !selectedCategoryId ? 'rgba(20,184,166,0.12)' : 'transparent',
-                    color: !selectedCategoryId ? '#14b8a6' : 'rgba(255,255,255,0.8)',
-                    border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11,
-                  }}
-                >
-                  Todas as categorias
-                </button>
-                {categories.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => { setSelectedCategoryId(c.id); setShowCategoryMenu(false); }}
-                    style={{
-                      display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px',
-                      background: selectedCategoryId === c.id ? 'rgba(20,184,166,0.12)' : 'transparent',
-                      color: selectedCategoryId === c.id ? '#14b8a6' : 'rgba(255,255,255,0.8)',
-                      border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11,
-                    }}
-                  >
-                    📁 {c.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Utilities (R2 Cloud) button */}
+          <button
+            className="zen-filter-btn"
+            onClick={onOpenUtilities}
+            title="Abrir Utilitários (R2 Cloud)"
+          >
+            <FolderOpen size={12} />
+          </button>
 
           {/* Filters menu */}
           <div style={{ position: 'relative' }}>
@@ -552,23 +511,59 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
                   {getCleanPreviewText(note)}
                 </div>
 
-                {/* Tags */}
-                {note.tags && note.tags.length > 0 && (
-                  <div className="zen-note-card__tags">
-                    {note.tags.slice(0, 2).map((tag, i) => {
-                      const sysTag = systemTagByName.get(tag.toLowerCase());
-                      return (
+                {/* Tags section: System Tag only */}
+                {(() => {
+                  // Resolve system tag by ID, system_tag object, or matching tag name
+                  const rawNote = note as any;
+                  let sysTag = note.system_tag_id
+                    ? systemTagById.get(note.system_tag_id)
+                    : rawNote.system_tag
+                    ? systemTagById.get(rawNote.system_tag.id)
+                    : null;
+                  if (!sysTag && note.tags && note.tags.length > 0) {
+                    for (const t of note.tags) {
+                      const match = systemTagByName.get(t.toLowerCase());
+                      if (match) {
+                        sysTag = match;
+                        break;
+                      }
+                    }
+                  }
+
+                  // Filter out user tags that repeat the system tag name
+                  const userTags = (note.tags || []).filter(
+                    (t) => !sysTag || t.toLowerCase() !== sysTag.name.toLowerCase()
+                  );
+
+                  if (!sysTag && userTags.length === 0) return null;
+
+                  return (
+                    <div className="zen-note-card__tags" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
+                      {sysTag && (
                         <span
-                          key={i}
                           className="zen-note-card__tag"
-                          style={sysTag?.color ? { color: sysTag.color, borderColor: sysTag.color } : undefined}
+                          style={{
+                            color: sysTag.color || '#14b8a6',
+                            borderColor: sysTag.color ? `${sysTag.color}66` : 'rgba(20,184,166,0.4)',
+                            background: sysTag.color ? `${sysTag.color}1a` : 'rgba(20,184,166,0.1)',
+                            fontWeight: 700,
+                            fontSize: '10px',
+                            textTransform: 'uppercase',
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                          }}
                         >
-                          {tag}
+                          {sysTag.name}
                         </span>
-                      );
-                    })}
-                  </div>
-                )}
+                      )}
+                      {!sysTag && userTags.slice(0, 1).map((tag, i) => (
+                        <span key={i} className="zen-note-card__tag" style={{ fontSize: '10px', padding: '1px 6px' }}>
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 {/* Footer */}
                 <div className="zen-note-card__footer">

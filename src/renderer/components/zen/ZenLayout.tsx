@@ -5,6 +5,8 @@ import { ZenNotePanel } from './ZenNotePanel';
 import { FeedbackButton } from '../FeedbackButton';
 import { NexusLoadingScreen } from '../NexusLoadingScreen';
 import { PingUserModal, PingUser } from '../PingUserModal';
+import { UtilitiesModal } from '../UtilitiesModal';
+import { NotesMetricsPanel } from '../NotesMetricsPanel';
 import { useNotes } from '../../contexts/NotesContext';
 import { useToast } from '../../contexts/ToastContext';
 import { auditLogger } from '../../lib/auditLogger';
@@ -46,27 +48,43 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
   const { showToast } = useToast();
   const { user } = useAuth();
 
-  // 'viewing' = show ZenNoteViewer, 'editing' = show NoteEditor, 'creating' = blank NoteEditor, null = empty state
-  type PanelMode = 'viewing' | 'editing' | 'creating';
-
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
-  const [panelMode, setPanelMode] = useState<PanelMode | null>(null);
+
+  // 'viewing' = shows selectedNote, 'editing' = inline edit, 'creating' = brand new blank editor, null = empty state
+  const [panelMode, setPanelMode] = useState<'viewing' | 'editing' | 'creating' | null>(null);
+
+  // Ping Modal state
   const [pingModal, setPingModal] = useState<{ isOpen: boolean; note: Note | null }>({
     isOpen: false,
     note: null,
   });
 
-  // Click a note card → view it inline in column 3
-  const handleSelectNote = useCallback((note: Note, editMode = false) => {
+  // Utilities R2 Cloud Modal state
+  const [isUtilitiesOpen, setIsUtilitiesOpen] = useState(false);
+
+  // Custom Delete Confirmation Modal state
+  const [deleteConfirmNote, setDeleteConfirmNote] = useState<Note | null>(null);
+
+  // Select a note from the list → view mode
+  const handleSelectNote = useCallback((note: Note) => {
     setSelectedNote(note);
-    setPanelMode(editMode ? 'editing' : 'viewing');
+    setPanelMode('viewing');
   }, []);
 
   // New note from sidebar or empty-state button → blank inline editor
   const handleNewNote = useCallback(() => {
+    if (showDashboard) {
+      onNavigateNotes();
+    }
     setSelectedNote(null);
     setPanelMode('creating');
-  }, []);
+  }, [showDashboard, onNavigateNotes]);
+
+  const handleNavigateNotes = useCallback(() => {
+    setSelectedNote(null);
+    setPanelMode(null);
+    onNavigateNotes();
+  }, [onNavigateNotes]);
 
   const handleNoteDeleted = useCallback(() => {
     setSelectedNote(null);
@@ -98,23 +116,9 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
     [updateNote, selectedNote?.id, showToast]
   );
 
-  const handleDeleteNote = useCallback(
-    async (note: Note) => {
-      const confirmed = window.confirm(`Deletar a nota "${note.title}"?`);
-      if (!confirmed) return;
-      try {
-        await deleteNote(note.id);
-        if (selectedNote?.id === note.id) {
-          setSelectedNote(null);
-          setPanelMode(null);
-        }
-        showToast('Nota deletada', 'success');
-      } catch {
-        showToast('Erro ao deletar nota', 'error');
-      }
-    },
-    [deleteNote, selectedNote?.id, showToast]
-  );
+  const handleDeleteNote = useCallback((note: Note) => {
+    setDeleteConfirmNote(note);
+  }, []);
 
   const handleOpenPingModal = useCallback((note: Note) => {
     setPingModal({ isOpen: true, note });
@@ -131,14 +135,9 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
         category: 'notes',
         message: `Notificação/Ping enviado para ${userNames} referente à nota #${note.id} "${note.title}"`,
         user_name: user?.email?.split('@')[0] || 'Paulo',
-        details: {
-          noteId: note.id,
-          noteTitle: note.title,
-          targetUsers: targetUsers.map((u) => ({ id: u.id, name: u.name, email: u.email })),
-        },
       });
 
-      showToast(`Notificação enviada com sucesso para: ${userNames}`, 'success');
+      showToast(`Ping enviado para ${userNames}`, 'success');
       setPingModal({ isOpen: false, note: null });
     },
     [pingModal.note, user, showToast]
@@ -158,9 +157,11 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
       <ZenSidebar
         currentScreen={currentScreen}
         onNewNote={handleNewNote}
+        onOpenNoteModal={onOpenNoteModal || (() => {})}
         onNavigateDashboard={onNavigateDashboard}
-        onNavigateNotes={onNavigateNotes}
+        onNavigateNotes={handleNavigateNotes}
         onOpenSettings={onOpenSettings}
+        onOpenFeedback={onOpenFeedback}
       />
 
       {/* Col 2: Notes list (hidden in dashboard mode) */}
@@ -172,6 +173,7 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
           onOpenPingModal={handleOpenPingModal}
           onDeleteNote={handleDeleteNote}
           onTogglePinNote={handleTogglePin}
+          onOpenUtilities={() => setIsUtilitiesOpen(true)}
         />
       )}
 
@@ -181,17 +183,9 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
         style={{ position: 'relative', overflow: 'hidden' }}
       >
         {showDashboard ? (
-          <Suspense fallback={<NexusLoadingScreen title="Nexus" subtitle="Carregando dashboard..." />}>
-            <div style={{ flex: 1, overflow: 'auto', height: '100%' }}>
-              <Dashboard
-                onViewTaskList={onViewTaskList}
-                onOpenTimer={onOpenTimer}
-                onOpenReports={onOpenReports}
-                showQuickActions={showQuickActions}
-                showTaskCounters={showTaskCounters}
-              />
-            </div>
-          </Suspense>
+          <div style={{ flex: 1, overflow: 'auto', height: '100%', padding: '16px' }}>
+            <NotesMetricsPanel />
+          </div>
         ) : (
           <ZenNotePanel
             note={selectedNote}
@@ -205,18 +199,6 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
             onOpenPingModal={handleOpenPingModal}
           />
         )}
-
-        {/* Feedback / Sugestões: fixed at bottom right */}
-        <div
-          style={{
-            position: 'fixed',
-            bottom: 16,
-            right: 16,
-            zIndex: 9999,
-          }}
-        >
-          <FeedbackButton onClick={onOpenFeedback} />
-        </div>
       </div>
 
       {/* Ping Modal */}
@@ -227,6 +209,94 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
           note={pingModal.note}
           onSendPings={handleSendPings}
         />
+      )}
+
+      {/* Utilities R2 Cloud Modal */}
+      <UtilitiesModal
+        isOpen={isUtilitiesOpen}
+        onClose={() => setIsUtilitiesOpen(false)}
+      />
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmNote && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={() => setDeleteConfirmNote(null)}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '380px',
+              backgroundColor: '#1e1e24',
+              borderRadius: '12px',
+              padding: '20px',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: '0 0 8px', fontSize: '15px', fontWeight: 600, color: '#fff' }}>
+              Excluir Nota
+            </h3>
+            <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#9ca3af', lineHeight: 1.5 }}>
+              Tem certeza de que deseja excluir a nota &quot;{deleteConfirmNote.title}&quot;? Esta ação não pode ser desfeita.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                onClick={() => setDeleteConfirmNote(null)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  background: 'transparent',
+                  color: '#9ca3af',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  const target = deleteConfirmNote;
+                  setDeleteConfirmNote(null);
+                  try {
+                    await deleteNote(target.id);
+                    if (selectedNote?.id === target.id) {
+                      setSelectedNote(null);
+                      setPanelMode(null);
+                    }
+                    showToast('Nota deletada com sucesso', 'success');
+                  } catch {
+                    showToast('Erro ao deletar nota', 'error');
+                  }
+                }}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: '#ef4444',
+                  color: '#fff',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Excluir Nota
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

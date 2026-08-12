@@ -30,6 +30,8 @@ import { NoOrganizationModal } from './components/NoOrganizationModal';
 import { NexusLoadingScreen } from './components/NexusLoadingScreen';
 import { desktopAdapter } from './lib/desktopAdapter';
 import { ChangelogModal } from './components/ChangelogModal';
+import { ZenDiscoveryPopup } from './components/zen/ZenDiscoveryPopup';
+import { OrgJoinRequestAdminPopup } from './components/OrgJoinRequestAdminPopup';
 import { FeedbackButton } from './components/FeedbackButton';
 import { FeedbackModal } from './components/FeedbackModal';
 import { ZenLayout } from './components/zen/ZenLayout';
@@ -253,7 +255,7 @@ const SystemWatermark: React.FC<{ version: string; mode: 'light' | 'dark' }> = R
         letterSpacing: '0.2px',
       }}
     >
-      Nexus <span style={{ opacity: 0.7, fontSize: '11px', marginLeft: '2px' }}>v{version || '1.4.0'}</span>
+      Nexus <span style={{ opacity: 0.7, fontSize: '11px', marginLeft: '2px' }}>v{version || '1.4.1'}</span>
     </div>
   );
 });
@@ -290,7 +292,7 @@ const App: React.FC<AppProps> = () => {
 
   const [isChangelogOpen, setIsChangelogOpen] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('nexus_last_seen_version') !== '1.4.0';
+      return localStorage.getItem('nexus_last_seen_version') !== '1.4.1';
     } catch {
       return false;
     }
@@ -411,17 +413,17 @@ const App: React.FC<AppProps> = () => {
           const sysInfo = await desktopAdapter.getSystemInfo();
           setSystemInfo({
             platform: sysInfo.platform || 'win32',
-            version: sysInfo.version || '1.4.0'
+            version: sysInfo.version || '1.4.1'
           });
         } catch {
           if (electronAPI) {
-            const ver = await electronAPI.updater?.getVersion?.() || electronAPI.system?.version || '1.4.0';
+            const ver = await electronAPI.updater?.getVersion?.() || electronAPI.system?.version || '1.4.1';
             setSystemInfo({
               platform: electronAPI.system?.platform || 'win32',
               version: typeof ver === 'string' ? ver : String(ver)
             });
           } else {
-            setSystemInfo({ platform: 'win32', version: '1.4.0' });
+            setSystemInfo({ platform: 'win32', version: '1.4.1' });
           }
         }
 
@@ -478,10 +480,10 @@ const App: React.FC<AppProps> = () => {
   }, [navigateTo]);
 
   useEffect(() => {
-    if (navigation.currentScreen === 'dashboard' && !settings.showDashboard) {
+    if (navigation.currentScreen === 'dashboard' && !settings.showDashboard && !isZen) {
       openNotes();
     }
-  }, [navigation.currentScreen, settings.showDashboard]);
+  }, [navigation.currentScreen, settings.showDashboard, isZen]);
 
   // Modal functions
   // Hotfix: abertura direta de "Nova Tarefa" desativada por solicitação do usuário.
@@ -658,7 +660,7 @@ const App: React.FC<AppProps> = () => {
             handleOpenNoteModal={() => setIsNoteModalOpen(true)}
             currentScreen={navigation.currentScreen}
           />
-          <SystemWatermark version={systemInfo?.version || '1.4.0'} mode={effectiveMode} />
+          <SystemWatermark version={systemInfo?.version || '1.4.1'} mode={effectiveMode} />
           <main className="app-main">
             <TaskList
               title={getListTitle(navigation.selectedList)}
@@ -691,7 +693,7 @@ const App: React.FC<AppProps> = () => {
   // Dashboard principal com abas para Timer e Reports
   return (
     <React.Suspense fallback={<NexusLoadingScreen title="Nexus" subtitle="Carregando aplicativo..." />}>
-      <div className="app-container" data-theme={theme.mode}>
+      <div className={`app-container ${isZen ? 'is-zen' : ''}`} data-theme={theme.mode}>
         {/* Floating toolbar: hidden in Zen mode */}
         {!isZen && (
           <FloatingActionToolbar
@@ -707,14 +709,14 @@ const App: React.FC<AppProps> = () => {
             currentScreen={navigation.currentScreen}
           />
         )}
-        {!isZen && <SystemWatermark version={systemInfo?.version || '1.4.0'} mode={effectiveMode} />}
+        {!isZen && <SystemWatermark version={systemInfo?.version || '1.4.1'} mode={effectiveMode} />}
         <main className="app-main">
           {navigation.currentScreen === 'notes' && (
             <div className="animate-screen" style={{ height: '100%' }}>
               {isZen ? (
                 <ZenLayout
                   showDashboard={false}
-                  onOpenNoteModal={undefined}
+                  onOpenNoteModal={() => setIsNoteModalOpen(true)}
                   onOpenSettings={handleOpenSettings}
                   onOpenFeedback={() => setIsFeedbackOpen(true)}
                   onNavigateDashboard={goToDashboard}
@@ -735,7 +737,7 @@ const App: React.FC<AppProps> = () => {
               {isZen ? (
                 <ZenLayout
                   showDashboard={true}
-                  onOpenNoteModal={undefined}
+                  onOpenNoteModal={() => setIsNoteModalOpen(true)}
                   onOpenSettings={handleOpenSettings}
                   onOpenFeedback={() => setIsFeedbackOpen(true)}
                   onNavigateDashboard={goToDashboard}
@@ -802,7 +804,7 @@ const App: React.FC<AppProps> = () => {
             isOpen={isChangelogOpen}
             onClose={() => {
               try {
-                localStorage.setItem('nexus_last_seen_version', '1.4.0');
+                localStorage.setItem('nexus_last_seen_version', '1.4.1');
               } catch {}
               setIsChangelogOpen(false);
             }}
@@ -813,6 +815,9 @@ const App: React.FC<AppProps> = () => {
           isOpen={isFeedbackOpen}
           onClose={() => setIsFeedbackOpen(false)}
         />
+
+        <ZenDiscoveryPopup />
+        <OrgJoinRequestAdminPopup />
 
         <UpdateNotification isDark={true} />
       </div>

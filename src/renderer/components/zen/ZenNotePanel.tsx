@@ -51,8 +51,6 @@ export const ZenNotePanel: React.FC<ZenNotePanelProps> = ({
 
   const handleDelete = useCallback(async () => {
     if (!note) return;
-    const confirmed = window.confirm(`Deletar a nota "${note.title}"?`);
-    if (!confirmed) return;
     try {
       await deleteNote(note.id);
       onNoteDeleted();

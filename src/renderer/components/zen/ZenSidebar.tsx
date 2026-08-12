@@ -1,26 +1,37 @@
 import React from 'react';
-import { StickyNote, LayoutDashboard, Sun, Moon, Settings, LogOut, FilePlus } from 'lucide-react';
+import {
+  StickyNote,
+  LayoutDashboard,
+  Sun,
+  Moon,
+  Settings,
+  LogOut,
+  FilePlus,
+  AlertTriangle,
+} from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { useAuth } from '../../contexts/AuthContext';
-
-const APP_VERSION = '1.4.0';
 
 interface ZenSidebarProps {
   currentScreen: string;
   onNewNote: () => void;
+  onOpenNoteModal: () => void;
   onNavigateDashboard: () => void;
   onNavigateNotes: () => void;
   onOpenSettings: () => void;
+  onOpenFeedback: () => void;
 }
 
 export const ZenSidebar: React.FC<ZenSidebarProps> = ({
   currentScreen,
   onNewNote,
+  onOpenNoteModal,
   onNavigateDashboard,
   onNavigateNotes,
   onOpenSettings,
+  onOpenFeedback,
 }) => {
-  const { effectiveMode, toggleTheme } = useTheme();
+  const { effectiveMode, toggleMode } = useTheme();
   const { signOut } = useAuth();
   const isDark = effectiveMode === 'dark';
   const isDashboard = currentScreen === 'dashboard';
@@ -36,7 +47,7 @@ export const ZenSidebar: React.FC<ZenSidebarProps> = ({
   return (
     <aside className="zen-sidebar">
       <nav className="zen-sidebar__nav">
-        {/* Nova nota rápida (Ícone de documento com mais) */}
+        {/* Nova nota rápida (Ícone de documento com mais — Criar nota inline) */}
         <button
           className="zen-sidebar__btn zen-sidebar__btn--new"
           onClick={onNewNote}
@@ -48,12 +59,12 @@ export const ZenSidebar: React.FC<ZenSidebarProps> = ({
 
         <div className="zen-sidebar__divider" />
 
-        {/* Notas */}
+        {/* Nota Rápida (Modal Popup de Nota Rápida) */}
         <button
-          className={`zen-sidebar__btn ${!isDashboard ? 'zen-sidebar__btn--active' : ''}`}
-          onClick={onNavigateNotes}
-          data-tooltip="Notas"
-          aria-label="Notas"
+          className="zen-sidebar__btn"
+          onClick={onOpenNoteModal}
+          data-tooltip="Nota Rápida (Modal)"
+          aria-label="Nota Rápida"
         >
           <StickyNote size={18} />
         </button>
@@ -68,10 +79,10 @@ export const ZenSidebar: React.FC<ZenSidebarProps> = ({
           <LayoutDashboard size={18} />
         </button>
 
-        {/* Tema */}
+        {/* Alternar Tema */}
         <button
           className="zen-sidebar__btn"
-          onClick={toggleTheme}
+          onClick={toggleMode}
           data-tooltip={isDark ? 'Tema Claro' : 'Tema Escuro'}
           aria-label="Alternar Tema"
         >
@@ -88,7 +99,22 @@ export const ZenSidebar: React.FC<ZenSidebarProps> = ({
           <Settings size={18} />
         </button>
 
-        <div className="zen-sidebar__divider" />
+        <div className="zen-sidebar__divider" style={{ marginTop: 'auto' }} />
+
+        {/* Sugestão / Bug — Alinhado perfeitamente no rodapé da coluna lateral */}
+        <button
+          className="zen-sidebar__btn zen-sidebar__btn--warning"
+          onClick={onOpenFeedback}
+          data-tooltip="Sugestão / Bug"
+          aria-label="Sugestão / Bug"
+          style={{
+            borderColor: 'rgba(245, 158, 11, 0.4)',
+            color: '#f59e0b',
+            background: 'rgba(245, 158, 11, 0.08)',
+          }}
+        >
+          <AlertTriangle size={18} />
+        </button>
 
         {/* Sair */}
         <button
@@ -96,6 +122,7 @@ export const ZenSidebar: React.FC<ZenSidebarProps> = ({
           onClick={handleSignOut}
           data-tooltip="Sair"
           aria-label="Sair"
+          style={{ marginTop: 4 }}
         >
           <LogOut size={17} />
         </button>

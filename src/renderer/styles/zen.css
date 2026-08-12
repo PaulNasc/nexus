@@ -340,8 +340,15 @@
 .zen-note-card {
   position: relative;
   border-radius: 8px;
-  padding: 10px 10px 8px 14px;
-  margin-bottom: 4px;
+  padding: 10px 12px 8px 14px;
+  margin-bottom: 6px;
+  height: 104px;
+  min-height: 104px;
+  max-height: 104px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
   cursor: pointer;
   border: 1px solid rgba(255,255,255,0.04);
   background: rgba(255,255,255,0.02);
@@ -673,88 +680,186 @@
   border-color: rgba(20, 184, 166, 0.5);
 }
 
+/* Grid View card optimizations */
+.zen-notes-list__scroll div[style*="grid"] .zen-note-card {
+  height: 112px;
+  min-height: 112px;
+  max-height: 112px;
+  padding: 8px 10px 6px 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.zen-notes-list__scroll div[style*="grid"] .zen-note-card__title {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0 0 2px 0;
+  padding-right: 4px;
+  flex-shrink: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zen-notes-list__scroll div[style*="grid"] .zen-note-card__preview {
+  font-size: 10.5px;
+  line-height: 1.3;
+  margin-bottom: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zen-notes-list__scroll div[style*="grid"] .zen-note-card__footer {
+  margin-top: auto;
+  flex-shrink: 0;
+}
+
 /* ── Light mode overrides ────────────────────────────────── */
 
 [data-theme="light"] .zen-layout,
 [class*="theme-light"] .zen-layout {
-  background: #f9f9f9;
+  background: #f0f2f5;
+  color: #0f172a;
 }
 
 [data-theme="light"] .zen-sidebar,
 [class*="theme-light"] .zen-sidebar {
-  background: #ededed;
-  border-right-color: rgba(0,0,0,0.08);
+  background: #e2e7ec;
+  border-right-color: #d1d6dc;
 }
 
 [data-theme="light"] .zen-notes-list,
 [class*="theme-light"] .zen-notes-list {
-  background: #f4f4f4;
-  border-right-color: rgba(0,0,0,0.08);
+  background: #e8ecf1;
+  border-right-color: #d1d6dc;
 }
 
 [data-theme="light"] .zen-sidebar__btn {
-  color: rgba(0,0,0,0.5);
+  color: #475569;
 }
 
 [data-theme="light"] .zen-sidebar__btn:hover {
-  background: rgba(0,0,0,0.07);
-  color: rgba(0,0,0,0.85);
+  background: #cbd5e1;
+  color: #0f172a;
+}
+
+[data-theme="light"] .zen-sidebar__btn--active {
+  background: rgba(13, 148, 136, 0.15) !important;
+  color: #0d9488 !important;
+}
+
+[data-theme="light"] .zen-sidebar__btn--new {
+  background: #0d9488 !important;
+  color: #ffffff !important;
+}
+
+[data-theme="light"] .zen-sidebar__divider {
+  background: #cbd5e1;
+}
+
+[data-theme="light"] .zen-filter-btn {
+  color: #334155 !important;
+}
+
+[data-theme="light"] .zen-filter-btn:hover {
+  background: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .zen-filter-btn--active {
+  background: rgba(13, 148, 136, 0.18) !important;
+  border-color: #0d9488 !important;
+  color: #0d9488 !important;
 }
 
 [data-theme="light"] .zen-note-card {
-  background: rgba(0,0,0,0.02);
-  border-color: rgba(0,0,0,0.05);
+  background: #ffffff;
+  border-color: #cbd5e1;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 [data-theme="light"] .zen-note-card:hover {
-  background: rgba(0,0,0,0.05);
+  background: #f1f5f9;
+  border-color: #94a3b8;
 }
 
 [data-theme="light"] .zen-note-card--active {
-  background: rgba(20, 184, 166, 0.08) !important;
-  border-color: rgba(20, 184, 166, 0.3) !important;
+  background: #e6f7f5 !important;
+  border-color: #0d9488 !important;
+  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.15) !important;
 }
 
 [data-theme="light"] .zen-notes-list__title {
-  color: rgba(0,0,0,0.9);
+  color: #0f172a;
 }
 
-[data-theme="light"] .zen-notes-list__greeting,
-[data-theme="light"] .zen-notes-list__meta,
-[data-theme="light"] .zen-note-card__preview,
-[data-theme="light"] .zen-note-card__author,
-[data-theme="light"] .zen-note-card__date {
-  color: rgba(0,0,0,0.5);
+[data-theme="light"] .zen-notes-list__greeting {
+  color: #64748b;
+}
+
+[data-theme="light"] .zen-notes-list__meta {
+  color: #475569;
 }
 
 [data-theme="light"] .zen-note-card__title {
-  color: rgba(0,0,0,0.88);
+  color: #0f172a;
+}
+
+[data-theme="light"] .zen-note-card__preview {
+  color: #475569;
+}
+
+[data-theme="light"] .zen-note-card__author,
+[data-theme="light"] .zen-note-card__date {
+  color: #64748b;
 }
 
 [data-theme="light"] .zen-note-panel {
-  background: #ffffff;
+  background: #f8fafc;
 }
 
 [data-theme="light"] .zen-note-panel__toolbar {
-  background: #f7f7f7;
-  border-bottom-color: rgba(0,0,0,0.07);
+  background: #e2e8f0;
+  border-bottom-color: #cbd5e1;
 }
 
 [data-theme="light"] .zen-viewer__title {
-  color: rgba(0,0,0,0.9);
+  color: #0f172a;
 }
 
 [data-theme="light"] .zen-viewer__body {
-  color: rgba(0,0,0,0.82);
+  color: #334155;
 }
 
 [data-theme="light"] .zen-notes-list__search {
-  background: rgba(0,0,0,0.04);
-  border-color: rgba(0,0,0,0.09);
+  background: #ffffff;
+  border-color: #cbd5e1;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 
 [data-theme="light"] .zen-notes-list__search-input {
-  color: rgba(0,0,0,0.88);
+  color: #0f172a;
+}
+
+[data-theme="light"] .zen-notes-list__search-input::placeholder {
+  color: #94a3b8;
+}
+
+[data-theme="light"] select,
+[data-theme="light"] option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
 }
 
 /* ── Animations ──────────────────────────────────────────── */
@@ -781,10 +886,16 @@
 .note-viewer-embedded {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
+  height: 100% !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
   background: var(--color-bg-primary, #0f0f0f);
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .note-viewer-embedded .note-viewer-header {
@@ -797,8 +908,12 @@
 /* Override modal max-width constraints inside embedded mode */
 .note-viewer-embedded .note-viewer-modal {
   max-width: none !important;
+  width: 100% !important;
+  height: 100% !important;
   border-radius: 0 !important;
   border: none !important;
+  box-shadow: none !important;
+  margin: 0 !important;
 }
 
 /* Spin animation for loading indicators */
@@ -808,16 +923,48 @@
 }
 .spin { animation: spin 1.2s linear infinite; }
 
-/* ── Ensure zen-layout fills the full window ─────────────── */
-.app-main {
-  position: relative;
+/* ── Ensure zen-layout fills the full window without outer margins/borders ── */
+.app-container.is-zen {
+  padding: 0 !important;
+  margin: 0 !important;
+  height: 100vh !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  overflow: hidden !important;
+  border: none !important;
+  border-radius: 0 !important;
 }
 
-.animate-screen {
-  position: relative;
+.app-container.is-zen .app-main {
+  position: relative !important;
+  height: 100% !important;
+  width: 100% !important;
+  max-width: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  overflow: hidden !important;
 }
 
-.animate-screen .zen-layout {
+.app-container.is-zen .animate-screen {
+  position: relative !important;
+  height: 100% !important;
+  width: 100% !important;
+  max-width: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  transform: none !important;
+}
+
+.app-container.is-zen .zen-layout {
   position: absolute;
   inset: 0;
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
 }
