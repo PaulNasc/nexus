@@ -10,7 +10,7 @@ import { resolveImageUrl } from '../utils/image';
 import { desktopAdapter } from '../lib/desktopAdapter';
 import { useToast } from '../contexts/ToastContext';
 
-export interface NoteViewerModalProps {
+interface NoteViewerModalProps {
   isOpen: boolean;
   note: Note | null;
   onClose: () => void;
@@ -19,10 +19,6 @@ export interface NoteViewerModalProps {
   ownerId?: string | null;
   /** Organization id — pass from OrganizationContext to avoid redundant Supabase query */
   orgId?: string | null;
-  isEmbedded?: boolean;
-  onEditNote?: (note: Note) => void;
-  onDeleteNote?: (note: Note) => void;
-  onOpenPingModal?: (note: Note) => void;
 }
 
 function stripMarkdown(markdown: string): string {
@@ -148,18 +144,7 @@ const getElectron = (): ElectronAPI | null => {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI || null;
 };
 
-export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({
-  isOpen,
-  note,
-  onClose,
-  onTogglePin,
-  ownerId,
-  orgId,
-  isEmbedded = false,
-  onEditNote,
-  onDeleteNote,
-  onOpenPingModal,
-}) => {
+export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, onClose, onTogglePin, ownerId, orgId }) => {
   const { showToast } = useToast();
   const [primaryPdfPath, setPrimaryPdfPath] = useState<string>('');
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
@@ -1045,86 +1030,40 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({
     setVideoMissing(prev => ({ ...prev, [videoRef]: false }));
   };
 
-  const modalContent = (
-    <div
-      className={isEmbedded ? 'note-viewer-embedded' : 'note-viewer-modal'}
-      onClick={(e) => e.stopPropagation()}
-      style={{
-        maxWidth: isEmbedded ? '100%' : hasAttachments ? 1100 : 900,
-        width: isEmbedded ? '100%' : undefined,
-        height: isEmbedded ? '100%' : undefined,
-        maxHeight: isEmbedded ? '100%' : undefined,
-        borderRadius: isEmbedded ? 0 : undefined,
-        border: isEmbedded ? 'none' : undefined,
-        boxShadow: isEmbedded ? 'none' : undefined,
-        background: isEmbedded ? 'var(--bg-primary, #0f0f0f)' : undefined,
-      }}
-    >
-      {/* Header */}
-      <div className="note-viewer-header" style={isEmbedded ? { background: 'var(--bg-secondary, #141414)', borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,0.06))', padding: '12px 18px' } : undefined}>
-        <div className="note-viewer-title-group">
-          <h2 className="note-viewer-title" style={{ fontSize: isEmbedded ? '16px' : undefined }}>{note.title}</h2>
-          <span className="note-viewer-format-badge">{note.format === 'markdown' ? 'MD' : 'TXT'}</span>
-        </div>
-        <div className="note-viewer-actions" style={{ gap: 6 }}>
-          {onEditNote && (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => onEditNote(note)}
-              title="Editar Nota"
-              style={{ background: '#14b8a6', borderColor: '#14b8a6', color: '#fff', fontWeight: 600 }}
-            >
-              <Pencil size={14} style={{ marginRight: 4 }} /> Editar
+  return (
+    <div className="note-viewer-modal-backdrop" onClick={onClose}>
+      <div className="note-viewer-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: hasAttachments ? 1100 : 900 }}>
+        {/* Header */}
+        <div className="note-viewer-header">
+          <div className="note-viewer-title-group">
+            <h2 className="note-viewer-title">{note.title}</h2>
+            <span className="note-viewer-format-badge">{note.format === 'markdown' ? 'MD' : 'TXT'}</span>
+          </div>
+          <div className="note-viewer-actions">
+            {onTogglePin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onTogglePin(note)}
+                title={note.is_pinned ? 'Desafixar nota' : 'Fixar nota'}
+                style={{ color: note.is_pinned ? 'var(--color-accent-amber)' : undefined }}
+              >
+                <Pin size={16} fill={note.is_pinned ? 'currentColor' : 'none'} />
+              </Button>
+            )}
+            <Button variant="secondary" size="sm" onClick={handleCopyMarkdown} title="Copiar como Markdown">
+              {copiedMarkdown ? <Check size={16} /> : <FileCode2 size={16} />}
+              {copiedMarkdown ? 'Copiado!' : 'Copiar MD'}
             </Button>
-          )}
-          {onTogglePin && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onTogglePin(note)}
-              title={note.is_pinned ? 'Desafixar nota' : 'Fixar nota'}
-              style={{ color: note.is_pinned ? 'var(--color-accent-amber, #f59e0b)' : undefined }}
-            >
-              <Pin size={15} fill={note.is_pinned ? 'currentColor' : 'none'} />
+            <Button variant="secondary" size="sm" onClick={handleCopyText} title="Copiar como Texto">
+              {copiedText ? <Check size={16} /> : <FileText size={16} />}
+              {copiedText ? 'Copiado!' : 'Copiar Texto'}
             </Button>
-          )}
-          {onOpenPingModal && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onOpenPingModal(note)}
-              title="Enviar Ping / Notificar"
-            >
-              <BellRing size={15} />
-            </Button>
-          )}
-          <Button variant="secondary" size="sm" onClick={handleCopyMarkdown} title="Copiar como Markdown">
-            {copiedMarkdown ? <Check size={15} /> : <FileCode2 size={15} />}
-            {copiedMarkdown ? 'Copiado!' : 'Copiar MD'}
-          </Button>
-          <Button variant="secondary" size="sm" onClick={handleCopyText} title="Copiar como Texto">
-            {copiedText ? <Check size={15} /> : <FileText size={16} />}
-            {copiedText ? 'Copiado!' : 'Copiar Texto'}
-          </Button>
-          {onDeleteNote && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onDeleteNote(note)}
-              title="Deletar Nota"
-              style={{ color: '#ef4444' }}
-            >
-              <Trash2 size={15} />
-            </Button>
-          )}
-          {!isEmbedded && (
             <Button variant="ghost" size="sm" onClick={onClose} aria-label="Fechar">
               <X size={16} />
             </Button>
-          )}
+          </div>
         </div>
-      </div>
 
         {/* Content: text left, attachments right */}
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0, position: 'relative' }}>
@@ -1653,9 +1592,6 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({
               {/* Videos */}
               {hasVideos && !(hasNoRealContent && !hasPdfAttachment) && (
                 <div>
-              {/* Videos */}
-              {hasVideos && !(hasNoRealContent && !hasPdfAttachment) && (
-                <div>
                   <div className="note-viewer-section-title">
                     <Video size={16} />
                     Vídeos ({note.attachedVideos!.length})
@@ -1897,13 +1833,7 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({
             </div>
           </div>
         )}
-  if (isEmbedded) {
-    return modalContent;
-  }
-
-  return (
-    <div className="note-viewer-modal-backdrop" onClick={onClose}>
-      {modalContent}
+      </div>
     </div>
   );
 };

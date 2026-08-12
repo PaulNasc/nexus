@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { StickyNote, Plus, ArrowLeft } from 'lucide-react';
 import { NoteEditor } from '../NoteEditor';
-import { NoteViewerModal } from '../NoteViewerModal';
+import { ZenNoteViewer } from './ZenNoteViewer';
 import { useNotes } from '../../contexts/NotesContext';
 import { useToast } from '../../contexts/ToastContext';
 import type { Note, CreateNoteData } from '../../../shared/types/note';
@@ -129,19 +129,14 @@ export const ZenNotePanel: React.FC<ZenNotePanelProps> = ({
           </div>
         </div>
       ) : (
-        /* READ-ONLY VIEW MODE: Complete R2 Media / PDF / Video / Image / MD Viewer */
-        <div style={{ flex: 1, height: '100%', overflow: 'hidden' }}>
-          <NoteViewerModal
-            isOpen={true}
-            note={note}
-            isEmbedded={true}
-            onClose={() => {}}
-            onEditNote={() => onSetEditing(true)}
-            onTogglePin={handlePin}
-            onDeleteNote={handleDelete}
-            onOpenPingModal={onOpenPingModal}
-          />
-        </div>
+        /* READ-ONLY VIEW MODE: Clean Evernote-Style ZenNoteViewer */
+        <ZenNoteViewer
+          note={note}
+          onEdit={() => onSetEditing(true)}
+          onTogglePin={handlePin}
+          onDelete={handleDelete}
+          onOpenPingModal={onOpenPingModal}
+        />
       )}
     </section>
   );
