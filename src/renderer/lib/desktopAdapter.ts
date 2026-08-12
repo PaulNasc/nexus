@@ -157,20 +157,62 @@ class DesktopAdapter implements IDesktopAdapter {
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 
-  public async checkForUpdates(): Promise<void> {
+  private tauriUpdateObj: unknown = null;
+  private updateStatusListeners: Array<(status: UpdateStatus) => void> = [];
+
+  public onUpdateStatus(listener: (status: UpdateStatus) => void): () => void {
+    this.updateStatusListeners.push(listener);
+    return () => {
+      this.updateStatusListeners = this.updateStatusListeners.filter((l) => l !== listener);
+    };
+  }
+
+  private notifyUpdateStatus(status: UpdateStatus): void {
+    this.updateStatusListeners.forEach((listener) => {
+      try {
+        listener(status);
+      } catch {
+        // Ignore listener errors
+      }
+    });
+  }
+
+  public async checkForUpdates(): Promise<UpdateStatus | void> {
     if (this.isElectron()) {
-      const electronAPI = (window as unknown as { electronAPI?: { updater?: { checkForUpdates?: () => Promise<void> } } }).electronAPI;
+      const electronAPI = (window as unknown as { electronAPI?: { updater?: { checkForUpdates?: () => Promise<UpdateStatus> } } }).electronAPI;
       if (electronAPI?.updater?.checkForUpdates) {
-        await electronAPI.updater.checkForUpdates();
+        return await electronAPI.updater.checkForUpdates();
       }
     }
 
     if (this.isTauri()) {
       try {
+        this.notifyUpdateStatus({ state: 'checking' });
         const { check } = await import('@tauri-apps/plugin-updater');
-        await check();
-      } catch {
-        // Fallback
+        const update = await check();
+        if (update && update.available) {
+          this.tauriUpdateObj = update;
+          const status: UpdateStatus = {
+            state: 'available',
+            version: update.version,
+            releaseNotes: update.body || 'Nova versão do Nexus disponível para atualização.',
+          };
+          this.notifyUpdateStatus(status);
+          return status;
+        } else {
+          this.tauriUpdateObj = null;
+          const status: UpdateStatus = { state: 'not-available' };
+          this.notifyUpdateStatus(status);
+          return status;
+        }
+      } catch (err) {
+        console.warn('Falha na verificação de atualização via Tauri:', err);
+        const status: UpdateStatus = {
+          state: 'error',
+          error: err instanceof Error ? err.message : 'Falha ao verificar atualização.',
+        };
+        this.notifyUpdateStatus(status);
+        return status;
       }
     }
   }
@@ -180,6 +222,23 @@ class DesktopAdapter implements IDesktopAdapter {
       const electronAPI = (window as unknown as { electronAPI?: { updater?: { quitAndInstall?: () => Promise<void> } } }).electronAPI;
       if (electronAPI?.updater?.quitAndInstall) {
         await electronAPI.updater.quitAndInstall();
+      }
+    }
+
+    if (this.isTauri() && this.tauriUpdateObj) {
+      try {
+        this.notifyUpdateStatus({ state: 'downloading' });
+        const update = this.tauriUpdateObj as { downloadAndInstall: (cb?: (p: unknown) => void) => Promise<void> };
+        await update.downloadAndInstall();
+        this.notifyUpdateStatus({ state: 'downloaded' });
+        const { relaunch } = await import('@tauri-apps/plugin-process');
+        await relaunch();
+      } catch (err) {
+        console.error('Falha ao instalar atualização via Tauri:', err);
+        this.notifyUpdateStatus({
+          state: 'error',
+          error: err instanceof Error ? err.message : 'Erro ao instalar atualização.',
+        });
       }
     }
   }

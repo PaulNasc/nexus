@@ -328,26 +328,33 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
       if (info.os) setPlatformInfo(info.os);
     }).catch(() => {});
 
+    if (desktopAdapter.isTauri()) {
+      const unsubscribe = (desktopAdapter as unknown as { onUpdateStatus?: (cb: (s: UpdaterStatus) => void) => () => void }).onUpdateStatus?.((s) => {
+        setStatus(s);
+      });
+      return () => unsubscribe?.();
+    }
+
     const electron = getElectron();
-    if (!electron?.updater) return;
+    if (electron?.updater) {
+      electron.updater.getStatus().then((s) => setStatus(s as UpdaterStatus)).catch(() => {});
+      electron.settings.get('autoDownloadUpdates').then((value) => {
+        if (typeof value === 'boolean') setAutoDownload(value);
+      }).catch(() => {});
 
-    electron.updater.getStatus().then((s) => setStatus(s as UpdaterStatus)).catch(() => {});
-    electron.settings.get('autoDownloadUpdates').then((value) => {
-      if (typeof value === 'boolean') setAutoDownload(value);
-    }).catch(() => {});
-
-    const unsubscribe = electron.updater.onStatus((s) => setStatus(s as UpdaterStatus));
-    return () => {
-      unsubscribe?.();
-    };
+      const unsubscribe = electron.updater.onStatus((s) => setStatus(s as UpdaterStatus));
+      return () => {
+        unsubscribe?.();
+      };
+    }
   }, []);
 
   const checkUpdates = async () => {
     setIsChecking(true);
     try {
       if (desktopAdapter.isTauri()) {
-        await desktopAdapter.checkForUpdates();
-        setStatus({ state: 'idle' });
+        const next = await desktopAdapter.checkForUpdates();
+        if (next) setStatus(next as UpdaterStatus);
       } else {
         const next = await getElectron()?.updater?.checkForUpdates?.();
         if (next) setStatus(next as UpdaterStatus);
@@ -362,7 +369,11 @@ const UpdateManagementPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
 
   const downloadUpdate = async () => {
     try {
-      await getElectron()?.updater?.downloadUpdate?.();
+      if (desktopAdapter.isTauri()) {
+        await desktopAdapter.applyUpdate();
+      } else {
+        await getElectron()?.updater?.downloadUpdate?.();
+      }
     } catch (error) {
       console.error('Falha ao baixar atualização:', error);
     }

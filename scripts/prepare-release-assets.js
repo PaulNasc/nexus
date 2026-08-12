@@ -90,6 +90,16 @@ async function prepareReleaseAssets() {
     console.warn('⚠️ Falha ao criar ZIP portátil via PowerShell, mantendo binário .exe portátil.');
   }
 
+  // Artifact 4.5: Nexus_1.4.1_x64-setup.nsis.zip (Pacote comprimido para o atualizador nativo do Tauri v2)
+  const outNsisZip = path.join(OUTPUT_DIR, `Nexus_${version}_x64-setup.nsis.zip`);
+  console.log('📦 Gerando pacote nsis.zip para o atualizador do Tauri v2...');
+  try {
+    const psCmd = `Compress-Archive -Path "${outSetupExe}" -DestinationPath "${outNsisZip}" -Force`;
+    execSync(`powershell -Command "${psCmd}"`, { stdio: 'inherit' });
+  } catch (err) {
+    console.warn('⚠️ Falha ao criar nsis.zip para o Tauri.');
+  }
+
   // Artifact 5: MSI Installer (se existir)
   const msiDir = path.join(BUNDLE_DIR, 'msi');
   if (fs.existsSync(msiDir)) {
@@ -126,7 +136,7 @@ releaseDate: '${nowIso}'
     platforms: {
       'windows-x86_64': {
         signature: '',
-        url: `https://github.com/PaulNasc/nexus/releases/download/${releaseTag}/Nexus_${version}_x64-setup.exe`,
+        url: `https://github.com/PaulNasc/nexus/releases/download/${releaseTag}/Nexus_${version}_x64-setup.nsis.zip`,
       },
     },
   };
