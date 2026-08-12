@@ -458,12 +458,8 @@ const App: React.FC<AppProps> = () => {
   }, []);
 
   const goToDashboard = useCallback(() => {
-    if (!settings.showDashboard) {
-      openNotes();
-      return;
-    }
     navigateTo('dashboard');
-  }, [settings.showDashboard, openNotes, navigateTo]);
+  }, [navigateTo]);
 
   const viewTaskList = useCallback((status: string) => {
     navigateTo('task-list', status);

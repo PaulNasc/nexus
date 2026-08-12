@@ -190,13 +190,13 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
           />
         )}
 
-        {/* Feedback button — bottom right of the panel */}
+        {/* Feedback button — fixed at bottom right of entire app window */}
         <div
           style={{
-            position: 'absolute',
+            position: 'fixed',
             bottom: 16,
             right: 16,
-            zIndex: 100,
+            zIndex: 9999,
           }}
         >
           <FeedbackButton onClick={onOpenFeedback} />

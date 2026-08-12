@@ -100,11 +100,6 @@ export const ZenSidebar: React.FC<ZenSidebarProps> = ({
           <LogOut size={17} />
         </button>
       </nav>
-
-      <footer className="zen-sidebar__footer">
-        <span className="zen-sidebar__footer-name">NEXUS</span>
-        <span className="zen-sidebar__footer-version">v{APP_VERSION}</span>
-      </footer>
     </aside>
   );
 };
