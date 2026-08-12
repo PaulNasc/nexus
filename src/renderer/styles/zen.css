@@ -776,3 +776,48 @@
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+
+/* ── Embedded viewer (NoteViewerModal in zen column 3) ──── */
+.note-viewer-embedded {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--color-bg-primary, #0f0f0f);
+}
+
+.note-viewer-embedded .note-viewer-header {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  flex-shrink: 0;
+  background: var(--bg-secondary, #141414);
+}
+
+/* Override modal max-width constraints inside embedded mode */
+.note-viewer-embedded .note-viewer-modal {
+  max-width: none !important;
+  border-radius: 0 !important;
+  border: none !important;
+}
+
+/* Spin animation for loading indicators */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.spin { animation: spin 1.2s linear infinite; }
+
+/* ── Ensure zen-layout fills the full window ─────────────── */
+.app-main {
+  position: relative;
+}
+
+.animate-screen {
+  position: relative;
+}
+
+.animate-screen .zen-layout {
+  position: absolute;
+  inset: 0;
+}

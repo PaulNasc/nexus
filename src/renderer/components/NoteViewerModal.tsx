@@ -10,7 +10,7 @@ import { resolveImageUrl } from '../utils/image';
 import { desktopAdapter } from '../lib/desktopAdapter';
 import { useToast } from '../contexts/ToastContext';
 
-interface NoteViewerModalProps {
+export interface NoteViewerModalProps {
   isOpen: boolean;
   note: Note | null;
   onClose: () => void;
@@ -19,6 +19,14 @@ interface NoteViewerModalProps {
   ownerId?: string | null;
   /** Organization id — pass from OrganizationContext to avoid redundant Supabase query */
   orgId?: string | null;
+  /** When true, renders without backdrop (inline in a panel) */
+  isEmbedded?: boolean;
+  /** Called when user clicks Edit in embedded mode */
+  onEditNote?: () => void;
+  /** Called when user clicks Delete in embedded mode */
+  onDeleteNote?: (note: Note) => void;
+  /** Called when user clicks Ping in embedded mode */
+  onOpenPingModal?: (note: Note) => void;
 }
 
 function stripMarkdown(markdown: string): string {
@@ -144,7 +152,18 @@ const getElectron = (): ElectronAPI | null => {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI || null;
 };
 
-export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, onClose, onTogglePin, ownerId, orgId }) => {
+export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({
+  isOpen,
+  note,
+  onClose,
+  onTogglePin,
+  ownerId,
+  orgId,
+  isEmbedded = false,
+  onEditNote,
+  onDeleteNote,
+  onOpenPingModal,
+}) => {
   const { showToast } = useToast();
   const [primaryPdfPath, setPrimaryPdfPath] = useState<string>('');
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
@@ -1030,9 +1049,13 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
     setVideoMissing(prev => ({ ...prev, [videoRef]: false }));
   };
 
-  return (
-    <div className="note-viewer-modal-backdrop" onClick={onClose}>
-      <div className="note-viewer-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: hasAttachments ? 1100 : 900 }}>
+  // Build the modal content
+  const modalContent = (
+    <div
+      className={isEmbedded ? 'note-viewer-embedded' : 'note-viewer-modal'}
+      onClick={(e) => e.stopPropagation()}
+      style={isEmbedded ? { display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' } : { maxWidth: hasAttachments ? 1100 : 900 }}
+    >
         {/* Header */}
         <div className="note-viewer-header">
           <div className="note-viewer-title-group">
@@ -1059,11 +1082,27 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
               {copiedText ? <Check size={16} /> : <FileText size={16} />}
               {copiedText ? 'Copiado!' : 'Copiar Texto'}
             </Button>
+          {isEmbedded && onOpenPingModal && (
+            <Button variant="ghost" size="sm" onClick={() => onOpenPingModal(note)} title="Notificar usuário">
+              <span style={{ fontSize: 11 }}>🔔</span>
+            </Button>
+          )}
+          {isEmbedded && onDeleteNote && (
+            <Button variant="ghost" size="sm" onClick={() => onDeleteNote(note)} title="Deletar nota" style={{ color: 'rgba(239,68,68,0.7)' }}>
+              <X size={14} />
+            </Button>
+          )}
+          {isEmbedded && onEditNote ? (
+            <Button variant="secondary" size="sm" onClick={onEditNote} title="Editar nota">
+              ✏️ Editar
+            </Button>
+          ) : !isEmbedded && (
             <Button variant="ghost" size="sm" onClick={onClose} aria-label="Fechar">
               <X size={16} />
             </Button>
-          </div>
+          )}
         </div>
+      </div>
 
         {/* Content: text left, attachments right */}
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0, position: 'relative' }}>
@@ -1834,6 +1873,15 @@ export const NoteViewerModal: React.FC<NoteViewerModalProps> = ({ isOpen, note, 
           </div>
         )}
       </div>
+  );
+
+  // Return embedded (no backdrop) or with modal backdrop
+  if (isEmbedded) {
+    return modalContent;
+  }
+  return (
+    <div className="note-viewer-modal-backdrop" onClick={onClose}>
+      {modalContent}
     </div>
   );
 };

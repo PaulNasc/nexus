@@ -707,14 +707,14 @@ const App: React.FC<AppProps> = () => {
             currentScreen={navigation.currentScreen}
           />
         )}
-        <SystemWatermark version={systemInfo?.version || '1.4.0'} mode={effectiveMode} />
+        {!isZen && <SystemWatermark version={systemInfo?.version || '1.4.0'} mode={effectiveMode} />}
         <main className="app-main">
           {navigation.currentScreen === 'notes' && (
             <div className="animate-screen" style={{ height: '100%' }}>
               {isZen ? (
                 <ZenLayout
                   showDashboard={false}
-                  onOpenNoteModal={() => setIsNoteModalOpen(true)}
+                  onOpenNoteModal={undefined}
                   onOpenSettings={handleOpenSettings}
                   onOpenFeedback={() => setIsFeedbackOpen(true)}
                   onNavigateDashboard={goToDashboard}
@@ -735,7 +735,7 @@ const App: React.FC<AppProps> = () => {
               {isZen ? (
                 <ZenLayout
                   showDashboard={true}
-                  onOpenNoteModal={() => setIsNoteModalOpen(true)}
+                  onOpenNoteModal={undefined}
                   onOpenSettings={handleOpenSettings}
                   onOpenFeedback={() => setIsFeedbackOpen(true)}
                   onNavigateDashboard={goToDashboard}

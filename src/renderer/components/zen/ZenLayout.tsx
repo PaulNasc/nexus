@@ -16,19 +16,12 @@ const Dashboard = React.lazy(() =>
 );
 
 interface ZenLayoutProps {
-  /** Whether the dashboard is currently shown (full-area) */
   showDashboard?: boolean;
-  /** Callback to open a new quick note modal */
-  onOpenNoteModal: () => void;
-  /** Callback to open Settings */
+  onOpenNoteModal?: (() => void) | undefined;
   onOpenSettings: () => void;
-  /** Callback to open feedback modal */
   onOpenFeedback: () => void;
-  /** Navigate to dashboard */
   onNavigateDashboard: () => void;
-  /** Navigate to notes */
   onNavigateNotes: () => void;
-  /** Pass-through for Dashboard */
   onViewTaskList?: (status: string) => void;
   onOpenTimer?: () => void;
   onOpenReports?: () => void;
@@ -53,25 +46,41 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
   const { showToast } = useToast();
   const { user } = useAuth();
 
+  // 'viewing' = show ZenNoteViewer, 'editing' = show NoteEditor, 'creating' = blank NoteEditor, null = empty state
+  type PanelMode = 'viewing' | 'editing' | 'creating';
+
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
-  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [panelMode, setPanelMode] = useState<PanelMode | null>(null);
   const [pingModal, setPingModal] = useState<{ isOpen: boolean; note: Note | null }>({
     isOpen: false,
     note: null,
   });
 
+  // Click a note card → view it inline in column 3
   const handleSelectNote = useCallback((note: Note, editMode = false) => {
     setSelectedNote(note);
-    setIsEditing(editMode);
+    setPanelMode(editMode ? 'editing' : 'viewing');
+  }, []);
+
+  // New note from sidebar or empty-state button → blank inline editor
+  const handleNewNote = useCallback(() => {
+    setSelectedNote(null);
+    setPanelMode('creating');
   }, []);
 
   const handleNoteDeleted = useCallback(() => {
     setSelectedNote(null);
-    setIsEditing(false);
+    setPanelMode(null);
   }, []);
 
   const handleNoteUpdated = useCallback((updated: Note) => {
     setSelectedNote(updated);
+    setPanelMode('viewing');
+  }, []);
+
+  const handleNoteCreated = useCallback((created: Note) => {
+    setSelectedNote(created);
+    setPanelMode('viewing');
   }, []);
 
   const handleTogglePin = useCallback(
@@ -97,7 +106,7 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
         await deleteNote(note.id);
         if (selectedNote?.id === note.id) {
           setSelectedNote(null);
-          setIsEditing(false);
+          setPanelMode(null);
         }
         showToast('Nota deletada', 'success');
       } catch {
@@ -117,7 +126,6 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
       const note = pingModal.note;
       const userNames = targetUsers.map((u) => u.name).join(', ');
 
-      // Audit log registration
       auditLogger.log({
         level: 'info',
         category: 'notes',
@@ -138,12 +146,18 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
 
   const currentScreen = showDashboard ? 'dashboard' : 'notes';
 
+  const isEditing = panelMode === 'editing';
+  const isCreating = panelMode === 'creating';
+
   return (
-    <div className={`zen-layout ${showDashboard ? 'zen-layout--dashboard' : ''}`}>
+    <div
+      className={`zen-layout ${showDashboard ? 'zen-layout--dashboard' : ''}`}
+      style={{ position: 'absolute', inset: 0 }}
+    >
       {/* Col 1: Sidebar */}
       <ZenSidebar
         currentScreen={currentScreen}
-        onNewNote={onOpenNoteModal}
+        onNewNote={handleNewNote}
         onNavigateDashboard={onNavigateDashboard}
         onNavigateNotes={onNavigateNotes}
         onOpenSettings={onOpenSettings}
@@ -154,17 +168,17 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
         <ZenNotesList
           selectedNoteId={selectedNote?.id ?? null}
           onSelectNote={handleSelectNote}
-          onNewNote={onOpenNoteModal}
+          onNewNote={handleNewNote}
           onOpenPingModal={handleOpenPingModal}
           onDeleteNote={handleDeleteNote}
           onTogglePinNote={handleTogglePin}
         />
       )}
 
-      {/* Col 3 (or 2 in dashboard mode): Main panel */}
+      {/* Col 3 (or 2 in dashboard): Main panel */}
       <div
         className={`zen-note-panel ${showDashboard ? 'zen-note-panel--dashboard' : ''}`}
-        style={{ position: 'relative' }}
+        style={{ position: 'relative', overflow: 'hidden' }}
       >
         {showDashboard ? (
           <Suspense fallback={<NexusLoadingScreen title="Nexus" subtitle="Carregando dashboard..." />}>
@@ -182,15 +196,17 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
           <ZenNotePanel
             note={selectedNote}
             isEditing={isEditing}
-            onSetEditing={setIsEditing}
-            onNewNote={onOpenNoteModal}
+            isCreating={isCreating}
+            onSetEditing={(v) => setPanelMode(v ? 'editing' : 'viewing')}
+            onNewNote={handleNewNote}
             onNoteDeleted={handleNoteDeleted}
             onNoteUpdated={handleNoteUpdated}
+            onNoteCreated={handleNoteCreated}
             onOpenPingModal={handleOpenPingModal}
           />
         )}
 
-        {/* Feedback button — fixed at bottom right of entire app window */}
+        {/* Feedback / Sugestões: fixed at bottom right */}
         <div
           style={{
             position: 'fixed',
@@ -203,7 +219,7 @@ export const ZenLayout: React.FC<ZenLayoutProps> = ({
         </div>
       </div>
 
-      {/* Ping User Modal */}
+      {/* Ping Modal */}
       {pingModal.isOpen && (
         <PingUserModal
           isOpen={pingModal.isOpen}

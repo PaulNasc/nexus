@@ -4,8 +4,7 @@
     "types": ["node", "react", "react-dom", "jest"]
   },
   "include": [
-    "src/renderer/**/*",
-    "src/shared/**/*"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules"

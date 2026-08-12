@@ -1,7 +1,8 @@
 import React, { useCallback } from 'react';
-import { StickyNote, Plus, ArrowLeft } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { NoteEditor } from '../NoteEditor';
 import { ZenNoteViewer } from './ZenNoteViewer';
+import { ZenNoteCreator } from './ZenNoteCreator';
 import { useNotes } from '../../contexts/NotesContext';
 import { useToast } from '../../contexts/ToastContext';
 import type { Note, CreateNoteData } from '../../../shared/types/note';
@@ -9,20 +10,24 @@ import type { Note, CreateNoteData } from '../../../shared/types/note';
 interface ZenNotePanelProps {
   note: Note | null;
   isEditing: boolean;
+  isCreating: boolean;
   onSetEditing: (editing: boolean) => void;
   onNewNote: () => void;
   onNoteDeleted: () => void;
   onNoteUpdated: (note: Note) => void;
+  onNoteCreated: (note: Note) => void;
   onOpenPingModal: (note: Note) => void;
 }
 
 export const ZenNotePanel: React.FC<ZenNotePanelProps> = ({
   note,
   isEditing,
+  isCreating,
   onSetEditing,
   onNewNote,
   onNoteDeleted,
   onNoteUpdated,
+  onNoteCreated,
   onOpenPingModal,
 }) => {
   const { updateNote, deleteNote } = useNotes();
@@ -35,14 +40,13 @@ export const ZenNotePanel: React.FC<ZenNotePanelProps> = ({
         const updated = await updateNote(note.id, noteData);
         if (updated) {
           onNoteUpdated(updated);
-          onSetEditing(false);
           showToast('Nota salva com sucesso', 'success');
         }
       } catch (err) {
         showToast('Erro ao salvar nota', 'error');
       }
     },
-    [note, updateNote, onNoteUpdated, onSetEditing, showToast]
+    [note, updateNote, onNoteUpdated, showToast]
   );
 
   const handleDelete = useCallback(async () => {
@@ -69,31 +73,36 @@ export const ZenNotePanel: React.FC<ZenNotePanelProps> = ({
     }
   }, [note, updateNote, onNoteUpdated, showToast]);
 
-  // Empty state
-  if (!note) {
+  // ── CREATE MODE (blank inline NoteEditor Evernote-style) ─────────────────
+  if (isCreating) {
     return (
       <section className="zen-note-panel">
-        <div className="zen-note-panel__empty">
-          <StickyNote size={44} className="zen-note-panel__empty-icon" />
-          <p className="zen-note-panel__empty-title">Nenhuma nota selecionada</p>
-          <p className="zen-note-panel__empty-sub">
-            Selecione uma nota na lista ao lado para visualizar ou clique abaixo para criar
-          </p>
-          <button className="zen-note-panel__empty-btn" onClick={onNewNote}>
-            <Plus size={14} style={{ display: 'inline', marginRight: 4 }} />
-            Nova nota
-          </button>
-        </div>
+        <ZenNoteCreator
+          onNoteCreated={onNoteCreated}
+          onCancel={() => onSetEditing(false)}
+        />
       </section>
     );
   }
 
-  return (
-    <section className="zen-note-panel">
-      {isEditing ? (
-        /* EDIT MODE: Evernote-style NoteEditor Inline */
+  // ── EMPTY STATE ──────────────────────────────────────────────────────────
+  if (!note) {
+    return (
+      <section className="zen-note-panel">
+        <ZenNoteCreator
+          onNoteCreated={onNoteCreated}
+          onCancel={() => {}}
+          showEmptyPrompt
+        />
+      </section>
+    );
+  }
+
+  // ── EDIT MODE ─────────────────────────────────────────────────────────────
+  if (isEditing) {
+    return (
+      <section className="zen-note-panel">
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-          {/* Editor Top Bar with Return to View */}
           <div
             style={{
               display: 'flex',
@@ -109,7 +118,7 @@ export const ZenNotePanel: React.FC<ZenNotePanelProps> = ({
               className="zen-panel-btn"
               onClick={() => onSetEditing(false)}
               title="Voltar para Visualização"
-              style={{ fontSize: 12 }}
+              style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
             >
               <ArrowLeft size={13} />
               Visualizar Nota
@@ -128,16 +137,20 @@ export const ZenNotePanel: React.FC<ZenNotePanelProps> = ({
             />
           </div>
         </div>
-      ) : (
-        /* READ-ONLY VIEW MODE: Clean Evernote-Style ZenNoteViewer */
-        <ZenNoteViewer
-          note={note}
-          onEdit={() => onSetEditing(true)}
-          onTogglePin={handlePin}
-          onDelete={handleDelete}
-          onOpenPingModal={onOpenPingModal}
-        />
-      )}
+      </section>
+    );
+  }
+
+  // ── VIEW MODE ─────────────────────────────────────────────────────────────
+  return (
+    <section className="zen-note-panel">
+      <ZenNoteViewer
+        note={note}
+        onEdit={() => onSetEditing(true)}
+        onTogglePin={handlePin}
+        onDelete={handleDelete}
+        onOpenPingModal={onOpenPingModal}
+      />
     </section>
   );
 };
