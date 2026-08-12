@@ -5,39 +5,49 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag para publicar (ex: v1.0.1)'
-        required: false
 
 permissions:
   contents: write
 
 jobs:
-  build-and-publish:
-    runs-on: windows-latest
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      ELECTRON_BUILDER_DISABLE_CODE_SIGNING: 'true'
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      NODE_OPTIONS: '--max_old_space_size=4096'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [windows-latest]
 
-      - name: Setup Node.js
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: lts/*
 
-      - name: Install dependencies
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: install frontend dependencies
         run: npm ci
 
-      - name: Generate icons
-        run: npm run icons
-
-      - name: Build application
+      - name: build frontend
         run: npm run build
 
-      - name: Build & Publish to GitHub Releases
-        run: npx electron-builder --win --publish always
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__ # tauri-action automatically replaces __VERSION__ with the version from tauri.conf.json
+          releaseName: 'Nexus v__VERSION__'
+          releaseBody: 'Confira as novidades e melhorias da nova versão do Nexus.'
+          releaseDraft: false
+          prerelease: false
