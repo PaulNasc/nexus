@@ -26,29 +26,37 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         run: npm ci
 
       - name: Build frontend
         run: npm run build
 
-      - name: Build Tauri app
-        run: npx @tauri-apps/cli build
+      - name: Build Tauri App via tauri-action
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Nexus ${{ github.ref_name }}'
+          releaseBody: 'Release Nexus ${{ github.ref_name }}'
+          releaseDraft: false
+          prerelease: false
 
-      - name: Prepare all release assets
+      - name: Prepare all release assets (latest.yml, latest.json, portable exe, zip)
         run: node scripts/prepare-release-assets.js
 
-      - name: Publish GitHub Release with all assets
+      - name: Upload all assets and publish release as latest
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Nexus ${{ github.ref_name }}
           body: |
-            ## Nexus ${{ github.ref_name }} - Release Completa
+            ## Nexus ${{ github.ref_name }} - Release Oficial
 
             - **Instalador Windows (Setup .exe / MSI)**
             - **Versão Portátil (.exe / .zip)**
-            - **Atualização Automática (latest.yml + latest.json)**
+            - **Atualizador Automático (latest.yml + latest.json)**
           files: |
             releases/release-assets/*
           draft: false
