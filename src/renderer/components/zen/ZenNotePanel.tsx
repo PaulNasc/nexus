@@ -94,6 +94,7 @@ export const ZenNotePanel: React.FC<ZenNotePanelProps> = ({
   onOpenPingModal,
 }) => {
   const { updateNote, deleteNote } = useNotes();
+  const { showToast } = useToast();
   const { tags: systemTags } = useSystemTags();
   const [copied, setCopied] = useState(false);
 

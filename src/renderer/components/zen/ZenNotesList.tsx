@@ -44,6 +44,7 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
 
   const { user } = useAuth();
   const { activeOrg } = useOrganization();
+  const { settings, getGreeting } = useSettings();
   const { tags: systemTags } = useSystemTags();
   const { t } = useI18n();
 
