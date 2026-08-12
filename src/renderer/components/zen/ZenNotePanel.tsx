@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   StickyNote,
   Plus,
@@ -94,9 +94,16 @@ export const ZenNotePanel: React.FC<ZenNotePanelProps> = ({
   onOpenPingModal,
 }) => {
   const { updateNote, deleteNote } = useNotes();
-  const { showToast } = useToast();
-  const { systemTagById, systemTagByName } = useSystemTags();
+  const { tags: systemTags } = useSystemTags();
   const [copied, setCopied] = useState(false);
+
+  const systemTagById = useMemo(() => {
+    return new Map((systemTags || []).map((t) => [t.id, t]));
+  }, [systemTags]);
+
+  const systemTagByName = useMemo(() => {
+    return new Map((systemTags || []).map((t) => [t.name.toLowerCase(), t]));
+  }, [systemTags]);
 
   const handleSave = useCallback(
     async (noteData: CreateNoteData) => {

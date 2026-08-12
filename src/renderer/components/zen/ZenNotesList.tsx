@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Pin, ArrowUpDown, StickyNote, Loader2, X, Tag, BellRing, Pencil, Trash2 } from 'lucide-react';
 import { useNotes, SortOption } from '../../contexts/NotesContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -44,9 +44,16 @@ export const ZenNotesList: React.FC<ZenNotesListProps> = ({
 
   const { user } = useAuth();
   const { activeOrg } = useOrganization();
-  const { settings, getGreeting } = useSettings();
-  const { tags: systemTags, systemTagById, systemTagByName } = useSystemTags();
+  const { tags: systemTags } = useSystemTags();
   const { t } = useI18n();
+
+  const systemTagById = useMemo(() => {
+    return new Map((systemTags || []).map((t) => [t.id, t]));
+  }, [systemTags]);
+
+  const systemTagByName = useMemo(() => {
+    return new Map((systemTags || []).map((t) => [t.name.toLowerCase(), t]));
+  }, [systemTags]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
