@@ -1,1 +1,37 @@
-bmFtZTogTWFudWFsIFdpbmRvd3MgUmVsZWFzZQpvbjoKICB3b3JrZmxvd19kaXNwYXRjaDoKICAgIGlucHV0czoKICAgICAgdGFnOgogICAgICAgIGRlc2NyaXB0aW9uOiBUYWcgKGUuZy4sIHYxLjAuMikKICAgICAgICByZXF1aXJlZDogdHJ1ZQogICAgICBuYW1lOgogICAgICAgIGRlc2NyaXB0aW9uOiBSZWxlYXNlIG5hbWUKICAgICAgICByZXF1aXJlZDogdHJ1ZQogICAgICBjaGFuZ2Vsb2c6CiAgICAgICAgZGVzY3JpcHRpb246IFJlbGVhc2Ugbm90ZXMvYm9keQogICAgICAgIHJlcXVpcmVkOiBmYWxzZQoKam9iczoKICB1cGRhdGUtcmVsZWFzZToKICAgIHJ1bnMtb246IHVidW50dS1sYXRlc3QKICAgIHBlcm1pc3Npb25zOgogICAgICBjb250ZW50czogd3JpdGUKICAgIHN0ZXBzOgogICAgICAtIHVzZXM6IGFjdGlvbnMvY2hlY2tvdXQrdjQKCiAgICAgIC0gbmFtZTogV3JpdGUgY2hhbmdlbG9nIHRvIGZpbGUKICAgICAgICBydW46IHwKICAgICAgICAgIGVjaG8gIiR7eyBnaXRodWIuZXZlbnQuaW5wdXRzLmNoYW5nZWxvZyB9fSIgPiBSRUxFQVNFLUJPRFkudHh0CgogICAgICAtIG5hbWU6IFVwZGF0ZSBHaXRIdWIgUmVsZWFzZQogICAgICAgIHVzZXM6IG5jaXBvbGxvL3JlbGVhc2UtYWN0aW9uQHYxCiAgICAgICAgd2l0aDoKICAgICAgICAgIHRhZzogJHt7IGdpdGh1Yi5ldmVudC5pbnB1dHMudGFnIH19CiAgICAgICAgICBuYW1lOiAke3sgZ2l0aHViLmV2ZW50LmlucHV0cy5uYW1lIH19CiAgICAgICAgICBib2R5RmlsZTogUkVMRUFTRS1CT0RZLnR4dAogICAgICAgICAgYWxsb3dVcGRhdGVzOiB0cnVlCiAgICAgICAgICBtYWtlTGF0ZXN0OiB0cnVlCiAgICAgICAgICBkcmFmdDogZmFsc2UKICAgICAgICAgIHByZXJlbGVhc2U6IGZhbHNlCiAgICAgICAgICB0b2tlbjogJHt7IHNlY3JldHMuR0lUSFVCX1RPS0VOID99fQo=
+name: Manual Windows Release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag (e.g., v1.4.2)
+        required: true
+      name:
+        description: Release name
+        required: true
+      changelog:
+        description: Release notes/body
+        required: false
+
+jobs:
+  update-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write changelog to file
+        run: |
+          echo "${{ github.event.inputs.changelog }}" > RELEASE-BODY.txt
+
+      - name: Update GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.event.inputs.tag }}
+          name: ${{ github.event.inputs.name }}
+          bodyFile: RELEASE-BODY.txt
+          allowUpdates: true
+          makeLatest: true
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}

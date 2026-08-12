@@ -231,8 +231,11 @@ class DesktopAdapter implements IDesktopAdapter {
         const update = this.tauriUpdateObj as { downloadAndInstall: (cb?: (p: unknown) => void) => Promise<void> };
         await update.downloadAndInstall();
         this.notifyUpdateStatus({ state: 'downloaded' });
-        const { relaunch } = await import('@tauri-apps/plugin-process');
-        await relaunch();
+        try {
+          window.location.reload();
+        } catch {
+          window.location.reload();
+        }
       } catch (err) {
         console.error('Falha ao instalar atualização via Tauri:', err);
         this.notifyUpdateStatus({

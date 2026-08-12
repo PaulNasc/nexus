@@ -20,7 +20,7 @@ module.exports = {
           loader: 'ts-loader',
           options: {
             configFile: 'tsconfig.renderer.json',
-            transpileOnly: isDev,
+            transpileOnly: true,
           },
         },
         exclude: /node_modules/,
