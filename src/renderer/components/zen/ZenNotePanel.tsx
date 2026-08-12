@@ -18,7 +18,7 @@ import { NoteEditor } from '../NoteEditor';
 import { useNotes } from '../../contexts/NotesContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useSystemTags } from '../../contexts/SystemTagsContext';
-import { resolveImageUrl } from '../utils/image';
+import { resolveImageUrl } from '../../utils/image';
 import type { Note, CreateNoteData } from '../../../shared/types/note';
 
 interface ZenNotePanelProps {
